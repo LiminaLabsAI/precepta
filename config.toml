@@ -1,0 +1,18 @@
+[general]
+setup_complete = true
+theme = "system"
+
+[inference]
+model = "llama3.2:3b"
+ollama_port = 11434
+
+[resources]
+max_cpu_cores = 5
+max_memory_gb = 4.0
+max_disk_gb = 15.0
+
+[costs]
+electricity_rate_kwh = 0.120
+
+[notifications]
+desktop = true

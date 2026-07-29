@@ -1,0 +1,9 @@
+{
+  "tiers": [
+    {"name":"Nova Micro","model_size":"1.5B","input_per_1m":0.035,"output_per_1m":0.14},
+    {"name":"Nova Lite","model_size":"3B","input_per_1m":0.06,"output_per_1m":0.24},
+    {"name":"Llama 3.3 70B","model_size":"8B","input_per_1m":0.72,"output_per_1m":0.72},
+    {"name":"Nova Pro","model_size":"7B","input_per_1m":0.80,"output_per_1m":3.20},
+    {"name":"Claude Haiku","model_size":"13B","input_per_1m":1.00,"output_per_1m":5.00}
+  ]
+}

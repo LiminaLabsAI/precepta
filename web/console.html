@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preceptaai — Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  html,body{margin:0;height:100%}
+  ::selection{background:#DBEAFE}
+  .pc-scroll::-webkit-scrollbar{width:8px}
+  .pc-scroll::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:4px}
+  a{color:#2563EB}
+  a:hover{color:#1D4ED8}
+  input:focus, select:focus{outline:none;border-color:#3B82F6 !important;box-shadow:0 0 0 3px rgba(59,130,246,0.12)}
+  *:focus-visible{outline:2px solid #3B82F6;outline-offset:2px}
+  .navitem:hover{background:#F3F4F6 !important}
+  .rowhover:hover{background:#F3F4F6}
+  button{font-family:inherit}
+  .gbtn:hover{background:#F9FAFB}
+</style>
+</head>
+<body style="font-family:Inter,system-ui,sans-serif;color:#111827;font-size:14px;background:#FFFFFF">
+<div id="root" style="height:100vh;background:#FFFFFF"></div>
+
+<script>
+"use strict";
+
+/* ---------- state (ported from the design's DCLogic) ---------- */
+const state = {
+  screen: 'onboarding',        // onboarding | overview | modelplane | policies | audit | playground
+  isLoggedIn: false,
+  profileMenuOpen: false,
+  onboardStep: 0,
+  infraSelected: 'onprem',
+  infraEndpoint: '', infraApiKey: '', infraModel: '',
+  connectionStatus: 'idle',    // idle | testing | success
+  showSetupToast: false,
+  securityControls: { inBoundary:true, egressLock:true, auditOn:true, residency:true },
+  egressProbeStatus: 'idle',   // idle | running | done
+  backends: [
+    {name:'Ollama', model:'ollama/llama3.1-8b', location:'Local workstation', inBoundary:true, gpu:'—', latency:'180ms', rps:'4.2', status:'healthy', weight:'20%', cost:'$0.00'},
+    {name:'vLLM cluster', model:'vllm/mistral-large-2411', location:'On-prem GPU (Pune DC)', inBoundary:true, gpu:'62% / 71GB', latency:'240ms', rps:'38.1', status:'healthy', weight:'55%', cost:'$0.00'},
+    {name:'Neysa', model:'neysa/qwen2-72b', location:'Sovereign cloud (Mumbai)', inBoundary:true, gpu:'44% / 48GB', latency:'310ms', rps:'21.7', status:'healthy', weight:'25%', cost:'$0.004'},
+    {name:'Hugging Face endpoint', model:'hf/llama-3.1-70b-instruct', location:'Dedicated inference endpoint', inBoundary:true, gpu:'51% / 80GB', latency:'265ms', rps:'14.3', status:'healthy', weight:'0%', cost:'$0.006'},
+    {name:'OpenAI GPT-4o', model:'openai/gpt-4o', location:'External cloud (US)', inBoundary:false, gpu:'—', latency:'—', rps:'0', status:'blocked', weight:'0%', cost:'$0.010'},
+  ],
+  addBackendOpen: false,
+  newBackendName:'', newBackendModel:'', newBackendLocation:'', newBackendInBoundary:true,
+  newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:'',
+  policies: [
+    {id:1, name:'Block PAN / Aadhaar in prompts', desc:'Detects Indian govt ID patterns in request text and blocks the call.', actionType:'chat.completion', effect:'block', conditions:{piiFilterOutput:true}, enabled:true},
+    {id:2, name:'Mask PII in customer chat logs', desc:'Redacts names, phone numbers and emails before they reach the audit log.', actionType:'*', effect:'warn', conditions:{piiFilterOutput:true}, enabled:true},
+    {id:3, name:'Log all financial-advice queries', desc:'Flags investment/loan-advice intents for compliance review.', actionType:'chat.completion', effect:'audit', conditions:{}, enabled:true},
+    {id:4, name:'Rate limit by team', desc:'Caps requests per team to control cost.', actionType:'*', effect:'warn', conditions:{maxCallsPerHour:120}, enabled:false},
+    {id:5, name:'Restrict egress to allowlisted endpoints', desc:'Only in-boundary destinations may receive traffic — this is what backs in-boundary routing.', actionType:'http_request', effect:'block', conditions:{urlAllowlist:['vllm-cluster.internal','neysa.ai','localhost']}, enabled:true},
+  ],
+  newPolicyOpen: false,
+  newPolicyName:'', newPolicyDesc:'', newPolicyAction:'chat.completion', newPolicyEffect:'block',
+  newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxTokens:'', newPolicyMaxCalls:'', newPolicyMaxCost:'',
+  newPolicyPii:false, newPolicyDataTag:false,
+  attestationOpen: false, complianceOpen: false,
+  settingsOpen: false, settingsTab:'general',
+  newKeyName:'', newKeyRole:'user', newKeyTeam:'', issuedKey:null,
+  members: [
+    {name:'Sarang Kulkarni', email:'s.kulkarni@suvidha', role:'admin'},
+    {name:'Riya Iyer', email:'r.iyer@suvidha', role:'admin'},
+    {name:'Aisha Mehta', email:'a.mehta@suvidha', role:'user'},
+    {name:'Compliance Desk', email:'compliance@suvidha', role:'auditor'},
+  ],
+  chatModel: 'vllm/mistral-large-2411',
+  chatInput: '',
+  messages: [],
+};
+
+const auditLogSeed = [
+  {time:'27 Jul, 09:41', actor:'svc-underwriting', event:'chat.completion', backend:'vllm cluster', outcome:'allowed', hash:'a91f…3c0e'},
+  {time:'27 Jul, 09:38', actor:'a.mehta@suvidha', event:'chat.completion', backend:'neysa', outcome:'warned', hash:'7be2…91aa'},
+  {time:'27 Jul, 09:22', actor:'svc-collections', event:'chat.completion', backend:'openai/gpt-4o', outcome:'blocked', hash:'f10c…44b7'},
+  {time:'27 Jul, 08:55', actor:'r.iyer@suvidha', event:'policy.update', backend:'—', outcome:'allowed', hash:'2d6a…0f19'},
+  {time:'27 Jul, 08:40', actor:'svc-underwriting', event:'chat.completion', backend:'ollama', outcome:'allowed', hash:'9c4e…b820'},
+  {time:'27 Jul, 08:12', actor:'a.mehta@suvidha', event:'attestation.export', backend:'—', outcome:'allowed', hash:'55f7…1de3'},
+];
+const actionOptions = [
+  {value:'*', label:'All actions'},
+  {value:'chat.completion', label:'AI inference (chat.completion)'},
+  {value:'retrieval', label:'RAG retrieval'},
+  {value:'http_request', label:'HTTP request (egress)'},
+  {value:'audit.export', label:'Audit export'},
+];
+const effectOptions = [
+  {value:'block', label:'Block', desc:'Hard stop — request fails, nothing is sent to a model.'},
+  {value:'warn', label:'Warn', desc:'Request proceeds; flagged in the audit log for review.'},
+  {value:'audit', label:'Audit only', desc:'Logged only — has no effect on execution.'},
+];
+const backendTypeMeta = {
+  onprem: {label:'On-prem vLLM', modelPh:'vllm/mistral-large-2411', locationPh:'On-prem GPU (Pune DC)', endpointLabel:'vLLM base URL', endpointPh:'http://10.0.4.12:8000/v1', keyLabel:'Bearer token (optional)', keyPh:'sk-internal-…'},
+  local: {label:'Local Ollama', modelPh:'ollama/llama3.1-8b', locationPh:'Local workstation', endpointLabel:'Ollama base URL', endpointPh:'http://localhost:11434', keyLabel:'API key (not required locally)', keyPh:'leave blank for local'},
+  neysa: {label:'Neysa', modelPh:'neysa/qwen2-72b', locationPh:'Sovereign cloud (Mumbai)', endpointLabel:'Neysa workspace URL', endpointPh:'https://your-org.neysa.ai', keyLabel:'Neysa API key', keyPh:'neysa_live_…'},
+  hf: {label:'Hugging Face', modelPh:'hf/llama-3.1-70b-instruct', locationPh:'Dedicated inference endpoint', endpointLabel:'Endpoint URL', endpointPh:'https://xxxxx.endpoints.huggingface.cloud', keyLabel:'Access token', keyPh:'hf_…'},
+};
+const infraMetaMap = {
+  onprem: {name:'On-prem GPUs (vLLM)', credTitle:'Point us at your vLLM endpoint', credDesc:'We call this over your internal network only — it never touches the public internet.', endpointLabel:'vLLM base URL', endpointPh:'http://10.0.4.12:8000/v1', keyLabel:'Bearer token (optional)', keyPh:'sk-internal-…'},
+  local: {name:'Local (Ollama)', credTitle:'Point us at your local Ollama instance', credDesc:'Usually running on the same machine — no key needed for local dev/test.', endpointLabel:'Ollama base URL', endpointPh:'http://localhost:11434', keyLabel:'API key (not required locally)', keyPh:'leave blank for local'},
+  neysa: {name:'Neysa sovereign cloud', credTitle:'Connect your Neysa account', credDesc:'Your workspace credentials — traffic stays in-region (Mumbai).', endpointLabel:'Neysa workspace URL', endpointPh:'https://your-org.neysa.ai', keyLabel:'Neysa API key', keyPh:'neysa_live_…'},
+  hf: {name:'Hugging Face (dedicated endpoint)', credTitle:'Connect your dedicated Inference Endpoint', credDesc:'A private endpoint you control — not the shared public API, so nothing leaves your boundary.', endpointLabel:'Endpoint URL', endpointPh:'https://xxxxx.endpoints.huggingface.cloud', keyLabel:'Access token', keyPh:'hf_…'},
+};
+const infraOptionDefs = [
+  {id:'onprem', name:'On-prem GPUs (vLLM)', desc:'Serve on your own GPU cluster.', icon:'server'},
+  {id:'local', name:'Local (Ollama)', desc:'Run models on a workstation for dev/test.', icon:'laptop'},
+  {id:'neysa', name:'Neysa sovereign cloud', desc:'Sovereign, in-region managed GPUs.', icon:'cloud'},
+  {id:'hf', name:'Hugging Face (dedicated endpoint)', desc:'Your own private inference endpoint — not the shared public API.', icon:'box'},
+];
+const controlDefs = [
+  {key:'inBoundary', icon:'shield-check', label:'In-boundary-only routing', desc:'The router can only send requests to backends flagged in-boundary. Anything else is blocked before it leaves.', hasProbe:false},
+  {key:'egressLock', icon:'wifi-off', label:'Egress lock', desc:'Deny-all network egress except your allowlisted endpoints, enforced at the network layer — not just in the app.', hasProbe:true},
+  {key:'auditOn', icon:'file-check-2', label:'Audit logging', desc:'Every request, decision and policy check is written to the tamper-evident log. Turning this off stops new entries.', hasProbe:false},
+  {key:'residency', icon:'map-pin', label:'Residency policy', desc:'A built-in rule asserting data-classification and residency requirements for your jurisdiction (DPDP).', hasProbe:false},
+];
+const settingsTabDefs = [
+  {key:'general', label:'General'}, {key:'security', label:'Security'},
+  {key:'keys', label:'API keys'},
+  {key:'data', label:'Data controls'}, {key:'account', label:'Account'}, {key:'members', label:'Members & roles'},
+];
+const modelOptions = [
+  {value:'ollama/llama3.1-8b', label:'ollama / llama3.1-8b'},
+  {value:'vllm/mistral-large-2411', label:'vllm / mistral-large-2411'},
+  {value:'neysa/qwen2-72b', label:'neysa / qwen2-72b'},
+  {value:'hf/llama-3.1-70b-instruct', label:'hf / llama-3.1-70b-instruct'},
+  {value:'openai/gpt-4o', label:'openai / gpt-4o (external)'},
+];
+
+/* ---------- helpers ---------- */
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function conditionChips(c){
+  const chips=[]; c=c||{};
+  if(c.urlAllowlist) chips.push('allowlist: '+c.urlAllowlist.length+' domain'+(c.urlAllowlist.length>1?'s':''));
+  if(c.urlBlocklist) chips.push('blocklist: '+c.urlBlocklist.length+' domain'+(c.urlBlocklist.length>1?'s':''));
+  if(c.maxTokensPerDay) chips.push(Number(c.maxTokensPerDay).toLocaleString()+' tokens/day');
+  if(c.maxCallsPerHour) chips.push(c.maxCallsPerHour+' calls/hour');
+  if(c.maxDailyCostUsd) chips.push('$'+c.maxDailyCostUsd+'/day cap');
+  if(c.piiFilterOutput) chips.push('PII filter on');
+  if(c.requireDataTag) chips.push('requires data tag');
+  return chips;
+}
+
+/* ---------- app methods ---------- */
+const app = {
+  set(k,v){ state[k]=v; },                 // for text inputs — no re-render (keeps focus)
+  onSelect(k,v){ state[k]=v; render(); },
+  setScreen(s){ state.screen=s; state.profileMenuOpen=false; render(); },
+  goToPolicies(){ state.screen='policies'; render(); },
+  skipOnboarding(){ state.screen='overview'; render(); },
+  selectInfra(id){ state.infraSelected=id; state.connectionStatus='idle'; render(); },
+  testConnection(){ state.connectionStatus='testing'; render(); setTimeout(()=>{ state.connectionStatus='success'; render(); },700); },
+  nextStep(){ if(state.onboardStep>=2){ state.screen='overview'; state.showSetupToast=true; render(); return;} state.onboardStep++; render(); },
+  prevStep(){ state.onboardStep=Math.max(0,state.onboardStep-1); render(); },
+  dismissSetupToast(){ state.showSetupToast=false; render(); },
+  toggleControl(key){ state.securityControls[key]=!state.securityControls[key]; render(); },
+  runEgressProbe(){ state.egressProbeStatus='running'; render(); setTimeout(()=>{ state.egressProbeStatus='done'; render(); },900); },
+  openAddBackend(){ Object.assign(state,{addBackendOpen:true,newBackendName:'',newBackendModel:'',newBackendLocation:'',newBackendInBoundary:true,newBackendType:'onprem',newBackendEndpoint:'',newBackendKey:''}); render(); },
+  closeAddBackend(){ state.addBackendOpen=false; render(); },
+  setNewBackendType(t){ state.newBackendType=t; state.newBackendInBoundary = t!=='other'; render(); },
+  toggleNewBackendBoundary(){ state.newBackendInBoundary=!state.newBackendInBoundary; render(); },
+  toggleBackendBoundary(i){ state.backends[i].inBoundary=!state.backends[i].inBoundary; render(); },
+  addBackend(){
+    if(!state.newBackendName.trim()){ state.addBackendOpen=false; render(); return; }
+    const meta=backendTypeMeta[state.newBackendType]||backendTypeMeta.onprem;
+    state.backends.push({name:state.newBackendName, model:state.newBackendModel||meta.modelPh, location:state.newBackendLocation||meta.locationPh, inBoundary:state.newBackendInBoundary, gpu:'—', latency:'—', rps:'0', status:'healthy', weight:'0%', cost:'$0.00'});
+    state.addBackendOpen=false; render();
+  },
+  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false}); render(); },
+  closeNewPolicy(){ state.newPolicyOpen=false; render(); },
+  toggleNewPolicyPii(){ state.newPolicyPii=!state.newPolicyPii; },
+  toggleNewPolicyDataTag(){ state.newPolicyDataTag=!state.newPolicyDataTag; },
+  addPolicy(){
+    if(!state.newPolicyName.trim()){ state.newPolicyOpen=false; render(); return; }
+    const s=state, conditions={};
+    if(s.newPolicyUrlAllow.trim()) conditions.urlAllowlist=s.newPolicyUrlAllow.split(',').map(x=>x.trim()).filter(Boolean);
+    if(s.newPolicyUrlBlock.trim()) conditions.urlBlocklist=s.newPolicyUrlBlock.split(',').map(x=>x.trim()).filter(Boolean);
+    if(s.newPolicyMaxTokens) conditions.maxTokensPerDay=parseInt(s.newPolicyMaxTokens);
+    if(s.newPolicyMaxCalls) conditions.maxCallsPerHour=parseInt(s.newPolicyMaxCalls);
+    if(s.newPolicyMaxCost) conditions.maxDailyCostUsd=parseFloat(s.newPolicyMaxCost);
+    if(s.newPolicyPii) conditions.piiFilterOutput=true;
+    if(s.newPolicyDataTag) conditions.requireDataTag=true;
+    s.policies.push({id:Date.now(), name:s.newPolicyName, desc:s.newPolicyDesc||'Custom policy.', actionType:s.newPolicyAction, effect:s.newPolicyEffect, conditions, enabled:true});
+    s.newPolicyOpen=false; render();
+  },
+  togglePolicy(id){ const p=state.policies.find(p=>p.id==id); if(p) p.enabled=!p.enabled; render(); },
+  openAttestation(){ state.attestationOpen=true; render(); },
+  closeAttestation(){ state.attestationOpen=false; render(); },
+  verifyChain(){ render(); },
+  openSettings(){ state.settingsOpen=true; state.profileMenuOpen=false; render(); },
+  closeSettings(){ state.settingsOpen=false; render(); },
+  setSettingsTab(t){ state.settingsTab=t; render(); },
+  goToMembersFromAccount(){ state.settingsTab='members'; render(); },
+  goToPoliciesFromSettings(){ state.settingsOpen=false; state.screen='policies'; render(); },
+  setMemberRole(i,role){ state.members[i].role=role; render(); },
+  signIn(){ state.isLoggedIn=true; render(); },
+  signOut(){ state.isLoggedIn=false; state.profileMenuOpen=false; state.settingsOpen=false; render(); },
+  toggleProfileMenu(){ state.profileMenuOpen=!state.profileMenuOpen; render(); },
+  setChatModel(v){ state.chatModel=v; },
+  handleChatKey(e){ if(e.key==='Enter') app.sendMessage(); },
+  sendPreset(text,model){ state.chatInput=text; if(model) state.chatModel=model; app.sendMessage(); },
+  sendMessage(){
+    const el=document.getElementById('chatInput'); if(el) state.chatInput=el.value;  // sync live DOM value (robust for Enter + Send)
+    const text=(state.chatInput||'').trim(); if(!text) return;
+    const blocked = state.chatModel.startsWith('openai') && state.securityControls.inBoundary;
+    state.messages.push({who:'You', text, align:'flex-end', textAlign:'right', bg:'#3B82F6', color:'#fff', hasMeta:false});
+    state.chatInput=''; render();
+    setTimeout(()=>{
+      let reply;
+      if(blocked){
+        reply={who:'preceptaai', text:'Request blocked by policy: route to openai/gpt-4o is out-of-boundary while in-boundary routing is on.', align:'flex-start', textAlign:'left', bg:'#FEF2F2', color:'#991B1B', hasMeta:true, metaBackendBg:'#F3F4F6', metaBackendColor:'#6B7280', metaBackend:'backend: none', metaLatency:'latency: —', metaCost:'cost: $0.00', metaPolicyBg:'#FEF2F2', metaPolicyColor:'#991B1B', metaPolicy:'policy: blocked'};
+      } else {
+        reply={who:'preceptaai', text:"Based on the applicant's repayment history and current DPD status, a restructured EMI plan over 18 months would bring the account current without breaching the internal risk threshold.", align:'flex-start', textAlign:'left', bg:'#F3F4F6', color:'#111827', hasMeta:true, metaBackendBg:'#F3F4F6', metaBackendColor:'#374151', metaBackend:'backend: '+state.chatModel, metaLatency:'latency: 260ms', metaCost:'cost: $0.002', metaPolicyBg:'#ECFDF5', metaPolicyColor:'#065F46', metaPolicy:'policy: allowed'};
+      }
+      state.messages.push(reply); render();
+    },500);
+  },
+  noop(){},
+  issueKey(){}, revokeKey(){}, exportAudit(){}, exportCsv(){}, saveOrgSetting(){}, sendSuggested(){}, // overridden in live mode
+  dismissIssuedKey(){ state.issuedKey=null; render(); },
+  openCompliance(){ state.complianceOpen=true; render(); },
+  closeCompliance(){ state.complianceOpen=false; render(); },
+};
+window.app = app;
+
+/* ---------- view helpers ---------- */
+function boundaryPill(b){
+  const bg=b.inBoundary?'#F3F4F6':'#FEF2F2', col=b.inBoundary?'#374151':'#991B1B', label=b.inBoundary?'In your network':'Leaves your network';
+  return {bg,col,label};
+}
+function th(t){ return `<th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">${t}</th>`; }
+
+/* ---------- screens ---------- */
+function loginScreen(){
+  return `<div style="height:100%;display:flex;align-items:center;justify-content:center">
+    <div style="width:340px;text-align:center">
+      <div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:6px">precepta<span style="color:#3B82F6">ai</span></div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:28px">Sign in to your governance console</div>
+      <button class="gbtn" onclick="app.signIn()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">
+        <i data-lucide="chrome" style="width:16px;height:16px"></i> Sign in with Google
+      </button>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:16px">Login proves who you are. What you can do is set by your role — ask an admin if you need access.</div>
+    </div>
+  </div>`;
+}
+
+function topbar(){
+  const active=Object.values(state.securityControls).filter(Boolean).length;
+  const badgeBg=active===4?'#ECFDF5':active===0?'#FEF2F2':'#FFFBEB';
+  const badgeCol=active===4?'#065F46':active===0?'#991B1B':'#92400E';
+  const u = window.__me ? {name:(window.__me.name||window.__me.subject||'User'), email:(window.__me.subject||''), role:(window.__me.role||'user')} : state.members[0];
+  const initials=(u.name||'U').split(/[ .@]/).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const roleLabel={admin:'Admin',user:'User',auditor:'Auditor'}[u.role];
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;border-bottom:1px solid #E5E7EB;flex:none">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em">precepta<span style="color:#3B82F6">ai</span></span>
+      <span style="width:1px;height:20px;background:#E5E7EB"></span>
+      <span style="font-size:13px;color:#6B7280">${(window.__org&&window.__org.org_name)||'My Organization'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div onclick="app.goToPolicies()" style="display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:12px;background:${badgeBg};color:${badgeCol};cursor:pointer">
+        <i data-lucide="shield" style="width:12px;height:12px"></i>
+        <span style="font-size:12px;font-weight:500">${active}/4 security controls active</span>
+      </div>
+      <button onclick="app.openSettings()" style="width:30px;height:30px;border-radius:50%;background:transparent;border:none;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center"><i data-lucide="settings" style="width:17px;height:17px"></i></button>
+      <div style="position:relative">
+        <div onclick="app.toggleProfileMenu()" style="width:30px;height:30px;border-radius:50%;background:#3B82F6;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;cursor:pointer">${initials}</div>
+        ${state.profileMenuOpen?`<div style="position:absolute;top:38px;right:0;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);width:220px;z-index:70;padding:10px">
+          <div style="padding:6px 8px 10px;border-bottom:1px solid #F3F4F6;margin-bottom:6px">
+            <div style="font-size:13px;font-weight:600">${esc(u.name)}</div>
+            <div style="font-size:11px;color:#9CA3AF">${esc(u.email)}</div>
+            <span style="display:inline-block;margin-top:6px;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:10px;background:#EFF6FF;color:#1D4ED8">${roleLabel}</span>
+          </div>
+          <div class="rowhover" onclick="app.signOut()" style="padding:7px 8px;border-radius:6px;font-size:13px;color:#991B1B;cursor:pointer;display:flex;align-items:center;gap:8px"><i data-lucide="log-out" style="width:14px;height:14px"></i> Log out</div>
+        </div>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function sidebar(){
+  const nav=[
+    {key:'onboarding',label:'Setup',icon:'rocket'},
+    {key:'overview',label:'Overview',icon:'layout-dashboard'},
+    {key:'modelplane',label:'Model plane',icon:'server'},
+    {key:'policies',label:'Policies',icon:'shield'},
+    {key:'audit',label:'Audit & Attestation',icon:'file-check'},
+    {key:'playground',label:'Playground',icon:'message-square'},
+  ];
+  return `<div style="width:220px;flex:none;background:#F9FAFB;border-right:1px solid #E5E7EB;display:flex;flex-direction:column;padding:12px 8px;overflow-y:auto">
+    ${nav.map(n=>{const a=n.key===state.screen;return `<div class="navitem" onclick="app.setScreen('${n.key}')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:1px;border-radius:6px;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'}">
+      <i data-lucide="${n.icon}" style="width:16px;height:16px;flex:none"></i>
+      <span style="font-size:13.5px;font-weight:${a?600:500}">${n.label}</span>
+    </div>`;}).join('')}
+  </div>`;
+}
+
+function onboardingView(){
+  const s=state;
+  const steps=['Connect infra','Network boundary','Review & finish'].map((title,i)=>({num:i+1,title,barColor:i<=s.onboardStep?'#3B82F6':'#E5E7EB',numColor:i<=s.onboardStep?'#1D4ED8':'#9CA3AF'}));
+  const meta=infraMetaMap[s.infraSelected];
+  const modelPh=((backendTypeMeta[s.infraSelected]||{}).modelPh)||'provider/model';
+  const connMap={idle:null,testing:{label:'Testing…',bg:'#F3F4F6',color:'#6B7280'},success:{label:'Connected',bg:'#ECFDF5',color:'#065F46'},unreachable:{label:'Registered · not responding',bg:'#FEF2F2',color:'#991B1B'}};
+  const conn=connMap[s.connectionStatus];
+  let body='';
+  if(s.onboardStep===0){
+    body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+      <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 1 of 3</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Connect your infrastructure</div>
+      <div style="font-size:13px;color:#6B7280;line-height:1.5">Tell preceptaai where your models run. Nothing here leaves your network — this only registers an endpoint already inside your boundary.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px">
+      ${infraOptionDefs.map(o=>{const sel=o.id===s.infraSelected;return `<div onclick="app.selectInfra('${o.id}')" style="padding:16px;cursor:pointer;border:2px solid ${sel?'#3B82F6':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};border-radius:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><i data-lucide="${o.icon}" style="width:16px;height:16px;color:#3B82F6"></i><span style="font-weight:600;font-size:13px">${o.name}</span></div>
+        <div style="font-size:12px;color:#6B7280">${o.desc}</div></div>`;}).join('')}
+    </div>
+    <div style="margin-top:20px;padding:20px;border:1px solid #E5E7EB;border-radius:8px;background:#F9FAFB">
+      <div style="font-weight:600;font-size:13px;margin-bottom:4px">${meta.credTitle}</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">${meta.credDesc}</div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${meta.endpointLabel}</label>
+        <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.infraEndpoint)}" oninput="app.set('infraEndpoint',this.value)" placeholder="${esc(meta.endpointPh)}">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${meta.keyLabel}</label>
+        <input type="password" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.infraApiKey)}" oninput="app.set('infraApiKey',this.value)" placeholder="${esc(meta.keyPh)}">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model string</label>
+        <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.infraModel)}" oninput="app.set('infraModel',this.value)" placeholder="${esc(modelPh)}">
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="app.testConnection()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Test &amp; connect</button>
+        ${conn?`<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${conn.bg};color:${conn.color}">${conn.label}</span>`:''}
+      </div>
+    </div>`;
+  } else if(s.onboardStep===1){
+    body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+      <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 2 of 3</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Which backends stay in your network?</div>
+      <div style="font-size:13px;color:#6B7280;line-height:1.5">Click a badge to toggle it. "In your network" means requests never leave your infrastructure; "Leaves your network" means it's an external API call. Only backends marked in-your-network can serve requests once the "in-boundary routing" control is on — you'll manage that in Policies.</div>
+    </div>
+    <div style="margin-top:16px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#F9FAFB">${th('Backend')}${th('Location')}${th('In boundary')}</tr></thead>
+      <tbody>${s.backends.map((b,i)=>{const p=boundaryPill(b);return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px">${esc(b.name)}</td><td style="padding:10px 16px;color:#6B7280">${esc(b.location)}</td><td style="padding:10px 16px"><span onclick="app.toggleBackendBoundary(${i})" style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col};cursor:pointer">${p.label}</span></td></tr>`;}).join('')}</tbody>
+    </table></div>`;
+  } else {
+    const inB=s.backends.filter(b=>b.inBoundary).length;
+    body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+      <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 3 of 3</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Review &amp; finish</div>
+      <div style="font-size:13px;color:#6B7280;line-height:1.5">Here's what you've set up. Four security controls are on by default — you can turn any of them off, or attach custom rules to them, from Policies.</div>
+    </div>
+    <div style="margin-top:16px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #E5E7EB"><span style="font-size:13px;color:#6B7280">Infrastructure</span><span style="font-size:13px;font-weight:600">${meta.name} — ${conn?conn.label:'Not connected'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #E5E7EB"><span style="font-size:13px;color:#6B7280">In-boundary backends</span><span style="font-size:13px;font-weight:600">${inB} of ${s.backends.length} reachable</span></div>
+      <div style="display:flex;justify-content:space-between;padding:14px 20px"><span style="font-size:13px;color:#6B7280">Security controls</span><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46">4 of 4 on</span></div>
+    </div>
+    <div style="margin-top:14px;padding:16px 20px;border:1px solid #E5E7EB;border-radius:8px;background:#F9FAFB">
+      <div style="font-weight:600;font-size:12px;margin-bottom:8px">What's on, without any setup — manage each individually in Policies:</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.7">In-boundary-only routing · egress deny-all except your connected endpoint · audit logging · a residency policy pre-loaded for DPDP.</div>
+    </div>`;
+  }
+  return `<div style="max-width:680px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:24px">
+      <h1 style="font-size:22px;font-weight:700;margin:0;letter-spacing:-0.01em">Set up your control plane</h1>
+      <a href="#" onclick="event.preventDefault();app.skipOnboarding()" style="font-size:12px;color:#6B7280;text-decoration:underline">Skip to console →</a>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:28px">${steps.map(st=>`<div style="flex:1"><div style="height:4px;border-radius:2px;background:${st.barColor};margin-bottom:8px"></div><div style="font-size:11px;font-weight:600;color:${st.numColor}">Step ${st.num}</div><div style="font-size:12px;color:${st.numColor};margin-top:1px">${st.title}</div></div>`).join('')}</div>
+    ${body}
+    <div style="display:flex;justify-content:space-between;margin-top:24px">
+      <button onclick="app.prevStep()" style="${s.onboardStep===0?'visibility:hidden;':''}padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Back</button>
+      <button onclick="app.nextStep()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">${s.onboardStep>=2?'Finish setup':'Continue'}</button>
+    </div>
+  </div>`;
+}
+
+function overviewView(){
+  const s=state;
+  const inB=s.backends.filter(b=>b.inBoundary).length;
+  const st=window.__stats;   // live stats when served from the backend
+  const statTiles = st ? [
+    {label:'Requests (24h)',value:String(st.requests_24h),sub:'live from audit log'},
+    {label:'External calls',value:String(st.external_calls),sub:'zero egress, as designed'},
+    {label:'Policy blocks',value:String(st.blocks_today),sub:'today'},
+    {label:'Avg cost / req',value:'$'+Number(st.avg_cost_usd||0).toFixed(4),sub:'own infra + open models'},
+  ] : [
+    {label:'Requests (24h)',value:'2,148',sub:'+9% vs yesterday'},
+    {label:'External calls',value:'0',sub:'zero egress, as designed'},
+    {label:'Policy blocks',value:'6',sub:'all out-of-boundary routes'},
+    {label:'Avg cost / req',value:'$0.0018',sub:'own infra + open models'},
+  ];
+  const barVals = st ? [0,0,0,0,0,0,0,0,0,0,0,0] : [40,55,35,60,80,65,90,75,50,60,45,70];
+  const chartCaption = st
+    ? `${st.requests_24h} request(s) in 24h · 0 left the boundary`
+    : 'Peak 412 req/hr at 14:00 · 0 requests left the boundary';
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em">Overview</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px">Everything routed, governed and audited inside your boundary — last 24 hours.</div>
+    ${s.showSetupToast?`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px"><i data-lucide="check-circle" style="width:16px;height:16px;color:#059669"></i><span style="font-size:13px;color:#065F46">Setup complete — vLLM cluster connected, ${inB} backends in-boundary, 4 security controls active.</span></div>
+      <button onclick="app.dismissSetupToast()" style="background:transparent;border:none;color:#065F46;font-size:12px;font-weight:500;cursor:pointer">Dismiss</button></div>`:''}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+      ${statTiles.map(t=>`<div style="padding:18px;border:1px solid #E5E7EB;border-radius:8px"><div style="font-size:12px;color:#6B7280">${t.label}</div><div style="font-size:26px;font-weight:700;margin-top:6px;line-height:1">${t.value}</div><div style="font-size:11px;color:#6B7280;margin-top:6px">${t.sub}</div></div>`).join('')}
+    </div>
+    <div style="font-weight:600;font-size:14px;margin-bottom:12px">Model plane</div>
+    <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:28px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#F9FAFB">${['Backend','Location','Boundary','GPU / VRAM','p50','Req/s','Status'].map(th).join('')}</tr></thead>
+      <tbody>${s.backends.map(b=>{const p=boundaryPill(b);const sb=b.status==='healthy';return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px;font-weight:600">${esc(b.name)}</td><td style="padding:10px 16px;color:#6B7280">${esc(b.location)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col}">${p.label}</span></td><td style="padding:10px 16px">${esc(b.gpu)}</td><td style="padding:10px 16px">${esc(b.latency)}</td><td style="padding:10px 16px">${esc(b.rps)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Blocked'}</span></td></tr>`;}).join('')}</tbody>
+    </table></div>
+    <div style="font-weight:600;font-size:14px;margin-bottom:12px">Requests, last 12 hours</div>
+    <div style="display:flex;align-items:flex-end;gap:6px;height:110px;border-bottom:1px solid #E5E7EB;padding-bottom:2px;margin-bottom:8px">
+      ${barVals.map((v,i)=>`<div style="flex:1;height:${v}%;background:${i===6?'#3B82F6':'#E5E7EB'};border-radius:3px 3px 0 0" title="${v} req"></div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:#9CA3AF">${chartCaption}</div>`;
+}
+
+function modelPlaneView(){
+  const s=state;
+  const btMeta=backendTypeMeta[s.newBackendType]||backendTypeMeta.onprem;
+  const catalog=`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:28px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F9FAFB">${['Backend','Model','Location','Boundary','Weight','Cost / 1K tok'].map(th).join('')}</tr></thead>
+    <tbody>${s.backends.map(b=>{const p=boundaryPill(b);return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px;font-weight:600">${esc(b.name)}</td><td style="padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:12px">${esc(b.model)}</td><td style="padding:10px 16px;color:#6B7280">${esc(b.location)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col}">${p.label}</span></td><td style="padding:10px 16px">${esc(b.weight)}</td><td style="padding:10px 16px">${esc(b.cost)}</td></tr>`;}).join('')}</tbody>
+  </table></div>`;
+  const health=`<div style="font-weight:600;font-size:14px;margin:24px 0 12px">Infrastructure health</div>
+    <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F9FAFB">${['Backend','Location','Boundary','GPU / VRAM','p50','Req/s','Status'].map(th).join('')}</tr></thead>
+    <tbody>${s.backends.map(b=>{const p=boundaryPill(b);const sb=b.status==='healthy';return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px;font-weight:600">${esc(b.name)}</td><td style="padding:10px 16px;color:#6B7280">${esc(b.location)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col}">${p.label}</span></td><td style="padding:10px 16px">${esc(b.gpu)}</td><td style="padding:10px 16px">${esc(b.latency)}</td><td style="padding:10px 16px">${esc(b.rps)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Blocked'}</span></td></tr>`;}).join('')}</tbody>
+    </table></div><div style="font-size:11px;color:#9CA3AF">0 requests left the boundary</div>`;
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Model plane</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:640px;line-height:1.6">Every place a model can run for you — a local Ollama box, your own GPU cluster, a sovereign cloud — what it costs, and its live health. Register a new one below.</div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"In your network" = runs on your own infrastructure, request never touches the public internet. "Leaves your network" = a third-party API call.</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="app.openAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
+    ${catalog}${health}
+    ${s.addBackendOpen?addBackendModal(btMeta):''}`;
+}
+
+function addBackendModal(btMeta){
+  const s=state;
+  return `<div onclick="app.closeAddBackend()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="font-size:16px;font-weight:600;margin-bottom:4px">Add a backend</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Same infra types as setup — pick one and reuse the same connection info.</div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Backend type</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(backendTypeMeta).map(k=>{const sel=k===s.newBackendType;return `<div onclick="app.setNewBackendType('${k}')" style="padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${sel?'#93C5FD':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};color:${sel?'#1D4ED8':'#374151'}">${backendTypeMeta[k].label}</div>`;}).join('')}</div>
+      </div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. vLLM cluster 2"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model string</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendModel)}" oninput="app.set('newBackendModel',this.value)" placeholder="${esc(btMeta.modelPh)}"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.endpointLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendEndpoint)}" oninput="app.set('newBackendEndpoint',this.value)" placeholder="${esc(btMeta.endpointPh)}"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.keyLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendKey)}" oninput="app.set('newBackendKey',this.value)" placeholder="${esc(btMeta.keyPh)}"></div>
+      <div style="margin-bottom:16px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Location</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendLocation)}" oninput="app.set('newBackendLocation',this.value)" placeholder="${esc(btMeta.locationPh)}"></div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px"><input type="checkbox" ${s.newBackendInBoundary?'checked':''} onchange="app.toggleNewBackendBoundary()"><span style="font-size:13px;color:#374151">This endpoint is inside my network boundary</span></label>
+      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
+    </div></div>`;
+}
+
+function policiesView(){
+  const s=state, sc=s.securityControls;
+  const probeText={idle:'Last probe: 27 Jul, 09:14 IST — blocked / none',running:'Probing…',done:'Just now — blocked / none ✓'}[s.egressProbeStatus];
+  const probeBtn=s.egressProbeStatus==='running'?'Running…':'Run probe';
+  const controls=controlDefs.map(c=>{
+    const on=sc[c.key];
+    return `<div style="padding:16px;border:1px solid #E5E7EB;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px"><i data-lucide="${c.icon}" style="width:15px;height:15px;color:${on?'#3B82F6':'#9CA3AF'}"></i><span style="font-weight:600;font-size:13px">${c.label}</span></div>
+        <div onclick="app.toggleControl('${c.key}')" style="width:36px;height:20px;border-radius:10px;background:${on?'#3B82F6':'#E5E7EB'};position:relative;cursor:pointer;flex:none"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${on?'18px':'2px'};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></div>
+      </div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">${c.desc}</div>
+      ${c.hasProbe?`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6"><span style="font-size:11px;color:#9CA3AF">${probeText}</span><button onclick="app.runEgressProbe()" style="padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${probeBtn}</button></div>`:''}
+    </div>`;}).join('');
+  const effectStyles={block:{bg:'#FEF2F2',color:'#991B1B'},warn:{bg:'#FFFBEB',color:'#92400E'},audit:{bg:'#EFF6FF',color:'#1D4ED8'}};
+  const policyRows=s.policies.map(p=>{
+    const e=effectStyles[p.effect], chips=conditionChips(p.conditions), al=(actionOptions.find(a=>a.value===p.actionType)||{label:p.actionType}).label;
+    return `<div style="padding:14px 0;border-bottom:1px solid #E5E7EB">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:16px">
+          <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${e.bg};color:${e.color};min-width:52px;text-align:center">${p.effect.toUpperCase()}</span>
+          <div><div style="font-weight:600;font-size:13px">${esc(p.name)}</div><div style="font-size:12px;color:#6B7280;margin-top:2px">${esc(p.desc)}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(al)}</span><button onclick="app.togglePolicy(${p.id})" style="background:transparent;border:none;color:#6B7280;font-size:13px;font-weight:500;cursor:pointer">${p.enabled?'Disable':'Enable'}</button></div>
+      </div>
+      ${chips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;margin-left:68px">${chips.map(c=>`<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#F3F4F6;color:#374151">${esc(c)}</span>`).join('')}</div>`:''}
+    </div>`;}).join('');
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Policies &amp; security controls</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:24px;max-width:680px;line-height:1.6">Every request is checked against these rules before it runs. The four controls below are the sovereignty essentials, on by default — toggle any of them independently. Add your own rules underneath for anything else (PII, rate limits, cost caps, allowed domains).</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px">${controls}</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:600;font-size:14px">Custom policies</div><button onclick="app.openNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">New policy</button></div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Evaluated on every request, most-restrictive wins: block &gt; warn &gt; audit-only.</div>
+    ${policyRows}
+    ${s.newPolicyOpen?newPolicyModal():''}`;
+}
+
+function newPolicyModal(){
+  const s=state;
+  const effDesc=(effectOptions.find(o=>o.value===s.newPolicyEffect)||{}).desc||'';
+  return `<div onclick="app.closeNewPolicy()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="font-size:16px;font-weight:600;margin-bottom:2px">New policy rule</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:18px">Define a governance constraint checked before every matching request.</div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Policy name *</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newPolicyName)}" oninput="app.set('newPolicyName',this.value)" placeholder="e.g. Block PAN numbers in prompts"></div>
+      <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Description</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newPolicyDesc)}" oninput="app.set('newPolicyDesc',this.value)" placeholder="What does this policy enforce, and why?"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Applies to</label><select onchange="app.onSelect('newPolicyAction',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff">${actionOptions.map(a=>`<option value="${a.value}" ${a.value===s.newPolicyAction?'selected':''}>${a.label}</option>`).join('')}</select></div>
+        <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Effect</label><select onchange="app.onSelect('newPolicyEffect',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff">${effectOptions.map(o=>`<option value="${o.value}" ${o.value===s.newPolicyEffect?'selected':''}>${o.label}</option>`).join('')}</select><div style="font-size:11px;color:#9CA3AF;margin-top:4px">${effDesc}</div></div>
+      </div>
+      <div style="border-top:1px solid #F3F4F6;padding-top:14px;margin-top:4px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><i data-lucide="lock" style="width:13px;height:13px;color:#3B82F6"></i><span style="font-size:12px;font-weight:600;color:#374151">Conditions</span><span style="font-size:11px;color:#9CA3AF">(leave blank to skip)</span></div>
+        <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL allowlist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlAllow)}" oninput="app.set('newPolicyUrlAllow',this.value)" placeholder="vllm-cluster.internal, neysa.ai"><div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">Only destinations containing these strings are permitted — this is how you define in-boundary routing yourself.</div></div>
+        <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL blocklist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlBlock)}" oninput="app.set('newPolicyUrlBlock',this.value)" placeholder="openai.com, anthropic.com"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max tokens / day</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxTokens)}" oninput="app.set('newPolicyMaxTokens',this.value)" placeholder="50000"></div>
+          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCalls)}" oninput="app.set('newPolicyMaxCalls',this.value)" placeholder="120"></div>
+        </div>
+        <div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max daily cost (USD)</label><input type="number" step="0.01" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCost)}" oninput="app.set('newPolicyMaxCost',this.value)" placeholder="5.00"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${s.newPolicyPii?'checked':''} onchange="app.toggleNewPolicyPii()"><span style="font-size:12.5px;color:#374151">Filter PII in output (emails, phone numbers, card numbers)</span></label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${s.newPolicyDataTag?'checked':''} onchange="app.toggleNewPolicyDataTag()"><span style="font-size:12.5px;color:#374151">Require a data-classification tag on the request</span></label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px"><button onclick="app.closeNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create policy</button></div>
+    </div></div>`;
+}
+
+function auditView(){
+  const outcomeStyles={blocked:{bg:'#FEF2F2',color:'#991B1B'},warned:{bg:'#FFFBEB',color:'#92400E'},allowed:{bg:'#F3F4F6',color:'#374151'}};
+  // Live mode (served from backend): ALWAYS show real audit data — never the demo seed.
+  const loaded = window.__auditlog && window.__auditlog.length!==undefined;
+  const source = loaded ? window.__auditlog : (window.__live ? [] : auditLogSeed);
+  const empty = window.__live ? !loaded || window.__auditlog.length===0 : (loaded && window.__auditlog.length===0);
+  const rows=source.map(r=>{const o=outcomeStyles[r.outcome]||{bg:'#F3F4F6',color:'#374151'};const oc=String(r.outcome||'—');return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px;font-size:12px">${r.time}</td><td style="padding:10px 16px;font-size:12px">${esc(r.actor)}</td><td style="padding:10px 16px;font-size:12px">${esc(r.event)}</td><td style="padding:10px 16px;font-size:12px">${esc(r.backend)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${o.bg};color:${o.color}">${oc.charAt(0).toUpperCase()+oc.slice(1)}</span></td><td style="padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF">${r.hash}</td></tr>`;}).join('');
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Audit &amp; Attestation</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Every request — allowed, warned or blocked — is written here in a tamper-evident, hash-chained log nothing can quietly edit. Use it to investigate an incident, and use the attestation below whenever an auditor, customer, or your own security team needs proof — not just a claim — that nothing left your network.</div>
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:28px;margin-bottom:32px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:32px">
+        <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#1D4ED8;font-weight:600;margin-bottom:8px">Sovereignty Attestation</div><div style="font-weight:700;font-size:20px;margin-bottom:10px;color:#111827">Proof your team can hand to an auditor</div><div style="font-size:13px;line-height:1.6;max-width:460px;color:#374151">Active backend set, security-control status, egress-test result and audit-chain verification — signed and hash-anchored, for any window you choose.</div></div>
+        <button onclick="app.openAttestation()" style="padding:9px 16px;border-radius:6px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer;flex:none">Generate attestation</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+      <div style="font-weight:600;font-size:14px">Tamper-evident audit log</div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;display:inline-flex;align-items:center;gap:4px"><i data-lucide="check" style="width:11px;height:11px"></i>Chain verified</span><button onclick="app.openCompliance()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#1D4ED8;border:1px solid #BFDBFE;cursor:pointer">Compliance report</button><button onclick="app.exportAudit()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export chain</button><button onclick="app.verifyChain()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Re-verify chain</button></div>
+    </div>
+    <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#F9FAFB">${['Time','Actor','Event','Backend','Outcome','Hash'].map(th).join('')}</tr></thead>
+      <tbody>${empty ? '<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">No audit events yet — run a request in the Playground.</td></tr>' : rows}</tbody></table></div>
+    ${state.attestationOpen?attestationModal():''}
+    ${state.complianceOpen?complianceModal():''}`;
+}
+
+function complianceModal(){
+  const c = window.__compliance;
+  const sev = {met:{bg:'#ECFDF5',color:'#065F46',label:'Met'},partial:{bg:'#FFFBEB',color:'#92400E',label:'Partial'},failed:{bg:'#FEF2F2',color:'#991B1B',label:'Failed'}};
+  const rows = c ? c.controls.map(x=>{const sv=sev[x.status]||sev.partial;return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:11.5px">${esc(x.id)}</td><td style="padding:9px 12px;font-size:12px;color:#6B7280">${esc(x.framework)}</td><td style="padding:9px 12px;font-size:12px">${esc(x.name)}<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(x.evidence)}</div></td><td style="padding:9px 12px"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${sv.bg};color:${sv.color}">${sv.label}</span></td></tr>`;}).join('') : '<tr><td colspan="4" style="padding:16px;color:#9CA3AF;font-size:13px">Loading…</td></tr>';
+  const score = c ? c.score : '…';
+  return `<div onclick="app.closeCompliance()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:24px;max-width:660px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:16px;font-weight:700">Compliance evidence report</div><div style="font-size:22px;font-weight:700;color:#1D4ED8">${score}<span style="font-size:12px;color:#9CA3AF">/100</span></div></div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Live governance state mapped to controls — hand this to an auditor.${c?' '+c.controls_met+' of '+c.controls_total+' met.':''}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+        <thead><tr style="background:#F9FAFB">${['Control','Framework','Requirement & evidence','Status'].map(th).join('')}</tr></thead>
+        <tbody>${rows}</tbody></table>
+      ${c?`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF;margin-top:12px;word-break:break-all">signed ${esc(c.attestation_signature.slice(0,12))}… · anchored ${esc(c.anchored_to.slice(0,12))}…</div>`:''}
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px"><button onclick="app.closeCompliance()" style="padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Close</button></div>
+    </div></div>`;
+}
+
+function attestationModal(){
+  const a = window.__att;
+  const cfg = a ? `${a.config.backends.length} backend(s) in-boundary · Sovereign Mode ${a.sovereign_mode?'ON':'OFF'}` : '4 backends in-boundary · Sovereign Mode ON';
+  const aud = a ? `${a.audit.events} events · ${a.audit.external_calls} external calls` : '12,480 requests · 0 external calls';
+  const egr = a ? (a.egress_test.result==='blocked'?'Blocked (verified)':'Open') : 'Blocked (verified)';
+  const chn = a ? (a.audit.chain_verified?'Verified ✓':'CHAIN FAILED') : 'Verified ✓';
+  const sig = a ? `sig: ${a.signature.slice(0,4)}…${a.signature.slice(-4)} · anchored to ${a.anchored_to.slice(0,10)}…` : 'sig: 4f0a…c19e · anchored to audit chain #12481';
+  const live = a ? '<span style="font-size:10px;font-weight:600;color:#065F46;background:#ECFDF5;padding:1px 7px;border-radius:8px;margin-left:8px">LIVE</span>' : '';
+  return `<div onclick="app.closeAttestation()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#1D4ED8;font-weight:600;margin-bottom:8px">Sovereignty Attestation${live}</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:16px">Proof of a closed, in-boundary loop</div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Config proof</span><strong>${cfg}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Audit proof</span><strong>${aud}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Egress test</span><strong>${egr}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Chain integrity</span><strong style="color:#059669">${chn}</strong></div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF;word-break:break-all">${sig}</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button onclick="app.closeAttestation()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Close</button><button style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Download PDF</button></div>
+    </div></div>`;
+}
+
+const PROMPT_POOL = [
+  "Draft a restructured EMI plan for a delinquent account",
+  "Summarize this quarter's flagged compliance events",
+  "Explain our data-retention policy in plain English",
+  "Classify these support tickets by urgency",
+  "Draft a customer email about a delayed refund",
+  "What are the KYC requirements for onboarding a new SME?",
+  "Summarize the risks in this loan application",
+  "Write a plain-English summary of GDPR Article 30",
+  "Draft a polite payment-reminder message",
+  "Compare fixed vs floating interest for a 5-year loan",
+  "Extract the key obligations from this vendor contract",
+  "Suggest three ways to reduce our inference cost",
+];
+function _pickSuggested(){
+  const a=PROMPT_POOL.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a.slice(0,3);
+}
+window.SUGGESTED = _pickSuggested();   // picked once per session → varies each visit
+
+function playgroundView(){
+  const s=state;
+  const empty=`<div style="flex:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:16px">
+    <div style="font-weight:700;font-size:24px">Ask preceptaai anything</div>
+    <div style="font-size:13px;color:#6B7280;max-width:440px;line-height:1.5">Routed to an in-boundary backend, checked against policy, and written to the tamper-evident audit log — automatically.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+      ${(window.SUGGESTED||[]).map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
+    </div>
+  </div>`;
+  const msgs=s.messages.map(m=>`<div style="align-self:${m.align};max-width:78%">
+    <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px;text-align:${m.textAlign}">${m.who}</div>
+    <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${esc(m.text)}</div>
+    ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span></div>`:''}
+  </div>`).join('');
+  return `<div style="display:flex;flex-direction:column;height:calc(100vh - 168px);max-width:720px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid #E5E7EB;margin-bottom:4px">
+      <div><div style="font-weight:700;font-size:17px">Playground</div><div style="font-size:12px;color:#6B7280;margin-top:2px">Try a request the way your app would send it — see the same routing, policy check and audit metadata back, before you wire up the real API.</div></div>
+      <select onchange="app.setChatModel(this.value)" style="width:auto;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;background:#fff">${modelOptions.map(mo=>`<option value="${mo.value}" ${mo.value===s.chatModel?'selected':''}>${mo.label}</option>`).join('')}</select>
+    </div>
+    <div class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
+    <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
+      <input id="chatInput" style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="${esc(s.chatInput)}" oninput="app.set('chatInput',this.value)" onkeydown="app.handleChatKey(event)">
+      <button onclick="app.sendMessage()" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
+    </div>
+  </div>`;
+}
+
+function keysPane(s){
+  const keys = window.__keys || [];
+  const origin = location.origin;
+  const issued = s.issuedKey;
+  const lbl = 'display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px';
+  const inp = 'width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box';
+  return `
+    <div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.5">Give each app or team its own key — every call it makes is attributed to the key in the audit log. The secret is shown once.</div>
+    ${issued ? `<div style="border:1px solid #A7F3D0;background:#ECFDF5;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;color:#065F46;margin-bottom:6px">New key for "${esc(issued.name)}" — copy it now, it won't be shown again</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;background:#fff;border:1px solid #A7F3D0;border-radius:6px;padding:8px;word-break:break-all">${esc(issued.key)}</div>
+        <div style="font-size:11px;color:#065F46;margin-top:12px;font-weight:600">Connect an app (drop-in — no code rewrite):</div>
+        <pre style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#fff;border:1px solid #A7F3D0;border-radius:6px;padding:8px;margin:6px 0 0;white-space:pre-wrap">from openai import OpenAI
+client = OpenAI(base_url="${origin}/v1", api_key="${esc(issued.key)}")</pre>
+        <div style="text-align:right;margin-top:8px"><button onclick="app.dismissIssuedKey()" style="padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #A7F3D0;cursor:pointer">Done</button></div>
+      </div>` : ''}
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px">
+      <div style="flex:1"><label style="${lbl}">Name</label><input style="${inp}" value="${esc(s.newKeyName)}" oninput="app.set('newKeyName',this.value)" placeholder="svc-underwriting"></div>
+      <div style="width:100px"><label style="${lbl}">Role</label><select style="${inp};background:#fff" onchange="app.onSelect('newKeyRole',this.value)"><option value="user" ${s.newKeyRole==='user'?'selected':''}>User</option><option value="admin" ${s.newKeyRole==='admin'?'selected':''}>Admin</option><option value="auditor" ${s.newKeyRole==='auditor'?'selected':''}>Auditor</option></select></div>
+      <div style="width:100px"><label style="${lbl}">Team</label><input style="${inp}" value="${esc(s.newKeyTeam)}" oninput="app.set('newKeyTeam',this.value)" placeholder="risk"></div>
+      <button onclick="app.issueKey()" style="padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Issue key</button>
+    </div>
+    ${keys.length ? keys.map(k=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6">
+        <div><div style="font-size:13px;font-weight:500">${esc(k.name)}${k.active?'':' <span style="color:#991B1B;font-size:11px">(revoked)</span>'}</div><div style="font-size:11px;color:#9CA3AF">${esc(k.role)}${k.team?' · '+esc(k.team):''}</div></div>
+        ${k.active?`<button onclick="app.revokeKey('${k.id}')" style="padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#991B1B;border:1px solid #E5E7EB;cursor:pointer">Revoke</button>`:'<span style="font-size:11px;color:#9CA3AF">revoked</span>'}
+      </div>`).join('') : '<div style="font-size:12px;color:#9CA3AF">No keys yet — issue one above.</div>'}`;
+}
+
+function settingsModal(){
+  const s=state;
+  const tabs=settingsTabDefs.map(t=>{const a=s.settingsTab===t.key;return `<div onclick="app.setSettingsTab('${t.key}')" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'};margin-bottom:2px">${t.label}</div>`;}).join('');
+  const rowKV=(k,v,sub)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${k}</div>${sub?`<div style="font-size:11px;color:#9CA3AF">${sub}</div>`:''}</div><span style="font-size:12px;color:#6B7280">${v}</span></div>`;
+  const o = window.__org || {};
+  const me = window.__me || {};
+  const editRow=(label,key,val,ph,type,mono)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div style="font-size:13px;font-weight:500">${label}</div><input ${type?('type="'+type+'"'):''} value="${esc(val==null?'':val)}" onchange="app.saveOrgSetting('${key}',this.value)" placeholder="${esc(ph||'')}" style="width:240px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;${mono?"font-family:'JetBrains Mono',monospace;":''}"></div>`;
+  let pane='';
+  if(s.settingsTab==='general'){
+    pane=rowKV('Theme','Light (fixed)','Single-theme by design — no dark mode')
+      +editRow('Organization name','org_name', o.org_name, 'Acme Corp')
+      +editRow('Default model','default_model', o.default_model, 'ollama/llama3.2:3b', null, true)
+      +`<div style="font-size:11px;color:#9CA3AF;padding:8px 0">Default model is used for API requests that don't name a model.</div>`;
+  } else if(s.settingsTab==='security'){
+    pane=`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">Manage security controls</div><div style="font-size:11px;color:#9CA3AF">In-boundary routing, egress lock, audit-on, residency</div></div><a href="#" onclick="event.preventDefault();app.goToPoliciesFromSettings()" style="font-size:12px">Open Policies →</a></div>`
+      +rowKV('MCP server endpoint', location.origin+'/mcp', 'Agentic tools (Cursor, Claude Desktop, agents) reach governed inference here')
+      +rowKV('Enterprise SSO (OIDC)', window.__sso ? (window.__sso.configured ? ('Configured: '+(window.__sso.issuer||'')) : 'Not configured — set OIDC_* env') : 'checking…', 'Corporate login for the Console (Google/Okta/Azure AD)');
+  } else if(s.settingsTab==='data'){
+    pane=editRow('Data residency region','data_residency', o.data_residency, 'India (Mumbai)')
+      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0 10px">A declared jurisdiction shown in the compliance report — it does not move data (location = where you deploy + in-boundary backends).</div>`
+      +`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">Export audit log</div></div><button onclick="app.exportCsv()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export CSV</button></div>`
+      +editRow('Audit log retention (years)','audit_retention_years', o.audit_retention_years, '7','number')
+      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0">Declared retention for compliance. Automated pruning is deferred — shortening won't silently delete (pruning a tamper-evident chain requires archival/anchoring).</div>`;
+  } else if(s.settingsTab==='account'){
+    pane=rowKV('Name', me.name || '—', me.subject ? '' : 'Sign in to load')
+      +rowKV('Role', me.role || '—')
+      +rowKV('Signed in as', me.subject || '—')
+      +`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0"><div><div style="font-size:13px;font-weight:500">Members</div></div><a href="#" onclick="event.preventDefault();app.goToMembersFromAccount()" style="font-size:12px">manage roles →</a></div>`;
+  } else if(s.settingsTab==='keys'){
+    pane=keysPane(s);
+  } else {
+    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.5">Login (Google SSO) just proves who someone is — role decides what they can do. Auditors get read-only access to Audit &amp; Attestation, nothing else.</div>`+s.members.map((m,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(m.name)}</div><div style="font-size:11px;color:#9CA3AF">${esc(m.email)}</div></div><select onchange="app.setMemberRole(${i},this.value)" style="padding:5px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff"><option value="admin" ${m.role==='admin'?'selected':''}>Admin</option><option value="user" ${m.role==='user'?'selected':''}>User</option><option value="auditor" ${m.role==='auditor'?'selected':''}>Auditor</option></select></div>`).join('');
+  }
+  return `<div onclick="app.closeSettings()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:100%;max-width:640px;height:520px;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #E5E7EB"><div style="font-size:15px;font-weight:600">Settings</div><button onclick="app.closeSettings()" style="background:transparent;border:none;color:#6B7280;cursor:pointer;padding:4px"><i data-lucide="x" style="width:18px;height:18px"></i></button></div>
+      <div style="flex:1;display:flex;overflow:hidden">
+        <div style="width:160px;flex:none;border-right:1px solid #E5E7EB;padding:12px 8px">${tabs}</div>
+        <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:20px 24px">${pane}</div>
+      </div>
+    </div></div>`;
+}
+
+/* ---------- root render ---------- */
+function contentFor(){
+  switch(state.screen){
+    case 'onboarding': return onboardingView();
+    case 'overview': return overviewView();
+    case 'modelplane': return modelPlaneView();
+    case 'policies': return policiesView();
+    case 'audit': return auditView();
+    case 'playground': return playgroundView();
+    default: return overviewView();
+  }
+}
+function render(){
+  const root=document.getElementById('root');
+  if(!state.isLoggedIn){ root.innerHTML=loginScreen(); if(window.lucide) lucide.createIcons(); return; }
+  root.innerHTML=`<div style="height:100vh;display:flex;flex-direction:column;background:#fff;overflow:hidden">
+    ${topbar()}
+    <div style="flex:1;display:flex;overflow:hidden">
+      ${sidebar()}
+      <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:28px 32px 80px;background:#fff">${contentFor()}</div>
+    </div>
+    ${state.settingsOpen?settingsModal():''}
+  </div>`;
+  if(window.lucide) lucide.createIcons();
+}
+render();
+</script>
+
+<!-- ── Phase 6: live mode — when served from the FastAPI backend (http/https),
+     fetch real data and drive the Playground/policies/audit against the API.
+     Opened as a file:// it stays in mock mode. ── -->
+<script>
+(function(){
+  if(!location.protocol.startsWith("http")) return;   // file:// → keep mock
+  window.__live = true;                                // served from backend → show only real data
+  // Session token: from the SSO redirect (#s=...), else stored session, else dev principal.
+  let sessionToken = null;
+  try {
+    const m = location.hash.match(/[#&]s=([^&]+)/);
+    if(m){ sessionToken = decodeURIComponent(m[1]); localStorage.setItem("precepta_session", sessionToken);
+           history.replaceState(null, "", location.pathname); }
+    else { sessionToken = localStorage.getItem("precepta_session"); }
+  } catch(e){}
+  const TOKEN = sessionToken || "dev-admin";           // real Google session, or dev fallback
+  const hdr = {"Content-Type":"application/json","Authorization":"Bearer "+TOKEN};
+  if(sessionToken){ state.isLoggedIn = true; render(); }   // arrived from SSO → already logged in
+
+  // Sign out clears the session (server + browser) and returns to the login screen.
+  app.signOut = function(){
+    if(sessionToken){ fetch("/auth/logout",{method:"POST",headers:hdr}).catch(()=>{}); }
+    try{ localStorage.removeItem("precepta_session"); }catch(e){}
+    state.isLoggedIn=false; state.profileMenuOpen=false; state.settingsOpen=false;
+    window.__me=null; render();
+  };
+  const getJSON = (p)=>fetch(p,{headers:hdr}).then(r=>r.json()).catch(()=>null);
+
+  async function loadInfra(){
+    const d = await getJSON("/infra");
+    if(d && d.backends){
+      state.backends = d.backends.map(b=>({
+        name:b.backend, model:b.model, location:b.in_boundary?"In-boundary":"External",
+        inBoundary:b.in_boundary, gpu:b.gpu||"—", latency:b.latency_ms?b.latency_ms+"ms":"—",
+        rps:"—", status:b.status==="healthy"?"healthy":"blocked", weight:"—",
+        cost:b.in_boundary?"$0.00":"—",
+      }));
+      // populate the Playground model list from real backends (+ intent modes)
+      modelOptions.length = 0;
+      d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model, label:b.backend+" / "+b.model}));
+      modelOptions.push({value:"auto:cheapest", label:"auto : cheapest"});
+      modelOptions.push({value:"auto:best-quality", label:"auto : best-quality"});
+      if(d.backends[0]) state.chatModel = d.backends[0].backend+"/"+d.backends[0].model;
+      render();
+    }
+  }
+  async function loadPolicies(){
+    const d = await getJSON("/v1/policies");
+    if(d && Array.isArray(d.policies)){
+      state.policies = d.policies.map(p=>({
+        id:p.id, name:p.name, desc:p.description||"", actionType:p.action_type,
+        effect:p.effect, conditions:p.conditions||{}, enabled:!!p.enabled,
+      }));
+      render();
+    }
+  }
+
+  // Playground → real governed inference
+  function sendText(text){
+    text=(text||"").trim(); if(!text) return;
+    state.messages.push({who:"You",text,align:"flex-end",textAlign:"right",bg:"#3B82F6",color:"#fff",hasMeta:false});
+    state.chatInput=""; render();
+    fetch("/v1/chat/completions",{method:"POST",headers:hdr,body:JSON.stringify({
+      model:state.chatModel, messages:[{role:"user",content:text}], max_tokens:200})})
+    .then(async r=>{
+      const d=await r.json(); const p=d.precepta||{}; let reply;
+      if(r.status!==200){
+        reply={who:"preceptaai",text:(d.error&&d.error.message)||"blocked",align:"flex-start",textAlign:"left",
+          bg:"#FEF2F2",color:"#991B1B",hasMeta:true,metaBackendBg:"#F3F4F6",metaBackendColor:"#6B7280",
+          metaBackend:"backend: "+(p.backend_used||"none"),metaLatency:"",metaCost:"pii: "+(p.pii_redacted||0),
+          metaPolicyBg:"#FEF2F2",metaPolicyColor:"#991B1B",metaPolicy:"policy: "+(p.policy_decision||"blocked")};
+      } else {
+        const content=(d.choices&&d.choices[0]&&d.choices[0].message.content)||"";
+        reply={who:"preceptaai",text:content,align:"flex-start",textAlign:"left",bg:"#F3F4F6",color:"#111827",hasMeta:true,
+          metaBackendBg:"#F3F4F6",metaBackendColor:"#374151",metaBackend:"backend: "+(p.backend_used||""),
+          metaLatency:"latency: "+(p.latency_ms!=null?p.latency_ms+"ms":"?"),metaCost:"pii: "+(p.pii_redacted||0),
+          metaPolicyBg:"#ECFDF5",metaPolicyColor:"#065F46",metaPolicy:"policy: "+(p.policy_decision||"allow")};
+      }
+      state.messages.push(reply); render(); loadAuditLog(); loadStats();
+    })
+    .catch(e=>{ state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
+  }
+  app.sendMessage = function(){ const el=document.getElementById("chatInput"); sendText(el ? el.value : state.chatInput); };
+  app.sendSuggested = function(i){ sendText((window.SUGGESTED||[])[i]); };
+
+  // Audit → real chain verify + attestation
+  app.verifyChain = function(){ getJSON("/audit/verify").then(d=>{
+    if(d) alert("Audit chain "+(d.verified?"VERIFIED ✓":"FAILED")+" — "+d.events+" events"); }); };
+  app.openAttestation = function(){ state.attestationOpen=true; render();
+    getJSON("/attestation").then(d=>{ if(d){ window.__att=d; render(); } }); };
+
+  // Policies → real CRUD
+  app.togglePolicy = function(id){
+    fetch("/v1/policies/"+id+"/toggle",{method:"POST",headers:hdr}).then(loadPolicies); };
+  app.addPolicy = function(){
+    const s=state; if(!s.newPolicyName.trim()){ s.newPolicyOpen=false; render(); return; }
+    const c={};
+    if(s.newPolicyUrlAllow.trim()) c.url_allowlist=s.newPolicyUrlAllow.split(",").map(x=>x.trim()).filter(Boolean);
+    if(s.newPolicyUrlBlock.trim()) c.url_blocklist=s.newPolicyUrlBlock.split(",").map(x=>x.trim()).filter(Boolean);
+    if(s.newPolicyMaxTokens) c.max_tokens_per_day=parseInt(s.newPolicyMaxTokens);
+    if(s.newPolicyMaxCalls) c.max_calls_per_hour=parseInt(s.newPolicyMaxCalls);
+    if(s.newPolicyMaxCost) c.max_daily_cost_usd=parseFloat(s.newPolicyMaxCost);
+    if(s.newPolicyPii) c.pii_filter_output=true;
+    if(s.newPolicyDataTag) c.require_data_tag=true;
+    fetch("/v1/policies",{method:"POST",headers:hdr,body:JSON.stringify({
+      name:s.newPolicyName, description:s.newPolicyDesc, action_type:s.newPolicyAction,
+      effect:s.newPolicyEffect, conditions:c})}).then(()=>{ s.newPolicyOpen=false; loadPolicies(); });
+  };
+
+  async function loadStats(){ const d=await getJSON("/stats"); if(d){ window.__stats=d; render(); } }
+  async function loadAuditLog(){ const d=await getJSON("/audit/log?limit=25"); if(d && Array.isArray(d.log)){ window.__auditlog=d.log; render(); } }
+
+  // Refresh audit + stats after each Playground request, and when opening those screens.
+  const _setScreen = app.setScreen;
+  app.setScreen = function(s){ _setScreen(s); if(s==="audit") loadAuditLog(); if(s==="overview"){ loadStats(); loadInfra(); } };
+
+  // "Continue" from step 1 must register the backend you configured (not only "Test & connect").
+  const _nextStep = app.nextStep;
+  app.nextStep = function(){
+    if(state.screen==="onboarding" && state.onboardStep===0
+       && (state.infraEndpoint||"").trim() && state.connectionStatus!=="success"){
+      app.testConnection();   // registers + reloads infra
+    }
+    _nextStep();
+  };
+
+  const PROVIDER_OF = {onprem:"vllm", local:"ollama", neysa:"neysa", hf:"hf"};
+
+  // Onboarding "Test & connect" → actually register the backend you configured
+  app.testConnection = function(){
+    state.connectionStatus="testing"; render();
+    const provider = PROVIDER_OF[state.infraSelected] || state.infraSelected;
+    fetch("/v1/backends",{method:"POST",headers:hdr,body:JSON.stringify({
+      provider, base_url:state.infraEndpoint, api_key:state.infraApiKey,
+      model:(state.infraModel||"").trim(), in_boundary:true})})
+    .then(async r=>{
+      const d=await r.json();
+      if(r.ok){ state.connectionStatus = d.healthy ? "success" : "unreachable"; await loadInfra(); }
+      else { state.connectionStatus="idle"; alert("Registration failed: "+((d.error&&d.error.message)||r.status)); }
+      render();
+    }).catch(e=>{ state.connectionStatus="idle"; render(); alert("error: "+e); });
+  };
+
+  // "Add backend" modal → register a real backend
+  app.addBackend = function(){
+    const s=state; if(!s.newBackendName.trim()){ s.addBackendOpen=false; render(); return; }
+    const provider = PROVIDER_OF[s.newBackendType] || s.newBackendType;
+    fetch("/v1/backends",{method:"POST",headers:hdr,body:JSON.stringify({
+      provider, name:s.newBackendName, base_url:s.newBackendEndpoint, api_key:s.newBackendKey,
+      model:s.newBackendModel, in_boundary:s.newBackendInBoundary})})
+    .then(()=>{ s.addBackendOpen=false; loadInfra(); });
+  };
+
+  // Compliance report + audit export (Phase 9)
+  app.openCompliance = function(){ state.complianceOpen=true; window.__compliance=null; render();
+    getJSON("/compliance/report").then(d=>{ if(d){ window.__compliance=d; render(); } }); };
+  app.exportAudit = function(){ getJSON("/audit/export").then(d=>{ if(!d) return;
+    const blob=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="precepta-audit-chain.json"; a.click(); }); };
+
+  // API keys (Phase 7)
+  async function loadKeys(){ const d=await getJSON("/v1/keys"); if(d && Array.isArray(d.keys)){ window.__keys=d.keys; render(); } }
+  async function loadSso(){ const d=await getJSON("/auth/sso/status"); if(d){ window.__sso=d; render(); } }
+  async function loadOrg(){ const d=await getJSON("/v1/settings"); if(d){ window.__org=d; render(); } }
+  async function loadMe(){ const d=await getJSON("/auth/me"); if(d){ window.__me=d; render(); } }
+  app.saveOrgSetting = function(key, value){
+    fetch("/v1/settings",{method:"PUT",headers:hdr,body:JSON.stringify({[key]:value})})
+      .then(async r=>{ const d=await r.json(); if(r.ok){ window.__org=d; render(); } else alert("Failed: "+((d.error&&d.error.message)||r.status)); });
+  };
+  app.exportCsv = function(){
+    fetch("/audit/export.csv",{headers:hdr}).then(r=>r.text()).then(csv=>{
+      const blob=new Blob([csv],{type:"text/csv"}); const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob); a.download="precepta-audit.csv"; a.click(); });
+  };
+  // Google/OIDC-aware sign-in: real SSO redirect when configured, else dev login
+  app.signIn = function(){
+    fetch("/auth/sso/login").then(r=>r.json()).then(d=>{
+      if(d && d.authorize_url){ window.location = d.authorize_url; }   // real Google/Okta/Azure login
+      else { state.isLoggedIn=true; loadMe(); loadOrg(); render(); }   // dev login (no IdP configured)
+    }).catch(()=>{ state.isLoggedIn=true; render(); });
+  };
+  const _setTab = app.setSettingsTab;
+  app.setSettingsTab = function(t){ _setTab(t); if(t==="keys") loadKeys(); if(t==="security") loadSso();
+    if(t==="general"||t==="data") loadOrg(); if(t==="account") loadMe(); };
+  app.issueKey = function(){
+    const s=state; if(!(s.newKeyName||"").trim()) return;
+    fetch("/v1/keys",{method:"POST",headers:hdr,body:JSON.stringify({name:s.newKeyName, role:s.newKeyRole, team:s.newKeyTeam})})
+    .then(async r=>{ const d=await r.json();
+      if(r.ok){ state.issuedKey={name:d.name, key:d.key}; state.newKeyName=""; state.newKeyTeam=""; await loadKeys(); }
+      else { alert("Failed: "+((d.error&&d.error.message)||r.status)); render(); } });
+  };
+  app.revokeKey = function(id){ fetch("/v1/keys/"+id,{method:"DELETE",headers:hdr}).then(loadKeys); };
+
+  loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe();
+})();
+</script>
+</body>
+</html>

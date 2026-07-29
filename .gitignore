@@ -1,0 +1,35 @@
+# ── secrets / local config ──────────────────────────────────
+.env
+*.env.local
+
+# ── python ──────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ── local data / database (audit logs, PII, sessions, keys) ──
+preceptaai.db
+preceptaai.db-shm
+preceptaai.db-wal
+
+# ── bundled third-party runtime (Floci emulator + JRE — huge) ─
+jre/
+bin/
+floci/
+
+# ── runtime working dirs ────────────────────────────────────
+logs/
+vault/
+policies/
+workflows/
+
+# ── local tooling / machinery (not product content) ─────────
+.momentum/
+.agent/
+.claude/
+.githooks/
+
+# ── os / editor ─────────────────────────────────────────────
+.DS_Store
+*.log
