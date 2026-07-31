@@ -31,7 +31,7 @@ type: Backlog
 
 | ID | Title | Priority | Status | Phase | Detail |
 |----|-------|----------|--------|-------|--------|
-| FEAT-001 | Key expiration + token/cost budgets (per-key & per-team, daily+monthly, timezone resets, warn/block, notifications, Usage view) | P1 | open | 10 (cand) | Fully scoped — `BRAINSTORM.md` §Item 1. Likely a full phase on its own. |
+| FEAT-001 | Key expiration + token/cost budgets (per-key & per-team, daily+monthly, timezone resets, warn/block, notifications, Usage view) | P1 | in-progress | 10 | **Slice 1 (key expiry) DONE + verified 2026-07-31** (`expires_at`, default 90d/never, expired→401, Console modal + list badges; 4 tests). Slice 2 (budgets + usage + notifications) next. |
 | FEAT-002 | Policy scope — apply to all vs selected (Team / Role / Subject-type / Backend / Model; agents governed like humans) | P1 | open | 10 (cand) | Fully scoped — `BRAINSTORM.md` §Item 2. Adds `scope_json` (default `{}` = all); one filter step, evaluation unchanged. |
 | FEAT-003 | Response cache — exact + semantic, per-team, governance-preserving, admin-only visibility | P2 | open | 10 (cand) | Fully scoped — `BRAINSTORM.md` §Item 3. Behind a `ResponseCachePort` (DIP); in-boundary embeddings; invisible to end user. |
 | FEAT-004 | OpenGuard authZ/delegation adapter behind `AuthorizationPort` (agent/user/bounded delegation) | P2 | open | 10 (cand) | De-risked spike ✅ — `BRAINSTORM.md` §Spike. Adopt in a dedicated phase; keep `RoleCheck`/`scopes` as default until parity. |

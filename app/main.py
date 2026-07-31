@@ -354,10 +354,16 @@ def create_app() -> FastAPI:
                 status_code=400)
         role = b.get("role") or "user"
         team = (b.get("team") or "").strip()
-        kid, token = issue_key(name, role, team)
+        # expiry (FEAT-001): default 90 days; 0/None/"never" = never expires
+        exp_raw = b.get("expires_in_days", 90)
+        try:
+            expires_in_days = None if exp_raw in (None, 0, "never", "0") else int(exp_raw)
+        except (TypeError, ValueError):
+            expires_in_days = 90
+        kid, token = issue_key(name, role, team, expires_in_days=expires_in_days)
         # the plaintext key is returned exactly once
         return JSONResponse({"id": kid, "name": name, "role": role, "team": team,
-                             "key": token}, status_code=201)
+                             "key": token, "expires_in_days": expires_in_days}, status_code=201)
 
     @app.delete("/v1/keys/{kid}")
     def delete_key(kid: str, request: Request) -> JSONResponse:

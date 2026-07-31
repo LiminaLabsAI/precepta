@@ -501,19 +501,21 @@ function keysView(){
   const keys = window.__keys || [];
   const roleLbl={admin:'Admin',user:'User',auditor:'Auditor'};
   const cards = keys.length ? keys.map(k=>{
-    const active=k.active!==false;
+    const expired = k.expired===true;
+    const active = k.active!==false && !expired;
     const created = (k.created_at||'').slice(0,10);
+    const expLabel = k.expires_at ? (expired?'expired '+(k.expires_at||'').slice(0,10):'expires '+(k.expires_at||'').slice(0,10)) : 'never expires';
     return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="font-weight:600;font-size:13.5px">${esc(k.name)}</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(roleLbl[k.role]||k.role||'user')}${k.team?' · '+esc(k.team):''}${created?' · created '+esc(created):''}</div>
+          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(roleLbl[k.role]||k.role||'user')}${k.team?' · '+esc(k.team):''}${created?' · created '+esc(created):''} · <span style="color:${expired?'#B45309':'#9CA3AF'}">${esc(expLabel)}</span></div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
             <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6B7280;background:#F9FAFB;border:1px solid #F3F4F6;padding:2px 7px;border-radius:4px">pk-••••••••••••  (secret shown once at creation)</span>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${active?'#ECFDF5':'#F3F4F6'};color:${active?'#065F46':'#6B7280'}">${active?'Active':'Revoked'}</span>
+          <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${expired?'#FEF3C7':(active?'#ECFDF5':'#F3F4F6')};color:${expired?'#B45309':(active?'#065F46':'#6B7280')}">${expired?'Expired':(active?'Active':'Revoked')}</span>
           ${active?`<div onclick="app.openDeleteConfirm('${esc(k.id)}','${esc(k.name)}')" title="Revoke" class="iconbtn" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="trash-2" style="width:15px;height:15px;color:#9CA3AF"></i></div>`:''}
         </div>
       </div>
@@ -521,7 +523,7 @@ function keysView(){
   }).join('') : `<div style="border:1px dashed #E5E7EB;border-radius:8px;padding:24px;text-align:center;color:#9CA3AF;font-size:13px">No keys yet — create one to give an app or team governed access.</div>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Keys &amp; budgets</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:680px;line-height:1.6">Give each app or team its own key — every call it makes is attributed to that key in the tamper-evident audit log. The secret is shown once, at creation.</div>
-    ${pendingBanner('Per-key <strong>expiry, cost budgets and suspend/reactivate</strong> ship in Phase 10 (FEAT-001). The create form shows those fields, but only <strong>name · role · team</strong> are persisted by the backend today — so no budget bars are shown rather than fabricated ones. Revoke is fully live.')}
+    ${pendingBanner('<strong>Key expiry is live</strong> (default 90 days; expired keys fail auth). <strong>Cost budgets, assignee and suspend/reactivate</strong> are the next FEAT-001 slice — those fields stay disabled and show no fabricated numbers until then. Revoke is fully live.')}
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button onclick="app.openNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create key</button></div>
     <div style="display:flex;flex-direction:column;gap:10px">${cards}</div>
     ${s.newKeyOpen?newKeyModal():''}
@@ -540,13 +542,14 @@ function newKeyModal(){
         <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Role</label><select onchange="app.onSelect('newKeyRole',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff"><option value="user" ${s.newKeyRole==='user'?'selected':''}>User</option><option value="admin" ${s.newKeyRole==='admin'?'selected':''}>Admin</option><option value="auditor" ${s.newKeyRole==='auditor'?'selected':''}>Auditor</option></select></div>
         <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Team</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newKeyTeam)}" oninput="app.set('newKeyTeam',this.value)" placeholder="e.g. Collections"></div>
       </div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Expires</label>
+        <select onchange="app.onSelect('newKeyExpiry',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff">${keyExpiryOptions.map(k=>`<option value="${k.value}" ${s.newKeyExpiry===k.value?'selected':''}>${k.label}</option>`).join('')}</select>
+        <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">Default 90 days · an expired key stops working (401).</div>
+      </div>
       <div style="border-top:1px solid #F3F4F6;padding-top:12px;margin-top:4px">
-        <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i data-lucide="clock" style="width:12px;height:12px"></i>Not yet persisted — ships in Phase 10 (FEAT-001)</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i data-lucide="clock" style="width:12px;height:12px"></i>Assignee &amp; cost budgets — persisted next (FEAT-001 budgets)</div>
         <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Issued to (person's email)</label><input disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF" value="${esc(s.newKeyAssignee)}" placeholder="e.g. priya@company.com"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Expires</label><select disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF">${keyExpiryOptions.map(k=>`<option>${k.label}</option>`).join('')}</select></div>
-          <div><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Daily cap ($)</label><input disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF" placeholder="5.00"></div>
-        </div>
+        <div><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Daily cost cap ($)</label><input disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF" placeholder="5.00"></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button onclick="app.closeNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create key</button></div>
     </div></div>`;
@@ -1130,7 +1133,7 @@ render();
   // Keys → real create/revoke; secret revealed once
   app.addKey = function(){
     const s=state; if(!(s.newKeyName||"").trim()){ s.newKeyOpen=false; render(); return; }
-    fetch("/v1/keys",{method:"POST",headers:hdr,body:JSON.stringify({name:s.newKeyName, role:s.newKeyRole, team:s.newKeyTeam})})
+    fetch("/v1/keys",{method:"POST",headers:hdr,body:JSON.stringify({name:s.newKeyName, role:s.newKeyRole, team:s.newKeyTeam, expires_in_days: s.newKeyExpiry==='never'?0:parseInt(s.newKeyExpiry||'90')})})
     .then(async r=>{ const d=await r.json();
       if(r.ok){ state.newKeyOpen=false; state.revealKeyOpen=true; state.revealKeyValue=d.key; state.revealKeyAssignee=s.newKeyAssignee; state.revealKeyCopied=false; state.newKeyName=""; state.newKeyTeam=""; state.newKeyAssignee=""; await loadKeys(); }
       else { alert("Failed: "+((d.error&&d.error.message)||r.status)); render(); } });
