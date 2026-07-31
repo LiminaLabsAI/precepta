@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  html,body{margin:0;height:100%}
+  ::selection{background:#DBEAFE}
+  .pc-scroll::-webkit-scrollbar{width:8px}
+  .pc-scroll::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:4px}
+  a{color:#2563EB}
+  a:hover{color:#1D4ED8}
+  input:focus, select:focus{outline:none;border-color:#3B82F6 !important;box-shadow:0 0 0 3px rgba(59,130,246,0.12)}
+  *:focus-visible{outline:2px solid #3B82F6;outline-offset:2px}
+</style>
+</helmet>
+
+<div style="height:100vh;display:flex;flex-direction:column;background:#FFFFFF;color:#111827;font-family:Inter,system-ui,sans-serif;overflow:hidden;font-size:14px">
+
+  <sc-if value="{{ !isLoggedIn }}" hint-placeholder-val="{{ false }}">
+    <div style="height:100%;display:flex;align-items:center;justify-content:center">
+      <div style="width:340px;text-align:center">
+        <img src="assets/precepta-logo.png" alt="PreceptaAI" style="height:44px;width:auto;margin-bottom:10px"></img>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:28px">Sign in to your governance console</div>
+        <button onClick="{{ signIn }}" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">
+          <i data-lucide="chrome" style="width:16px;height:16px"></i> Sign in with Google
+        </button>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:16px">Login proves who you are. What you can do is set by your role — ask an admin if you need access.</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isLoggedIn }}" hint-placeholder-val="{{ true }}">
+  <!-- TOP BAR -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;border-bottom:1px solid #E5E7EB;flex:none">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img src="assets/precepta-logo.png" alt="PreceptaAI" style="height:26px;width:auto"></img>
+      <span style="width:1px;height:20px;background:#E5E7EB"></span>
+      <span style="font-size:13px;color:#6B7280">{{ orgName }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="position:relative">
+        <button onClick="{{ toggleNotif }}" style="width:30px;height:30px;border-radius:50%;background:transparent;border:none;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative" style-hover="background:#F3F4F6">
+          <i data-lucide="bell" style="width:17px;height:17px"></i>
+          <sc-if value="{{ hasUnreadNotifs }}" hint-placeholder-val="{{ false }}">
+            <span style="position:absolute;top:3px;right:4px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#DC2626;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ unreadNotifCount }}</span>
+          </sc-if>
+        </button>
+        <sc-if value="{{ notifOpen }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ stopPropagation }}" style="position:absolute;top:38px;right:0;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);width:340px;max-height:420px;display:flex;flex-direction:column;z-index:70">
+            <div style="padding:12px 14px;border-bottom:1px solid #F3F4F6;font-size:13px;font-weight:600;flex:none">Notifications</div>
+            <div class="pc-scroll" style="overflow-y:auto;flex:1">
+              <sc-for list="{{ notifAlerts }}" as="al" hint-placeholder-count="0">
+                <div style="padding:10px 14px;border-bottom:1px solid #F3F4F6;display:flex;gap:8px">
+                  <i data-lucide="alert-triangle" style="width:13px;height:13px;color:#DC2626;flex:none;margin-top:2px"></i>
+                  <div>
+                    <span style="font-size:10px;font-weight:600;color:#991B1B;text-transform:uppercase;letter-spacing:.03em">{{ al.section }}</span>
+                    <div style="font-size:12.5px;color:#111827;margin-top:2px">{{ al.message }}</div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-for list="{{ notifLog }}" as="n" hint-placeholder-count="0">
+                <div style="padding:10px 14px;border-bottom:1px solid #F3F4F6;display:flex;gap:8px">
+                  <i data-lucide="check-circle" style="width:13px;height:13px;color:#6B7280;flex:none;margin-top:2px"></i>
+                  <div>
+                    <span style="font-size:10px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.03em">{{ n.section }}</span>
+                    <div style="font-size:12.5px;color:#111827;margin-top:2px">{{ n.message }}</div>
+                    <div style="font-size:10.5px;color:#9CA3AF;margin-top:1px">{{ n.time }}</div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ notifEmpty }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:24px 14px;text-align:center;font-size:12px;color:#9CA3AF">Nothing to show — you're all caught up.</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      <button onClick="{{ openSettings }}" style="width:30px;height:30px;border-radius:50%;background:transparent;border:none;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#F3F4F6">
+        <i data-lucide="settings" style="width:17px;height:17px"></i>
+      </button>
+      <div style="position:relative">
+        <div onClick="{{ toggleProfileMenu }}" style="width:30px;height:30px;border-radius:50%;background:#3B82F6;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;cursor:pointer">{{ currentUserInitials }}</div>
+        <sc-if value="{{ profileMenuOpen }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ stopPropagation }}" style="position:absolute;top:38px;right:0;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);width:220px;z-index:70;padding:10px">
+            <div style="padding:6px 8px 10px;border-bottom:1px solid #F3F4F6;margin-bottom:6px">
+              <div style="font-size:13px;font-weight:600">{{ currentUserName }}</div>
+              <div style="font-size:11px;color:#9CA3AF">{{ currentUserEmail }}</div>
+              <span style="display:inline-block;margin-top:6px;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:10px;background:#EFF6FF;color:#1D4ED8">{{ currentUserRoleLabel }}</span>
+            </div>
+            <div onClick="{{ signOut }}" style="padding:7px 8px;border-radius:6px;font-size:13px;color:#991B1B;cursor:pointer;display:flex;align-items:center;gap:8px" style-hover="background:#FEF2F2">
+              <i data-lucide="log-out" style="width:14px;height:14px"></i> Log out
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;overflow:hidden">
+
+    <!-- SIDEBAR -->
+    <div style="width:220px;flex:none;background:#F9FAFB;border-right:1px solid #E5E7EB;display:flex;flex-direction:column;padding:12px 8px;overflow-y:auto">
+      <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="6">
+        <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:1px;border-radius:6px;cursor:pointer;background:{{ item.activeBg }};color:{{ item.textColor }}" style-hover="background:#F3F4F6">
+          <i data-lucide="{{ item.icon }}" style="width:16px;height:16px;flex:none"></i>
+          <span style="font-size:13.5px;font-weight:{{ item.weight }}">{{ item.label }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:28px 32px 80px;background:#fff">
+
+      <!-- ONBOARDING -->
+      <sc-if value="{{ isOnboarding }}">
+        <div style="max-width:680px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:24px">
+            <h1 style="font-size:22px;font-weight:700;margin:0;letter-spacing:-0.01em">Set up your control plane</h1>
+            <a href="#" onClick="{{ skipOnboarding }}" style="font-size:12px;color:#6B7280;text-decoration:underline">Skip to console →</a>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:28px">
+            <sc-for list="{{ steps }}" as="st" hint-placeholder-count="3">
+              <div style="flex:1">
+                <div style="height:4px;border-radius:2px;background:{{ st.barColor }};margin-bottom:8px"></div>
+                <div style="font-size:11px;font-weight:600;color:{{ st.numColor }}">Step {{ st.num }}</div>
+                <div style="font-size:12px;color:{{ st.numColor }};margin-top:1px">{{ st.title }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ isStep0 }}">
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+              <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 1 of 3</div>
+              <div style="font-size:16px;font-weight:600;margin-bottom:6px">Connect your infrastructure</div>
+              <div style="font-size:13px;color:#6B7280;line-height:1.5">Tell preceptaai where your models run. Nothing here leaves your network — this only registers an endpoint already inside your boundary.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px">
+              <sc-for list="{{ infraOptions }}" as="opt" hint-placeholder-count="3">
+                <div onClick="{{ opt.onClick }}" style="padding:16px;cursor:pointer;border:2px solid {{ opt.selected }};background:{{ opt.bg }};border-radius:10px">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <i data-lucide="{{ opt.icon }}" style="width:16px;height:16px;color:#3B82F6"></i>
+                    <span style="font-weight:600;font-size:13px">{{ opt.name }}</span>
+                  </div>
+                  <div style="font-size:12px;color:#6B7280">{{ opt.desc }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:20px;padding:20px;border:1px solid #E5E7EB;border-radius:8px;background:#F9FAFB">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px">{{ infraCredentialTitle }}</div>
+              <div style="font-size:12px;color:#6B7280;margin-bottom:16px">{{ infraCredentialDesc }}</div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">{{ infraEndpointLabel }}</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;background:#fff;color:#111827;box-sizing:border-box" value="{{ infraEndpoint }}" onChange="{{ setInfraEndpoint }}" placeholder="{{ infraEndpointPlaceholder }}"></input>
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">{{ infraKeyLabel }}</label>
+                <input type="password" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;background:#fff;color:#111827;box-sizing:border-box" value="{{ infraApiKey }}" onChange="{{ setInfraApiKey }}" placeholder="{{ infraKeyPlaceholder }}"></input>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <button onClick="{{ testConnection }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Test connection</button>
+                <sc-if value="{{ hasConnectionStatus }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ connectionStatusBg }};color:{{ connectionStatusColor }}">{{ connectionStatusLabel }}</span>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isStep1 }}">
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+              <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 2 of 3</div>
+              <div style="font-size:16px;font-weight:600;margin-bottom:6px">Which backends stay in your network?</div>
+              <div style="font-size:13px;color:#6B7280;line-height:1.5">Click a badge to toggle it. "In your network" means requests never leave your infrastructure; "Leaves your network" means it's an external API call. Only backends marked in-your-network can serve requests once the "in-boundary routing" control is on — you'll manage that in Policies.</div>
+            </div>
+            <div style="margin-top:16px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead><tr style="background:#F9FAFB"><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Backend</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Location</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">In boundary</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ backends }}" as="b" hint-placeholder-count="4">
+                    <tr style="border-top:1px solid #E5E7EB">
+                      <td style="padding:10px 16px">{{ b.name }}</td>
+                      <td style="padding:10px 16px;color:#6B7280">{{ b.location }}</td>
+                      <td style="padding:10px 16px"><span onClick="{{ b.onToggleBoundary }}" style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ b.boundaryBg }};color:{{ b.boundaryColor }};cursor:pointer">{{ b.boundaryLabel }}</span></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isStep2 }}">
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+              <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 3 of 3</div>
+              <div style="font-size:16px;font-weight:600;margin-bottom:6px">Review &amp; finish</div>
+              <div style="font-size:13px;color:#6B7280;line-height:1.5">Here's what you've set up. Four security controls are on by default — you can turn any of them off, or attach custom rules to them, from Policies.</div>
+            </div>
+
+            <div style="margin-top:16px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+              <div style="display:flex;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #E5E7EB">
+                <span style="font-size:13px;color:#6B7280">Infrastructure</span>
+                <span style="font-size:13px;font-weight:600">{{ reviewInfraName }} — {{ connectionStatusLabel }}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #E5E7EB">
+                <span style="font-size:13px;color:#6B7280">In-boundary backends</span>
+                <span style="font-size:13px;font-weight:600">{{ inBoundaryCount }} of {{ backendCount }} reachable</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:14px 20px">
+                <span style="font-size:13px;color:#6B7280">Security controls</span>
+                <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46">4 of 4 on</span>
+              </div>
+            </div>
+
+            <div style="margin-top:14px;padding:16px 20px;border:1px solid #E5E7EB;border-radius:8px;background:#F9FAFB">
+              <div style="font-weight:600;font-size:12px;margin-bottom:8px">What's on, without any setup — manage each individually in Policies:</div>
+              <div style="font-size:12px;color:#6B7280;line-height:1.7">
+                In-boundary-only routing · egress deny-all except your connected endpoint · audit logging · a residency policy pre-loaded for DPDP.
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;justify-content:space-between;margin-top:24px">
+            <button onClick="{{ prevStep }}" style="{{ prevStyle }}padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Back</button>
+            <button onClick="{{ nextStep }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">{{ nextLabel }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- OVERVIEW -->
+      <sc-if value="{{ isOverview }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em">Overview</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:20px">Everything routed, governed and audited inside your boundary — last 24 hours.</div>
+
+        <sc-if value="{{ showSetupToast }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;margin-bottom:24px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <i data-lucide="check-circle" style="width:16px;height:16px;color:#059669"></i>
+              <span style="font-size:13px;color:#065F46">Setup complete — vLLM cluster connected, {{ inBoundaryCount }} backends in-boundary, 4 security controls active.</span>
+            </div>
+            <button onClick="{{ dismissSetupToast }}" style="background:transparent;border:none;color:#065F46;font-size:12px;font-weight:500;cursor:pointer">Dismiss</button>
+          </div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+          <sc-for list="{{ statTiles }}" as="tile" hint-placeholder-count="4">
+            <div style="padding:18px;border:1px solid #E5E7EB;border-radius:8px">
+              <div style="font-size:12px;color:#6B7280">{{ tile.label }}</div>
+              <div style="font-size:26px;font-weight:700;margin-top:6px;line-height:1">{{ tile.value }}</div>
+              <div style="font-size:11px;color:{{ tile.subColor }};margin-top:6px">{{ tile.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="font-weight:600;font-size:14px;margin-bottom:12px">Backend health</div>
+        <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:28px">
+          <table style="width:100%;min-width:760px;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#F9FAFB"><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Backend</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Boundary</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">GPU util</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">p50 latency</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Throughput</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Status</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ backends }}" as="b" hint-placeholder-count="4">
+                <tr style="border-top:1px solid #E5E7EB">
+                  <td style="padding:10px 16px;font-weight:600">{{ b.name }}<div style="font-weight:400;font-size:11px;color:#9CA3AF;margin-top:1px">{{ b.location }}</div></td>
+                  <td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ b.boundaryBg }};color:{{ b.boundaryColor }}">{{ b.boundaryLabel }}</span></td>
+                  <td style="padding:10px 16px;min-width:90px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px;white-space:nowrap">{{ b.gpuLabel }}</div>
+                    <div style="height:5px;width:76px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.gpuBarPct }}%;background:{{ b.gpuBarColor }};border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 16px;min-width:80px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px">{{ b.latLabel }}</div>
+                    <div style="height:5px;width:60px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.latBarPct }}%;background:{{ b.latBarColor }};border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 16px;min-width:80px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px;white-space:nowrap">{{ b.rpsLabel }}</div>
+                    <div style="height:5px;width:60px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.rpsBarPct }}%;background:#3B82F6;border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ b.statusBg }};color:{{ b.statusColor }}">{{ b.statusLabel }}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="font-weight:600;font-size:14px;margin-bottom:12px">Requests, last 12 hours</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:110px;border-bottom:1px solid #E5E7EB;padding-bottom:2px;margin-bottom:8px">
+          <sc-for list="{{ chartBars }}" as="bar" hint-placeholder-count="12">
+            <div style="flex:1;height:{{ bar.height }};background:{{ bar.color }};border-radius:3px 3px 0 0" title="{{ bar.label }}"></div>
+          </sc-for>
+        </div>
+        <div style="font-size:11px;color:#9CA3AF">Peak 412 req/hr at 14:00 · 0 requests left the boundary</div>
+      </sc-if>
+
+      <!-- MODEL PLANE (catalog + infra health) -->
+      <sc-if value="{{ isModelPlane }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Model plane</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:640px;line-height:1.6">Every place a model can run for you — a local Ollama box, your own GPU cluster, a sovereign cloud — what it costs, and its live health. Register a new one below.</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"In your network" = runs on your own infrastructure, request never touches the public internet. "Leaves your network" = a third-party API call.</div>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+          <button onClick="{{ openAddBackend }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button>
+        </div>
+
+        <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:28px">
+          <table style="width:100%;min-width:1060px;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#F9FAFB"><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Backend</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Model</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Location</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Boundary</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">GPU util</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">p50 latency</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Throughput</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Traffic weight</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Cost / 1K tok</th><th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:500;font-size:12px">Status</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ backends }}" as="b" hint-placeholder-count="4">
+                <tr style="border-top:1px solid #E5E7EB">
+                  <td style="padding:10px 14px;font-weight:600">{{ b.name }}</td>
+                  <td style="padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:12px">{{ b.model }}</td>
+                  <td style="padding:10px 14px;color:#6B7280">{{ b.location }}</td>
+                  <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ b.boundaryBg }};color:{{ b.boundaryColor }}">{{ b.boundaryLabel }}</span></td>
+                  <td style="padding:10px 14px;min-width:90px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px;white-space:nowrap">{{ b.gpuLabel }}</div>
+                    <div style="height:5px;width:76px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.gpuBarPct }}%;background:{{ b.gpuBarColor }};border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 14px;min-width:80px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px">{{ b.latLabel }}</div>
+                    <div style="height:5px;width:60px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.latBarPct }}%;background:{{ b.latBarColor }};border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 14px;min-width:80px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px;white-space:nowrap">{{ b.rpsLabel }}</div>
+                    <div style="height:5px;width:60px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.rpsBarPct }}%;background:#3B82F6;border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 14px;min-width:70px">
+                    <div style="font-size:11.5px;font-weight:600;margin-bottom:4px">{{ b.weightLabel }}</div>
+                    <div style="height:5px;width:56px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:{{ b.weightBarPct }}%;background:#111827;border-radius:3px"></div></div>
+                  </td>
+                  <td style="padding:10px 14px"><input value="{{ b.cost }}" onChange="{{ b.onCostChange }}" style="width:74px;padding:4px 6px;border:1px solid #E5E7EB;border-radius:5px;font-size:12.5px;font-family:'JetBrains Mono',monospace"></input></td>
+                  <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ b.statusBg }};color:{{ b.statusColor }}">{{ b.statusLabel }}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:11px;color:#9CA3AF;margin-bottom:20px">Admin-maintained price list and live infra health in one place — every cost and savings figure elsewhere in the console reads from these numbers. Last updated 27 Jul 2026 by Sarang Kulkarni.</div>
+
+        <sc-if value="{{ addBackendOpen }}">
+          <div onClick="{{ closeAddBackend }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div onClick="{{ stopPropagation }}" style="background:#fff;border-radius:12px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="font-size:16px;font-weight:600;margin-bottom:4px">Add a backend</div>
+              <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Same infra types as setup — pick one and reuse the same connection info.</div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Backend type</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ newBackendTypeOptions }}" as="bt" hint-placeholder-count="4">
+                    <div onClick="{{ bt.onClick }}" style="padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ bt.borderColor }};background:{{ bt.bg }};color:{{ bt.color }}">{{ bt.label }}</div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newBackendName }}" onChange="{{ setNewBackendName }}" placeholder="e.g. vLLM cluster 2"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model string</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="{{ newBackendModel }}" onChange="{{ setNewBackendModel }}" placeholder="{{ newBackendModelPh }}"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">{{ newBackendEndpointLabel }}</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="{{ newBackendEndpoint }}" onChange="{{ setNewBackendEndpoint }}" placeholder="{{ newBackendEndpointPh }}"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">{{ newBackendKeyLabel }}</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="{{ newBackendKey }}" onChange="{{ setNewBackendKey }}" placeholder="{{ newBackendKeyPh }}"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Location</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newBackendLocation }}" onChange="{{ setNewBackendLocation }}" placeholder="{{ newBackendLocationPh }}"></input>
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Data residency region</label>
+                <select style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff" value="{{ newBackendRegion }}" onChange="{{ setNewBackendRegion }}">
+                  <sc-for list="{{ regionOptions }}" as="rg" hint-placeholder-count="5">
+                    <option value="{{ rg.value }}">{{ rg.label }}</option>
+                  </sc-for>
+                </select>
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px">
+                <input type="checkbox" checked="{{ newBackendInBoundary }}" onChange="{{ toggleNewBackendBoundary }}"></input>
+                <span style="font-size:13px;color:#374151">This endpoint is inside my network boundary</span>
+              </label>
+              <div style="display:flex;justify-content:flex-end;gap:10px">
+                <button onClick="{{ closeAddBackend }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button>
+                <button onClick="{{ addBackend }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="font-size:11px;color:#9CA3AF">0 requests left the boundary this period.</div>
+      </sc-if>
+
+      <!-- KEYS & BUDGETS -->
+      <sc-if value="{{ isKeys }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Keys &amp; budgets</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Every key expires and carries a real token/cost budget, daily and monthly. At 80% we notify — nothing degrades silently. At 100%, the key is blocked until it resets or you raise the cap.</div>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button onClick="{{ openNewKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create key</button>
+        </div>
+
+        <sc-if value="{{ hasKeyActionToast }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;margin-bottom:14px">
+            <span style="font-size:12.5px;color:#1D4ED8">{{ keyActionToast }}</span>
+            <button onClick="{{ dismissKeyToast }}" style="background:transparent;border:none;color:#1D4ED8;font-size:12px;font-weight:500;cursor:pointer">Dismiss</button>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ apiKeys }}" as="k" hint-placeholder-count="3">
+            <div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 18px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                <div>
+                  <div style="font-weight:600;font-size:13.5px">{{ k.name }}</div>
+                  <div style="font-size:11px;color:#9CA3AF;margin-top:2px">{{ k.team }} · issued to {{ k.assigneeLabel }} · expires {{ k.expiryLabel }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6B7280;background:#F9FAFB;border:1px solid #F3F4F6;padding:2px 7px;border-radius:4px">{{ k.maskedValue }}</span>
+                    <div onClick="{{ k.onCopy }}" title="Copy key" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="copy" style="width:13px;height:13px;color:#6B7280"></i></div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ k.statusBg }};color:{{ k.statusColor }}">{{ k.statusLabel }}</span>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <div onClick="{{ k.onEdit }}" title="Edit" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="pencil" style="width:15px;height:15px;color:#6B7280"></i></div>
+                    <sc-if value="{{ k.isSuspended }}">
+                      <div onClick="{{ k.onReactivate }}" title="Reactivate" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="rotate-ccw" style="width:15px;height:15px;color:#6B7280"></i></div>
+                    </sc-if>
+                    <sc-if value="{{ k.canExtend }}">
+                      <div onClick="{{ k.onExtend }}" title="Extend 30 days" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="calendar-plus" style="width:15px;height:15px;color:#6B7280"></i></div>
+                    </sc-if>
+                    <div onClick="{{ k.onDelete }}" title="Revoke" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer"><i data-lucide="trash-2" style="width:15px;height:15px;color:#9CA3AF"></i></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:#6B7280;margin-bottom:4px"><span>Daily cost</span><span>{{ k.dailyUsedLabel }}</span></div>
+                  <div style="height:6px;background:#F3F4F6;border-radius:3px"><div style="height:6px;border-radius:3px;width:{{ k.dailyPct }}%;background:{{ k.dailyBarColor }}"></div></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:#6B7280;margin-bottom:4px"><span>Monthly cost</span><span>{{ k.monthlyUsedLabel }}</span></div>
+                  <div style="height:6px;background:#F3F4F6;border-radius:3px"><div style="height:6px;border-radius:3px;width:{{ k.monthlyPct }}%;background:{{ k.monthlyBarColor }}"></div></div>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ hasDeleteConfirm }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closeDeleteConfirm }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div onClick="{{ stopPropagation }}" style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><i data-lucide="alert-triangle" style="width:16px;height:16px;color:#DC2626"></i><div style="font-size:16px;font-weight:600">Revoke "{{ deleteConfirmKeyName }}"?</div></div>
+              <div style="font-size:13px;color:#6B7280;line-height:1.6;margin-bottom:18px">Any service using this key loses access immediately — in-flight requests will fail, and this can't be undone. If you just need to pause usage temporarily, suspend it instead: the key stays configured and can be reactivated later.</div>
+              <div style="display:flex;justify-content:flex-end;gap:10px">
+                <button onClick="{{ closeDeleteConfirm }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button>
+                <button onClick="{{ confirmSuspendKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#374151;border:1px solid #E5E7EB;cursor:pointer">Suspend instead</button>
+                <button onClick="{{ confirmDeleteKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#DC2626;color:#fff;border:none;cursor:pointer">Revoke permanently</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ newKeyOpen }}">
+          <div onClick="{{ closeNewKey }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div onClick="{{ stopPropagation }}" style="background:#fff;border-radius:12px;padding:28px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="font-size:16px;font-weight:600;margin-bottom:4px">{{ newKeyModalTitle }}</div>
+              <div style="font-size:12px;color:#6B7280;margin-bottom:16px">{{ newKeyModalDesc }}</div>
+              <sc-if value="{{ isEditingSuspended }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#F3F4F6;border-radius:6px;margin-bottom:14px">
+                  <span style="font-size:12px;color:#374151">This key is currently <strong>suspended</strong> — it won't accept requests until reactivated.</span>
+                  <button onClick="{{ reactivateFromModal }}" style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer;flex:none">Reactivate</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ hasEditingKeyStatusNote }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:10px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;margin-bottom:14px;font-size:12px;color:#92400E">{{ editingKeyStatusNote }}</div>
+              </sc-if>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newKeyName }}" onChange="{{ setNewKeyName }}" placeholder="e.g. Support triage bot"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Team</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newKeyTeam }}" onChange="{{ setNewKeyTeam }}" placeholder="e.g. Collections"></input>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Issued to (person's email)</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newKeyAssignee }}" onChange="{{ setNewKeyAssignee }}" placeholder="e.g. priya@company.com"></input>
+                <div style="font-size:11px;color:#9CA3AF;margin-top:4px">Who this key gives Precepta access to. We generate the secret when you create it — you'll copy it once to send them.</div>
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Expires</label>
+                <select style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff" value="{{ newKeyExpiry }}" onChange="{{ setNewKeyExpiry }}">
+                  <sc-for list="{{ keyExpiryOptions }}" as="ke" hint-placeholder-count="4">
+                    <option value="{{ ke.value }}">{{ ke.label }}</option>
+                  </sc-for>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+                <div>
+                  <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Daily cost cap ($)</label>
+                  <input type="number" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newKeyDailyCost }}" onChange="{{ setNewKeyDailyCost }}" placeholder="5.00"></input>
+                </div>
+                <div>
+                  <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Monthly cost cap ($)</label>
+                  <input type="number" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newKeyMonthlyCost }}" onChange="{{ setNewKeyMonthlyCost }}" placeholder="100.00"></input>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:10px">
+                <button onClick="{{ closeNewKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button>
+                <button onClick="{{ addKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">{{ newKeySubmitLabel }}</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ revealKeyOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div style="background:#fff;border-radius:12px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><i data-lucide="key-round" style="width:16px;height:16px;color:#059669"></i><div style="font-size:16px;font-weight:600">Key created — copy it now</div></div>
+              <div style="font-size:12.5px;color:#6B7280;line-height:1.6;margin-bottom:14px">Send this to {{ revealKeyAssigneeText }} so they can start calling Precepta. For their security we only show the full value once — after you close this, it stays masked everywhere.</div>
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;margin-bottom:8px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#111827;flex:1;overflow-wrap:anywhere">{{ revealKeyValue }}</span>
+                <div onClick="{{ copyRevealKey }}" title="Copy" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer;flex:none"><i data-lucide="copy" style="width:14px;height:14px;color:#6B7280"></i></div>
+              </div>
+              <sc-if value="{{ revealKeyCopied }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:11.5px;color:#059669;margin-bottom:6px">Copied to clipboard.</div>
+              </sc-if>
+              <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
+                <button onClick="{{ closeRevealKey }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Done</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <!-- CACHE & COMPRESSION -->
+      <sc-if value="{{ isSavings }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:24px;max-width:680px;line-height:1.6">Both cut cost inside the same governed loop — every cache hit and every compressed prompt is still policy-checked and audited. The riskier option in each is opt-in, never automatic.</div>
+
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:14px">Response cache</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6">
+            <div><div style="font-size:13px;font-weight:500">Exact-match cache</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:460px">Reuses a previous answer only when the request is identical. On by default.</div></div>
+            <div onClick="{{ toggleCacheExact }}" style="width:36px;height:20px;border-radius:10px;background:{{ cacheExactToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+              <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ cacheExactToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+            <div><div style="font-size:13px;font-weight:500">Semantic cache</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:460px">Reuses a similar (not identical) answer. Off by default — it can confidently serve a wrong match. Turn on only if you've weighed that.</div></div>
+            <div onClick="{{ toggleCacheSemantic }}" style="width:36px;height:20px;border-radius:10px;background:{{ cacheSemanticToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+              <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ cacheSemanticToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">
+            <div><div style="font-size:11px;color:#9CA3AF">Cache hit rate</div><div style="font-size:18px;font-weight:700;margin-top:2px">31%</div></div>
+            <div><div style="font-size:11px;color:#9CA3AF">Saved this month</div><div style="font-size:18px;font-weight:700;margin-top:2px">$41.20</div></div>
+          </div>
+          <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Visible only to admins — the user just gets an answer.</div>
+          <a href="#" onClick="{{ goToAuditCacheFiltered }}" style="font-size:12px;display:inline-block;margin-top:8px">View cache.hit events in Audit log →</a>
+        </div>
+
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:14px">Prompt compression</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6">
+            <div><div style="font-size:13px;font-weight:500">Baseline trimming</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:460px">Cuts filler without changing meaning — can't make an answer worse. Always on.</div></div>
+            <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46">Always on</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6">
+            <div><div style="font-size:13px;font-weight:500">Cost-saving mode</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:460px">Shortens more aggressively. Opt-in — the user is notified whenever it's applied to their request.</div></div>
+            <div onClick="{{ toggleCompressionCostSaving }}" style="width:36px;height:20px;border-radius:10px;background:{{ compressionCostSavingToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+              <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ compressionCostSavingToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 0">
+            <input type="checkbox" checked="{{ compressionKeepCorpusConsent }}" onChange="{{ toggleCompressionConsent }}"></input>
+            <span style="font-size:12.5px;color:#374151">Keep before/after text for our own future training (requires your consent)</span>
+          </label>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">
+            <div><div style="font-size:11px;color:#9CA3AF">Tokens saved (month)</div><div style="font-size:18px;font-weight:700;margin-top:2px">218K</div></div>
+            <div><div style="font-size:11px;color:#9CA3AF">Latency saved (avg)</div><div style="font-size:18px;font-weight:700;margin-top:2px">140ms</div></div>
+          </div>
+          <a href="#" onClick="{{ goToAuditCacheFiltered }}" style="font-size:12px;display:inline-block;margin-top:12px">View compression.apply events in Audit log →</a>
+        </div>
+      </sc-if>
+
+      <!-- POLICIES + SECURITY CONTROLS -->
+      <sc-if value="{{ isPolicies }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Policies &amp; security controls</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:24px;max-width:680px;line-height:1.6">Every request is checked against these rules before it runs. The four controls below are the sovereignty essentials, on by default — toggle any of them independently. Add your own rules underneath for anything else (PII, rate limits, cost caps, allowed domains).</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px">
+          <sc-for list="{{ securityControls }}" as="c" hint-placeholder-count="4">
+            <div style="padding:16px;border:1px solid #E5E7EB;border-radius:8px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <i data-lucide="{{ c.icon }}" style="width:15px;height:15px;color:{{ c.iconColor }}"></i>
+                  <span style="font-weight:600;font-size:13px">{{ c.label }}</span>
+                </div>
+                <div onClick="{{ c.onToggle }}" style="width:36px;height:20px;border-radius:10px;background:{{ c.trackColor }};position:relative;cursor:pointer;flex:none">
+                  <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ c.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+                </div>
+              </div>
+              <div style="font-size:12px;color:#6B7280;line-height:1.5">{{ c.desc }}</div>
+              <sc-if value="{{ c.hasProbe }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">
+                  <span style="font-size:11px;color:#9CA3AF">{{ egressProbeStatusText }}</span>
+                  <button onClick="{{ runEgressProbe }}" style="padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">{{ egressProbeButtonLabel }}</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:18px;margin-bottom:28px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:4px">Advanced routing</div>
+          <div style="font-size:12px;color:#6B7280;margin-bottom:14px;max-width:640px;line-height:1.5">Three checks run in order on every request: safety first — sensitive data only reaches an approved backend — then the system optimizes for cost/speed/quality, then your budget keeps it honest.</div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Approved for sensitive data</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ approvedBackendChips }}" as="ab" hint-placeholder-count="3">
+                <div onClick="{{ ab.onClick }}" style="padding:6px 12px;border-radius:14px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ ab.borderColor }};background:{{ ab.bg }};color:{{ ab.color }}">{{ ab.name }}</div>
+              </sc-for>
+            </div>
+            <div style="font-size:11px;color:#9CA3AF;margin-top:8px">If a sensitive request has no approved backend available, it's blocked — and both the user and an admin are told why.</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6">
+            <div><div style="font-size:13px;font-weight:500">Optimize automatically for cost &amp; speed</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">After the safety check, let the system pick the cheapest/fastest fit instead of a fixed backend.</div></div>
+            <div onClick="{{ toggleSmartRouting }}" style="width:36px;height:20px;border-radius:10px;background:{{ smartRoutingToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+              <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ smartRoutingToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-weight:600;font-size:14px">Custom policies</div>
+          <button onClick="{{ openNewPolicy }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">New policy</button>
+        </div>
+        <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Evaluated on every request, most-restrictive wins: block &gt; warn &gt; audit-only.</div>
+
+        <sc-for list="{{ policies }}" as="p" hint-placeholder-count="4">
+          <div style="padding:14px 0;border-bottom:1px solid #E5E7EB">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:16px">
+                <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ p.effectBg }};color:{{ p.effectColor }};min-width:52px;text-align:center">{{ p.effectLabel }}</span>
+                <div>
+                  <div style="font-weight:600;font-size:13px">{{ p.name }}</div>
+                  <div style="font-size:12px;color:#6B7280;margin-top:2px">{{ p.desc }}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">{{ p.actionLabel }}</span>
+                <button onClick="{{ p.onToggle }}" style="background:transparent;border:none;color:#6B7280;font-size:13px;font-weight:500;cursor:pointer">{{ p.toggleLabel }}</button>
+              </div>
+            </div>
+            <sc-if value="{{ p.hasChips }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;margin-left:68px">
+                <sc-for list="{{ p.chips }}" as="chip" hint-placeholder-count="2">
+                  <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#F3F4F6;color:#374151">{{ chip }}</span>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ newPolicyOpen }}">
+          <div onClick="{{ closeNewPolicy }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div onClick="{{ stopPropagation }}" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="font-size:16px;font-weight:600;margin-bottom:2px">New policy rule</div>
+              <div style="font-size:12px;color:#6B7280;margin-bottom:18px">Define a governance constraint checked before every matching request.</div>
+
+              <div style="margin-bottom:12px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Policy name *</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newPolicyName }}" onChange="{{ setNewPolicyName }}" placeholder="e.g. Block PAN numbers in prompts"></input>
+              </div>
+              <div style="margin-bottom:14px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Description</label>
+                <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="{{ newPolicyDesc }}" onChange="{{ setNewPolicyDesc }}" placeholder="What does this policy enforce, and why?"></input>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+                <div>
+                  <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Action type</label>
+                  <select style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff" value="{{ newPolicyAction }}" onChange="{{ setNewPolicyAction }}">
+                    <sc-for list="{{ actionOptions }}" as="ao" hint-placeholder-count="5">
+                      <option value="{{ ao.value }}">{{ ao.label }}</option>
+                    </sc-for>
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Effect</label>
+                  <select style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff" value="{{ newPolicyEffect }}" onChange="{{ setNewPolicyEffect }}">
+                    <sc-for list="{{ effectOptions }}" as="eo" hint-placeholder-count="3">
+                      <option value="{{ eo.value }}">{{ eo.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="font-size:11px;color:#9CA3AF;margin-top:4px">{{ newPolicyEffectDesc }}</div>
+                </div>
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:2px">Applies to</label>
+                <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Combine filters across team, role, key, backend and model — leave a row empty to match any. A rule with several picked matches ALL of them at once (e.g. one team AND one model).</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Team</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ scopeTeamChips }}" as="sv" hint-placeholder-count="3">
+                        <div onClick="{{ sv.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ sv.borderColor }};background:{{ sv.bg }};color:{{ sv.color }}">{{ sv.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Role</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ scopeRoleChips }}" as="sv" hint-placeholder-count="3">
+                        <div onClick="{{ sv.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ sv.borderColor }};background:{{ sv.bg }};color:{{ sv.color }}">{{ sv.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Key / agent</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ scopeAgentChips }}" as="sv" hint-placeholder-count="3">
+                        <div onClick="{{ sv.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ sv.borderColor }};background:{{ sv.bg }};color:{{ sv.color }}">{{ sv.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Backend</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ scopeBackendChips }}" as="sv" hint-placeholder-count="3">
+                        <div onClick="{{ sv.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ sv.borderColor }};background:{{ sv.bg }};color:{{ sv.color }}">{{ sv.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Model</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ scopeModelChips }}" as="sv" hint-placeholder-count="3">
+                        <div onClick="{{ sv.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid {{ sv.borderColor }};background:{{ sv.bg }};color:{{ sv.color }}">{{ sv.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px;line-height:1.5">{{ scopeExplainer }}</div>
+              </div>
+
+              <div style="border-top:1px solid #F3F4F6;padding-top:14px;margin-top:4px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                  <i data-lucide="lock" style="width:13px;height:13px;color:#3B82F6"></i>
+                  <span style="font-size:12px;font-weight:600;color:#374151">Conditions</span>
+                  <span style="font-size:11px;color:#9CA3AF">(leave blank to skip)</span>
+                </div>
+                <div style="margin-bottom:10px">
+                  <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL allowlist (comma-separated)</label>
+                  <input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="{{ newPolicyUrlAllow }}" onChange="{{ setNewPolicyUrlAllow }}" placeholder="vllm-cluster.internal, neysa.ai"></input>
+                  <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">Only destinations containing these strings are permitted — this is how you define in-boundary routing yourself.</div>
+                </div>
+                <div style="margin-bottom:10px">
+                  <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL blocklist (comma-separated)</label>
+                  <input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="{{ newPolicyUrlBlock }}" onChange="{{ setNewPolicyUrlBlock }}" placeholder="openai.com, anthropic.com"></input>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                  <div>
+                    <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max tokens / day</label>
+                    <input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="{{ newPolicyMaxTokens }}" onChange="{{ setNewPolicyMaxTokens }}" placeholder="50000"></input>
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour</label>
+                    <input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="{{ newPolicyMaxCalls }}" onChange="{{ setNewPolicyMaxCalls }}" placeholder="120"></input>
+                  </div>
+                </div>
+                <div style="margin-bottom:12px">
+                  <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max daily cost (USD)</label>
+                  <input type="number" step="0.01" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="{{ newPolicyMaxCost }}" onChange="{{ setNewPolicyMaxCost }}" placeholder="5.00"></input>
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
+                  <input type="checkbox" checked="{{ newPolicyPii }}" onChange="{{ toggleNewPolicyPii }}"></input>
+                  <span style="font-size:12.5px;color:#374151">Filter PII in output (emails, phone numbers, card numbers)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="checkbox" checked="{{ newPolicyDataTag }}" onChange="{{ toggleNewPolicyDataTag }}"></input>
+                  <span style="font-size:12.5px;color:#374151">Require a data-classification tag on the request</span>
+                </label>
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+                <button onClick="{{ closeNewPolicy }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button>
+                <button onClick="{{ addPolicy }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create policy</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <!-- AUDIT + ATTESTATION -->
+      <sc-if value="{{ isAudit }}">
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Audit &amp; Attestation</h1>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Every request — allowed, warned or blocked — is written here in a tamper-evident, hash-chained log nothing can quietly edit. Use it to investigate an incident, and use the attestation below whenever an auditor, customer, or your own security team needs proof — not just a claim — that nothing left your network.</div>
+
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:24px">
+          <div>
+            <div style="font-weight:600;font-size:14px">Learn from usage</div>
+            <div style="font-size:12px;color:#6B7280;margin-top:4px;max-width:560px;line-height:1.5">Uses thumbs-up/down from the Playground to route smarter over time. Runs only on your own traffic, inside your boundary — never shared across customers. Off until you turn it on.</div>
+          </div>
+          <div onClick="{{ toggleLearningLoop }}" style="width:36px;height:20px;border-radius:10px;background:{{ learningLoopToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+            <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ learningLoopToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+          </div>
+        </div>
+
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:28px;margin-bottom:32px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:32px">
+            <div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#1D4ED8;font-weight:600;margin-bottom:8px">Sovereignty Attestation</div>
+              <div style="font-weight:700;font-size:20px;margin-bottom:10px;color:#111827">Proof your team can hand to an auditor</div>
+              <div style="font-size:13px;line-height:1.6;max-width:460px;color:#374151">Active backend set, security-control status, egress-test result and audit-chain verification — signed and hash-anchored, for any window you choose.</div>
+            </div>
+            <button onClick="{{ openAttestation }}" style="padding:9px 16px;border-radius:6px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer;flex:none">Generate attestation</button>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#9CA3AF;margin:-8px 0 12px;max-width:640px;line-height:1.5">Each entry's hash also incorporates the previous entry's hash, so editing or deleting a past row breaks the chain. "Chain verified" means the last check found every link intact; "Re-verify chain" re-runs that integrity check right now.</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+          <div style="font-weight:600;font-size:14px">Tamper-evident audit log</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;display:inline-flex;align-items:center;gap:4px"><i data-lucide="check" style="width:11px;height:11px"></i>Chain verified</span>
+            <button onClick="{{ verifyChain }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Re-verify chain</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+          <sc-for list="{{ auditEventFilterChips }}" as="af" hint-placeholder-count="5">
+            <div onClick="{{ af.onClick }}" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid {{ af.borderColor }};background:{{ af.bg }};color:{{ af.color }}">{{ af.label }}</div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ isAuditFiltered }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;margin-bottom:12px">
+            <span style="font-size:12px;color:#1D4ED8">Filtered to "{{ auditFilterLabel }}" events.</span>
+            <button onClick="{{ clearAuditFilter }}" style="background:transparent;border:none;color:#1D4ED8;font-size:12px;font-weight:500;cursor:pointer">Clear filter</button>
+          </div>
+        </sc-if>
+        <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#F9FAFB"><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Time</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Actor</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Event</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Backend</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Outcome</th><th style="text-align:left;padding:10px 16px;color:#6B7280;font-weight:500;font-size:12px">Hash</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ auditLog }}" as="row" hint-placeholder-count="6">
+                <tr onClick="{{ row.onToggle }}" style="border-top:1px solid #E5E7EB;cursor:pointer">
+                  <td style="padding:10px 16px;font-size:12px"><div style="display:flex;align-items:center;gap:6px"><i data-lucide="{{ row.expandIcon }}" style="width:12px;height:12px;color:#9CA3AF"></i>{{ row.time }}</div></td>
+                  <td style="padding:10px 16px;font-size:12px">{{ row.actor }}</td>
+                  <td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ row.eventBg }};color:{{ row.eventColor }}">{{ row.eventLabel }}</span></td>
+                  <td style="padding:10px 16px;font-size:12px">{{ row.backend }}</td>
+                  <td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ row.outcomeBg }};color:{{ row.outcomeColor }}">{{ row.outcomeLabel }}</span></td>
+                  <td style="padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF">{{ row.hash }}</td>
+                </tr>
+                <sc-if value="{{ row.isExpanded }}" hint-placeholder-val="{{ false }}">
+                  <tr style="border-top:1px solid #E5E7EB;background:#F9FAFB">
+                    <td colSpan="6" style="padding:14px 16px 16px 42px">
+                      <sc-for list="{{ row.detail }}" as="d" hint-placeholder-count="3">
+                        <div style="display:flex;gap:10px;margin-bottom:6px;font-size:12.5px">
+                          <span style="color:#6B7280;min-width:170px;flex:none">{{ d.label }}</span>
+                          <span style="color:#111827">{{ d.value }}</span>
+                        </div>
+                      </sc-for>
+                    </td>
+                  </tr>
+                </sc-if>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+
+        <sc-if value="{{ attestationOpen }}">
+          <div onClick="{{ closeAttestation }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div onClick="{{ stopPropagation }}" style="background:#fff;border-radius:12px;padding:28px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+              <div style="font-size:16px;font-weight:600;margin-bottom:6px">Sovereignty Attestation — generated</div>
+              <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Window: last 30 days · Suvidha Finserv Pvt. Ltd.</div>
+              <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+                <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Config proof</span><strong>3/3 backends in-boundary · 4/4 controls on</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Audit proof</span><strong>12,480 requests · 0 external calls</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Egress test</span><strong>Blocked (verified)</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:#6B7280">Chain integrity</span><strong style="color:#059669">Verified ✓</strong></div>
+              </div>
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid #E5E7EB;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF;word-break:break-all">sig: 4f0a…c19e · anchored to audit chain #12481</div>
+              <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+                <button onClick="{{ closeAttestation }}" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Close</button>
+                <button style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Download PDF</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <!-- PLAYGROUND -->
+      <sc-if value="{{ isPlayground }}">
+        <div style="display:flex;flex-direction:column;height:calc(100vh - 168px);max-width:720px;margin:0 auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid #E5E7EB;margin-bottom:4px">
+            <div>
+              <div style="font-weight:700;font-size:17px">Playground</div>
+              <div style="font-size:12px;color:#6B7280;margin-top:2px">Try a request the way your app would send it — see the same routing, policy check and audit metadata back, before you wire up the real API.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select style="width:auto;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;background:#fff" value="{{ chatModel }}" onChange="{{ setChatModel }}">
+                <sc-for list="{{ modelOptions }}" as="mo" hint-placeholder-count="4">
+                  <option value="{{ mo.value }}">{{ mo.label }}</option>
+                </sc-for>
+              </select>
+              <sc-if value="{{ !hasNoMessages }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ newChat }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer"><i data-lucide="plus" style="width:14px;height:14px"></i>New chat</button>
+              </sc-if>
+            </div>
+          </div>
+
+          <div class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">
+            <sc-if value="{{ hasNoMessages }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:16px">
+                <div style="font-weight:700;font-size:24px">Ask preceptaai anything</div>
+                <div style="font-size:13px;color:#6B7280;max-width:440px;line-height:1.5">Routed to an in-boundary backend, checked against policy, and written to the tamper-evident audit log — automatically.</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+                  <sc-for list="{{ suggestedPrompts }}" as="sp" hint-placeholder-count="3">
+                    <button onClick="{{ sp.onClick }}" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">{{ sp.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <sc-for list="{{ messages }}" as="m" hint-placeholder-count="0">
+              <div style="align-self:{{ m.align }};max-width:78%">
+                <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px;text-align:{{ m.textAlign }}">{{ m.who }}</div>
+                <div style="padding:12px 14px;background:{{ m.bg }};color:{{ m.color }};font-size:13.5px;line-height:1.55;border-radius:12px">{{ m.text }}</div>
+                <sc-if value="{{ m.hasMeta }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                    <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ m.metaBackendBg }};color:{{ m.metaBackendColor }}">{{ m.metaBackend }}</span>
+                    <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">{{ m.metaLatency }}</span>
+                    <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">{{ m.metaCost }}</span>
+                    <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:{{ m.metaPolicyBg }};color:{{ m.metaPolicyColor }}">{{ m.metaPolicy }}</span>
+                  </div>
+                  <div style="display:flex;gap:10px;margin-top:6px">
+                    <div onClick="{{ m.onThumbsUp }}" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;cursor:pointer"><i data-lucide="thumbs-up" style="width:14px;height:14px;color:{{ m.thumbsUpColor }}"></i></div>
+                    <div onClick="{{ m.onThumbsDown }}" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;cursor:pointer"><i data-lucide="thumbs-down" style="width:14px;height:14px;color:{{ m.thumbsDownColor }}"></i></div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-if value="{{ hasFollowUps }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{ followUpPrompts }}" as="fp" hint-placeholder-count="3">
+                  <button onClick="{{ fp.onClick }}" style="padding:7px 13px;border-radius:8px;font-size:12.5px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">{{ fp.label }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
+            <input style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="{{ chatInput }}" onChange="{{ setChatInput }}" onKeyDown="{{ handleChatKey }}"></input>
+            <button onClick="{{ sendMessage }}" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <sc-if value="{{ settingsOpen }}">
+    <div onClick="{{ closeSettings }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
+      <div onClick="{{ stopPropagation }}" style="background:#fff;border-radius:12px;width:100%;max-width:640px;height:520px;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #E5E7EB">
+          <div style="font-size:15px;font-weight:600">Settings</div>
+          <button onClick="{{ closeSettings }}" style="background:transparent;border:none;color:#6B7280;cursor:pointer;padding:4px"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+        </div>
+        <div style="flex:1;display:flex;overflow:hidden">
+          <div style="width:160px;flex:none;border-right:1px solid #E5E7EB;padding:12px 8px">
+            <sc-for list="{{ settingsTabs }}" as="tab" hint-placeholder-count="4">
+              <div onClick="{{ tab.onClick }}" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:{{ tab.activeBg }};color:{{ tab.textColor }};margin-bottom:2px">{{ tab.label }}</div>
+            </sc-for>
+          </div>
+          <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:20px 24px">
+            <sc-if value="{{ isSettingsGeneral }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Theme</div><div style="font-size:11px;color:#9CA3AF">Light, matching your brand</div></div>
+                <span style="font-size:12px;color:#6B7280">Light</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Organization name</div></div>
+                <input value="{{ orgName }}" onChange="{{ setOrgName }}" style="width:220px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;text-align:right"></input>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <div><div style="font-size:13px;font-weight:500">Default model</div></div>
+                <span style="font-size:12px;color:#6B7280;font-family:'JetBrains Mono',monospace">vllm/mistral-large-2411</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isSettingsSecurity }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Require reauth for policy changes</div><div style="font-size:11px;color:#9CA3AF">Admins confirm identity before editing policies</div></div>
+                <div onClick="{{ toggleRequireReauthPolicy }}" style="width:36px;height:20px;border-radius:10px;background:{{ requireReauthToggle.trackColor }};position:relative;cursor:pointer;flex:none">
+                  <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:{{ requireReauthToggle.knobPos }};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Session timeout</div></div>
+                <select value="{{ sessionTimeout }}" onChange="{{ setSessionTimeout }}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="240">4 hours</option>
+                  <option value="never">Never</option>
+                </select>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <div><div style="font-size:13px;font-weight:500">Manage security controls</div><div style="font-size:11px;color:#9CA3AF">In-boundary routing, egress lock, audit-on, residency</div></div>
+                <a href="#" onClick="{{ goToPoliciesFromSettings }}" style="font-size:12px">Open Policies →</a>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isSettingsData }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Data residency region</div><div style="font-size:11px;color:#9CA3AF">Set per backend when you add it, in Model plane</div></div>
+                <span style="font-size:12px;color:#6B7280">{{ regionsInUseLabel }}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Export audit log</div></div>
+                <button style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export CSV</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <div><div style="font-size:13px;font-weight:500">Audit log retention</div><div style="font-size:11px;color:#9CA3AF">How long signed audit entries are kept before purge</div></div>
+                <select value="{{ auditRetentionYears }}" onChange="{{ setAuditRetentionYears }}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">
+                  <sc-for list="{{ retentionYearOptions }}" as="ry" hint-placeholder-count="7">
+                    <option value="{{ ry.value }}">{{ ry.label }}</option>
+                  </sc-for>
+                </select>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isSettingsAccount }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Name</div></div>
+                <span style="font-size:12px;color:#6B7280">Sarang Kulkarni</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+                <div><div style="font-size:13px;font-weight:500">Role</div></div>
+                <span style="font-size:12px;color:#6B7280">Admin</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <div><div style="font-size:13px;font-weight:500">Members</div></div>
+                <a href="#" onClick="{{ goToMembersFromAccount }}" style="font-size:12px">4 seats — manage roles →</a>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isSettingsMembers }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.5">Login (Google SSO) just proves who someone is — role decides what they can do. <strong>Admin</strong>: everything. <strong>Budget admin</strong>: keys &amp; budgets only. <strong>Model approver</strong>: approves backends for sensitive data. <strong>Auditor</strong>: read-only, Audit &amp; Attestation only.</div>
+              <sc-for list="{{ members }}" as="m" hint-placeholder-count="4">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6">
+                  <div>
+                    <div style="font-size:13px;font-weight:500">{{ m.name }}</div>
+                    <div style="font-size:11px;color:#9CA3AF">{{ m.email }}</div>
+                  </div>
+                  <select style="padding:5px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff" value="{{ m.role }}" onChange="{{ m.onChangeRole }}">
+                    <option value="admin">Admin</option>
+                    <option value="budget_admin">Budget admin</option>
+                    <option value="model_approver">Model approver</option>
+                    <option value="user">User</option>
+                    <option value="auditor">Auditor</option>
+                  </select>
+                </div>
+              </sc-for>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div onClick="{{ toggleCopilot }}" style="position:fixed;right:24px;bottom:24px;width:52px;height:52px;border-radius:50%;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.25);z-index:60">
+    <i data-lucide="{{ copilotToggleIcon }}" style="width:20px;height:20px"></i>
+  </div>
+  <sc-if value="{{ copilotOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;right:24px;bottom:88px;width:360px;max-height:70vh;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);display:flex;flex-direction:column;z-index:60;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #F3F4F6;flex:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="sparkles" style="width:15px;height:15px;color:#3B82F6"></i>
+          <div style="font-weight:600;font-size:13.5px">Precepta Copilot</div>
+        </div>
+        <button onClick="{{ toggleCopilot }}" style="background:transparent;border:none;color:#6B7280;cursor:pointer;padding:2px"><i data-lucide="x" style="width:16px;height:16px"></i></button>
+      </div>
+      <div style="padding:12px 16px;font-size:11.5px;color:#9CA3AF;border-bottom:1px solid #F3F4F6;flex:none">Watching: {{ copilotScreenLabel }} — ask about backends, keys, policies or anything else on screen.</div>
+      <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:14px 16px">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+          <sc-for list="{{ copilotSuggestions }}" as="sg" hint-placeholder-count="4">
+            <div onClick="{{ sg.onClick }}" style="padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid #E5E7EB;background:#F9FAFB;color:#374151">{{ sg.label }}</div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ hasCopilotAnswer }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;font-size:13px;color:#111827;line-height:1.6;white-space:pre-wrap">{{ copilotAnswer }}</div>
+        </sc-if>
+      </div>
+      <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid #F3F4F6;flex:none">
+        <input value="{{ copilotQuery }}" onChange="{{ setCopilotQuery }}" placeholder="Ask anything…" style="flex:1;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box"></input>
+        <button onClick="{{ askCopilot }}" style="padding:8px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer;flex:none">Ask</button>
+      </div>
+    </div>
+  </sc-if>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;sovereignModeDefault&quot;: {&quot;editor&quot;:&quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;:&quot;boolean&quot;, &quot;section&quot;:&quot;Behavior&quot;}, &quot;startScreen&quot;: {&quot;editor&quot;:&quot;enum&quot;, &quot;default&quot;:&quot;onboarding&quot;, &quot;options&quot;:[&quot;onboarding&quot;,&quot;overview&quot;], &quot;tsType&quot;:&quot;string&quot;, &quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: this.props.startScreen === 'overview' ? 'overview' : 'onboarding',
+    isLoggedIn: true,
+    profileMenuOpen: false,
+    onboardStep: 0,
+    infraSelected: 'onprem',
+    infraEndpoint: '',
+    infraApiKey: '',
+    connectionStatus: 'idle',
+    showSetupToast: false,
+    securityControls: {
+      inBoundary: this.props.sovereignModeDefault ?? true,
+      egressLock: this.props.sovereignModeDefault ?? true,
+      auditOn: this.props.sovereignModeDefault ?? true,
+      residency: this.props.sovereignModeDefault ?? true,
+    },
+    egressProbeStatus: 'idle',
+    routeMode: 'cheapest',
+    routerBrain: 'classifier',
+    brainAdvancedOpen: false,
+    approvedBackends: ['vLLM cluster', 'Neysa'],
+    smartRoutingOn: true,
+    learningLoopEnabled: false,
+    cacheExactOn: true,
+    cacheSemanticOn: false,
+    compressionCostSavingOn: false,
+    compressionKeepCorpusConsent: false,
+    copilotQuery: '', copilotAnswer: '', copilotOpen: false,
+    backends: [
+      {name:'Ollama', model:'ollama/llama3.1-8b', location:'Local workstation', region:'local', inBoundary:true, gpuPct:null, vramGb:null, latencyMs:180, rpsVal:4.2, status:'healthy', weightPct:20, cost:'$0.00'},
+      {name:'vLLM cluster', model:'vllm/mistral-large-2411', location:'On-prem GPU (Pune DC)', region:'pune', inBoundary:true, gpuPct:62, vramGb:71, latencyMs:240, rpsVal:38.1, status:'healthy', weightPct:55, cost:'$0.00'},
+      {name:'Neysa', model:'neysa/qwen2-72b', location:'Sovereign cloud (Mumbai)', region:'mumbai', inBoundary:true, gpuPct:44, vramGb:48, latencyMs:310, rpsVal:21.7, status:'healthy', weightPct:25, cost:'$0.004'},
+      {name:'Hugging Face endpoint', model:'hf/llama-3.1-70b-instruct', location:'Dedicated inference endpoint', region:'other', inBoundary:true, gpuPct:51, vramGb:80, latencyMs:265, rpsVal:14.3, status:'healthy', weightPct:0, cost:'$0.006'},
+      {name:'OpenAI GPT-4o', model:'openai/gpt-4o', location:'External cloud (US)', region:'us', inBoundary:false, gpuPct:null, vramGb:null, latencyMs:null, rpsVal:0, status:'blocked', weightPct:0, cost:'$0.010'},
+    ],
+    addBackendOpen: false,
+    newBackendName: '', newBackendModel: '', newBackendLocation: '', newBackendRegion: 'mumbai', newBackendInBoundary: true,
+    newBackendType: 'onprem', newBackendEndpoint: '', newBackendKey: '',
+    apiKeys: [
+      {id:1, name:'Underwriting service', team:'Underwriting', assignee:'raj@lender.co', keyValue:'sk-precepta-8f2a1c9de74b3a01', expiryLabel:'in 78 days', dailyCostBudget:8, dailyCostUsed:5.4, monthlyCostBudget:200, monthlyCostUsed:132, status:'ok'},
+      {id:2, name:'Collections bot', team:'Collections', assignee:'priya@lender.co', keyValue:'sk-precepta-3b7e0a5f19cc4d22', expiryLabel:'in 15 days', dailyCostBudget:4, dailyCostUsed:3.7, monthlyCostBudget:100, monthlyCostUsed:96, status:'ok'},
+      {id:3, name:'Compliance desk (manual)', team:'Compliance', assignee:'ananya@lender.co', keyValue:'sk-precepta-c19d4e8a032f7b56', expiryLabel:'Never', dailyCostBudget:2, dailyCostUsed:2, monthlyCostBudget:40, monthlyCostUsed:40, status:'ok'},
+    ],
+    newKeyOpen: false, newKeyEditId: null, newKeyName: '', newKeyTeam: '', newKeyAssignee: '', newKeyExpiry: '90', newKeyDailyCost: '', newKeyMonthlyCost: '',
+    revealKeyOpen: false, revealKeyValue: '', revealKeyAssignee: '', revealKeyCopied: false,
+    deleteConfirmKey: null,
+    keyActionToast: '',
+    notifications: [], notifOpen: false,
+    policies: [
+      {id:1, name:'Block PAN / Aadhaar in prompts', desc:'Detects Indian govt ID patterns in request text and blocks the call.', actionType:'chat.completion', effect:'block', scope:{}, conditions:{piiFilterOutput:true}, enabled:true},
+      {id:2, name:'Mask PII in customer chat logs', desc:'Redacts names, phone numbers and emails before they reach the audit log.', actionType:'*', effect:'warn', scope:{teams:['Collections']}, conditions:{piiFilterOutput:true}, enabled:true},
+      {id:3, name:'Log all financial-advice queries', desc:'Flags investment/loan-advice intents for compliance review.', actionType:'chat.completion', effect:'audit', scope:{}, conditions:{}, enabled:true},
+      {id:4, name:'Rate limit by team', desc:'Caps requests per team to control cost.', actionType:'*', effect:'warn', scope:{teams:['Retail lending']}, conditions:{maxCallsPerHour:120}, enabled:false},
+      {id:5, name:'Restrict egress to allowlisted endpoints', desc:'Only in-boundary destinations may receive traffic — this is what backs in-boundary routing.', actionType:'http_request', effect:'block', scope:{}, conditions:{urlAllowlist:['vllm-cluster.internal','neysa.ai','localhost']}, enabled:true},
+    ],
+    newPolicyOpen: false,
+    newPolicyName: '', newPolicyDesc: '', newPolicyAction: 'chat.completion', newPolicyEffect: 'block',
+    newPolicyUrlAllow: '', newPolicyUrlBlock: '', newPolicyMaxTokens: '', newPolicyMaxCalls: '', newPolicyMaxCost: '',
+    newPolicyPii: false, newPolicyDataTag: false,
+    newPolicyScopeTeams: [], newPolicyScopeRoles: [], newPolicyScopeAgents: [], newPolicyScopeBackends: [], newPolicyScopeModels: [],
+    attestationOpen: false,
+    auditEventFilter: 'all',
+    expandedAuditHash: null,
+    settingsOpen: false, settingsTab: 'general',
+    orgName: 'Suvidha Finserv Pvt. Ltd.',
+    requireReauthPolicy: true, sessionTimeout: '30', auditRetentionYears: '7',
+    members: [
+      {name:'Sarang Kulkarni', email:'s.kulkarni@suvidha', role:'admin'},
+      {name:'Riya Iyer', email:'r.iyer@suvidha', role:'budget_admin'},
+      {name:'Aisha Mehta', email:'a.mehta@suvidha', role:'model_approver'},
+      {name:'Karan Shah', email:'k.shah@suvidha', role:'user'},
+      {name:'Compliance Desk', email:'compliance@suvidha', role:'auditor'},
+    ],
+    chatModel: 'vllm/mistral-large-2411',
+    chatInput: '',
+    messages: [],
+  };
+
+  auditLog = [
+    {time:'27 Jul, 09:41', actor:'svc-underwriting', event:'chat.completion', backend:'vllm cluster', outcome:'allowed', hash:'a91f…3c0e',
+      detail:[{label:'Request', value:'"Summarize this applicant\'s income documents for underwriting."'}, {label:'Response', value:'428 tokens returned, no policy flags.'}, {label:'Tokens in / out', value:'612 / 428'}]},
+    {time:'27 Jul, 09:38', actor:'a.mehta@suvidha', event:'chat.completion', backend:'neysa', outcome:'warned', hash:'7be2…91aa',
+      detail:[{label:'Request', value:'Prompt matched the PAN/Aadhaar pattern policy.'}, {label:'Response', value:'Answered, but flagged — PII pattern redacted before sending to model.'}, {label:'Policy triggered', value:'Block PAN / Aadhaar in prompts (warn mode)'}]},
+    {time:'27 Jul, 09:22', actor:'svc-collections', event:'chat.completion', backend:'openai/gpt-4o', outcome:'blocked', hash:'f10c…44b7'},
+    {time:'27 Jul, 08:55', actor:'r.iyer@suvidha', event:'policy.update', backend:'—', outcome:'allowed', hash:'2d6a…0f19',
+      detail:[{label:'Change', value:'Daily cost cap on "Collections bot" key raised from $3 to $4.'}]},
+    {time:'27 Jul, 08:47', actor:'svc-collections', event:'cache.hit', backend:'ollama', outcome:'allowed', hash:'6a01…e42f',
+      detail:[{label:'Request', value:'"What documents are needed to close this collections case?"'}, {label:'Matched cached response from', value:'Identical request served 14 minutes earlier (hash 9c4e…b820)'}, {label:'Response', value:'Reused cached answer — no new model call made.'}, {label:'Tokens served from cache', value:'342'}, {label:'Cost avoided', value:'$0.0009'}]},
+    {time:'27 Jul, 08:44', actor:'k.shah@suvidha', event:'compression.apply', backend:'neysa', outcome:'allowed', hash:'b318…9cd5',
+      detail:[{label:'Original prompt (before)', value:'"Please could you kindly go through the following text and, if at all possible, try to summarize it for me in a few sentences..."'}, {label:'Compressed prompt (after)', value:'"Summarize the following text in 2–3 sentences:"'}, {label:'Tokens before → after', value:'612 → 401 (−211)'}, {label:'Latency saved', value:'160ms'}, {label:'User notified', value:'Yes — cost-saving mode was on for this request'}]},
+    {time:'27 Jul, 08:40', actor:'svc-underwriting', event:'chat.completion', backend:'ollama', outcome:'allowed', hash:'9c4e…b820',
+      detail:[{label:'Request', value:'"What documents are needed to close this collections case?"'}, {label:'Response', value:'318 tokens returned, no policy flags.'}, {label:'Tokens in / out', value:'204 / 318'}]},
+    {time:'27 Jul, 08:12', actor:'a.mehta@suvidha', event:'attestation.export', backend:'—', outcome:'allowed', hash:'55f7…1de3',
+      detail:[{label:'Window', value:'Last 30 days'}, {label:'Signed by', value:'a.mehta@suvidha'}, {label:'Included', value:'Active backend set, security-control status, egress-test result, audit-chain verification'}]},
+  ];
+
+  actionOptions = [
+    {value:'*', label:'All actions'},
+    {value:'chat.completion', label:'AI inference (chat.completion)'},
+    {value:'retrieval', label:'RAG retrieval'},
+    {value:'http_request', label:'HTTP request (egress)'},
+    {value:'audit.export', label:'Audit export'},
+  ];
+  effectOptions = [
+    {value:'block', label:'Block', desc:'Hard stop — request fails, nothing is sent to a model.'},
+    {value:'warn', label:'Warn', desc:'Request proceeds; flagged in the audit log for review.'},
+    {value:'audit', label:'Audit only', desc:'Logged only — has no effect on execution.'},
+  ];
+
+  setScreen = (s) => this.setState({screen: s});
+  goToPolicies = () => this.setState({screen:'policies'});
+  goToAudit = () => this.setState({screen:'audit', auditEventFilter:'all'});
+  goToAuditFiltered = (filter) => this.setState({screen:'audit', auditEventFilter:filter});
+  setAuditEventFilter = (filter) => this.setState({auditEventFilter:filter});
+  toggleAuditRow = (hash) => this.setState(s => ({expandedAuditHash: s.expandedAuditHash === hash ? null : hash}));
+  skipOnboarding = (e) => { e.preventDefault(); this.setState({screen:'overview'}); };
+  selectInfra = (id) => this.setState({infraSelected: id, connectionStatus: 'idle'});
+  setInfraEndpoint = (e) => this.setState({infraEndpoint: e.target.value});
+  setInfraApiKey = (e) => this.setState({infraApiKey: e.target.value});
+  testConnection = () => {
+    this.setState({connectionStatus: 'testing'});
+    setTimeout(() => this.setState({connectionStatus: 'success'}), 700);
+  };
+  nextStep = () => {
+    if (this.state.onboardStep >= 2) {
+      this.setState({screen:'overview', showSetupToast:true});
+      this.pushNotification('Setup', 'Setup complete — infrastructure connected and security controls active.');
+      return;
+    }
+    this.setState(s => ({onboardStep: s.onboardStep + 1}));
+  };
+  prevStep = () => this.setState(s => ({onboardStep: Math.max(0, s.onboardStep - 1)}));
+  setRouteMode = (m) => this.setState({routeMode: m});
+  setRouterBrain = (b) => this.setState({routerBrain: b});
+  toggleApprovedBackend = (name) => this.setState(s => ({approvedBackends: s.approvedBackends.includes(name) ? s.approvedBackends.filter(n=>n!==name) : [...s.approvedBackends, name]}));
+  toggleSmartRouting = () => this.setState(s => ({smartRoutingOn: !s.smartRoutingOn}));
+  toggleLearningLoop = () => this.setState(s => ({learningLoopEnabled: !s.learningLoopEnabled}));
+  toggleCacheExact = () => this.setState(s => ({cacheExactOn: !s.cacheExactOn}));
+  toggleCacheSemantic = () => this.setState(s => ({cacheSemanticOn: !s.cacheSemanticOn}));
+  toggleCompressionCostSaving = () => this.setState(s => ({compressionCostSavingOn: !s.compressionCostSavingOn}));
+  toggleCompressionConsent = () => this.setState(s => ({compressionKeepCorpusConsent: !s.compressionKeepCorpusConsent}));
+  toggleBrainAdvanced = () => this.setState(s => ({brainAdvancedOpen: !s.brainAdvancedOpen}));
+  dismissSetupToast = () => this.setState({showSetupToast:false});
+
+  toggleControl = (key) => this.setState(s => {
+    const turningOn = !s.securityControls[key];
+    this.pushNotification('Policies', key + ' turned ' + (turningOn ? 'on' : 'off') + '.');
+    return {securityControls: {...s.securityControls, [key]: turningOn}};
+  });
+  runEgressProbe = () => {
+    this.setState({egressProbeStatus:'running'});
+    setTimeout(() => { this.setState({egressProbeStatus:'done'}); this.pushNotification('Audit', 'Egress probe completed — 0 unexpected external calls.'); }, 900);
+  };
+
+  openAddBackend = () => this.setState({addBackendOpen:true, newBackendName:'', newBackendModel:'', newBackendLocation:'', newBackendRegion:'mumbai', newBackendInBoundary:true, newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:''});
+  closeAddBackend = () => this.setState({addBackendOpen:false});
+  setNewBackendName = (e) => this.setState({newBackendName: e.target.value});
+  setNewBackendModel = (e) => this.setState({newBackendModel: e.target.value});
+  setNewBackendLocation = (e) => this.setState({newBackendLocation: e.target.value});
+  setNewBackendRegion = (e) => this.setState({newBackendRegion: e.target.value});
+  toggleNewBackendBoundary = () => this.setState(s => ({newBackendInBoundary: !s.newBackendInBoundary}));
+  toggleBackendBoundary = (idx) => this.setState(s => ({backends: s.backends.map((b,i) => i===idx ? {...b, inBoundary: !b.inBoundary} : b)}));
+  setOrgName = (e) => this.setState({orgName: e.target.value});
+  toggleRequireReauthPolicy = () => this.setState(s => ({requireReauthPolicy: !s.requireReauthPolicy}));
+  setSessionTimeout = (e) => this.setState({sessionTimeout: e.target.value});
+  setAuditRetentionYears = (e) => this.setState({auditRetentionYears: e.target.value});
+  pushNotification = (section, message) => this.setState(s => ({notifications: [{id: Date.now()+Math.random(), section, message, time: 'Just now', read: s.notifOpen}, ...s.notifications]}));
+  toggleNotif = () => this.setState(s => {
+    const opening = !s.notifOpen;
+    return {notifOpen: opening, notifications: opening ? s.notifications.map(n => ({...n, read:true})) : s.notifications};
+  });
+  setCopilotQuery = (e) => this.setState({copilotQuery: e.target.value});
+  toggleCopilot = () => this.setState(s => ({copilotOpen: !s.copilotOpen}));
+  computeCopilotAnswer(qRaw) {
+    const q = (qRaw||'').toLowerCase();
+    const backends = this.state.backends;
+    const mentioned = backends.filter(b => q.includes(b.name.toLowerCase()) || q.includes(b.name.split(' ')[0].toLowerCase()));
+    const fmtGpu = (b) => b.gpuPct==null ? 'no GPU load (CPU-only)' : b.gpuPct+'% GPU util (' + b.vramGb + 'GB VRAM)';
+    const fmtLat = (b) => b.latencyMs==null ? 'no live latency (blocked)' : b.latencyMs+'ms p50';
+    const fmtRps = (b) => b.rpsVal+' req/s';
+    const costNum = (b) => parseFloat(b.cost.replace('$','')) || 0;
+    if (mentioned.length >= 2) {
+      const [a, b] = mentioned;
+      const faster = a.rpsVal >= b.rpsVal ? a : b;
+      const cheaper = costNum(a) <= costNum(b) ? a : b;
+      return a.name+': '+fmtRps(a)+', '+fmtLat(a)+', '+fmtGpu(a)+', '+a.cost+'/1K tok.\n'+b.name+': '+fmtRps(b)+', '+fmtLat(b)+', '+fmtGpu(b)+', '+b.cost+'/1K tok.\n'+faster.name+' has the higher throughput; '+cheaper.name+' is cheaper per token.';
+    }
+    if (q.includes('cheap')) {
+      const cheapest = backends.reduce((m,b) => costNum(b) < costNum(m) ? b : m);
+      return cheapest.name+' is the cheapest at '+cheapest.cost+'/1K tok.';
+    }
+    if (q.includes('fast') || q.includes('throughput')) {
+      const fastest = backends.reduce((m,b) => b.rpsVal > m.rpsVal ? b : m);
+      return fastest.name+' has the highest throughput at '+fastest.rpsVal+' req/s.';
+    }
+    if (q.includes('gpu') || q.includes('util')) {
+      const withGpu = backends.filter(b => b.gpuPct != null);
+      const busiest = withGpu.length ? withGpu.reduce((m,b) => b.gpuPct > m.gpuPct ? b : m) : null;
+      return busiest ? busiest.name+' is running the hottest GPU at '+busiest.gpuPct+'% utilization ('+busiest.vramGb+'GB VRAM).' : 'No GPU-backed backend is currently under load.';
+    }
+    if (q.includes('latency') || q.includes('p50') || q.includes('slow')) {
+      const withLat = backends.filter(b => b.latencyMs != null);
+      const slowest = withLat.reduce((m,b) => b.latencyMs > m.latencyMs ? b : m);
+      const quickest = withLat.reduce((m,b) => b.latencyMs < m.latencyMs ? b : m);
+      return quickest.name+' responds quickest at '+quickest.latencyMs+'ms p50; '+slowest.name+' is slowest at '+slowest.latencyMs+'ms.';
+    }
+    if (mentioned.length === 1) {
+      const b = mentioned[0];
+      return b.name+': '+fmtGpu(b)+', '+fmtLat(b)+', '+fmtRps(b)+', '+b.cost+'/1K tok, carrying '+b.weightPct+'% of traffic.';
+    }
+    return 'I can compare backends on GPU load, latency, throughput or cost \u2014 try "compare vLLM cluster and Neysa" or "which backend is cheapest?"';
+  }
+  askCopilot = () => this.setState(s => ({copilotAnswer: this.computeCopilotAnswer(s.copilotQuery)}));
+  askCopilotPreset = (q) => this.setState({copilotQuery: q, copilotAnswer: this.computeCopilotAnswer(q)});
+  setNewBackendType = (t) => this.setState({newBackendType: t, newBackendInBoundary: t !== 'other'});
+  setNewBackendEndpoint = (e) => this.setState({newBackendEndpoint: e.target.value});
+  setNewBackendKey = (e) => this.setState({newBackendKey: e.target.value});
+  backendTypeMeta = () => ({
+    onprem: {label:'On-prem vLLM', modelPh:'vllm/mistral-large-2411', locationPh:'On-prem GPU (Pune DC)', endpointLabel:'vLLM base URL', endpointPh:'http://10.0.4.12:8000/v1', keyLabel:'Bearer token (optional)', keyPh:'sk-internal-…'},
+    local: {label:'Local Ollama', modelPh:'ollama/llama3.1-8b', locationPh:'Local workstation', endpointLabel:'Ollama base URL', endpointPh:'http://localhost:11434', keyLabel:'API key (not required locally)', keyPh:'leave blank for local'},
+    neysa: {label:'Neysa', modelPh:'neysa/qwen2-72b', locationPh:'Sovereign cloud (Mumbai)', endpointLabel:'Neysa workspace URL', endpointPh:'https://your-org.neysa.ai', keyLabel:'Neysa API key', keyPh:'neysa_live_…'},
+    hf: {label:'Hugging Face', modelPh:'hf/llama-3.1-70b-instruct', locationPh:'Dedicated inference endpoint', endpointLabel:'Endpoint URL', endpointPh:'https://xxxxx.endpoints.huggingface.cloud', keyLabel:'Access token', keyPh:'hf_…'},
+  });
+
+  addBackend = () => {
+    if (!this.state.newBackendName.trim()) { this.setState({addBackendOpen:false}); return; }
+    const meta = this.backendTypeMeta()[this.state.newBackendType];
+    this.setState(s => ({
+      backends: [...s.backends, {
+        name: s.newBackendName, model: s.newBackendModel || meta.modelPh, location: s.newBackendLocation || meta.locationPh, region: s.newBackendRegion,
+        inBoundary: s.newBackendInBoundary, gpuPct:null, vramGb:null, latencyMs:null, rpsVal:0, status:'healthy', weightPct:0, cost:'$0.00',
+      }],
+      addBackendOpen: false,
+    }));
+  };
+
+  setBackendCost = (idx, e) => this.setState(s => ({backends: s.backends.map((b,i) => i===idx ? {...b, cost: e.target.value} : b)}));
+
+  openNewKey = () => this.setState({newKeyOpen:true, newKeyEditId:null, newKeyName:'', newKeyTeam:'', newKeyAssignee:'', newKeyExpiry:'90', newKeyDailyCost:'', newKeyMonthlyCost:''});
+  openEditKey = (k) => {
+    const nearest = (label) => {
+      if (label === 'Never') return 'never';
+      const m = label.match(/(\d+)/);
+      const n = m ? parseInt(m[1],10) : 90;
+      if (n <= 45) return '30';
+      if (n <= 180) return '90';
+      return '365';
+    };
+    this.setState({
+      newKeyOpen: true, newKeyEditId: k.id, newKeyName: k.name, newKeyTeam: k.team, newKeyAssignee: k.assignee || '',
+      newKeyExpiry: nearest(k.expiryLabel), newKeyDailyCost: String(k.dailyCostBudget), newKeyMonthlyCost: String(k.monthlyCostBudget),
+    });
+  };
+  closeNewKey = () => this.setState({newKeyOpen:false, newKeyEditId:null});
+  setNewKeyName = (e) => this.setState({newKeyName: e.target.value});
+  setNewKeyTeam = (e) => this.setState({newKeyTeam: e.target.value});
+  setNewKeyAssignee = (e) => this.setState({newKeyAssignee: e.target.value});
+  setNewKeyExpiry = (e) => this.setState({newKeyExpiry: e.target.value});
+  setNewKeyDailyCost = (e) => this.setState({newKeyDailyCost: e.target.value});
+  setNewKeyMonthlyCost = (e) => this.setState({newKeyMonthlyCost: e.target.value});
+  genKeyValue = () => 'sk-precepta-' + Array.from({length:16}, () => Math.floor(Math.random()*16).toString(16)).join('');
+  addKey = () => {
+    const s = this.state;
+    if (!s.newKeyName.trim()) { this.setState({newKeyOpen:false, newKeyEditId:null}); return; }
+    const expiryLabel = s.newKeyExpiry === 'never' ? 'Never' : 'in ' + s.newKeyExpiry + ' days';
+    if (s.newKeyEditId) {
+      this.setState(st => ({
+        apiKeys: st.apiKeys.map(k => k.id === s.newKeyEditId ? {...k, name:s.newKeyName, team:s.newKeyTeam || 'Unassigned', assignee:s.newKeyAssignee, expiryLabel, dailyCostBudget: parseFloat(s.newKeyDailyCost)||k.dailyCostBudget, monthlyCostBudget: parseFloat(s.newKeyMonthlyCost)||k.monthlyCostBudget} : k),
+        newKeyOpen:false, newKeyEditId:null,
+      }));
+      this.pushNotification('Keys & budgets', 'Updated key "'+s.newKeyName+'".');
+      return;
+    }
+    const keyValue = this.genKeyValue();
+    this.setState(st => ({
+      apiKeys: [...st.apiKeys, {id:Date.now(), name:s.newKeyName, team:s.newKeyTeam || 'Unassigned', assignee:s.newKeyAssignee, keyValue, expiryLabel, dailyCostBudget: parseFloat(s.newKeyDailyCost)||5, dailyCostUsed:0, monthlyCostBudget: parseFloat(s.newKeyMonthlyCost)||100, monthlyCostUsed:0, status:'ok'}],
+      newKeyOpen:false,
+      revealKeyOpen: true, revealKeyValue: keyValue, revealKeyAssignee: s.newKeyAssignee, revealKeyCopied: false,
+    }));
+    this.pushNotification('Keys & budgets', 'Created key "'+s.newKeyName+'"'+(s.newKeyAssignee ? ' for '+s.newKeyAssignee : '')+'.');
+  };
+  copyKeyValue = (k) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(k.keyValue).catch(() => {});
+    this.setState({keyActionToast: 'Copied key for "'+k.name+'" to clipboard.'});
+    this._armKeyToastTimer();
+  };
+  closeRevealKey = () => this.setState({revealKeyOpen:false, revealKeyCopied:false});
+  copyRevealKey = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(this.state.revealKeyValue).catch(() => {});
+    this.setState({revealKeyCopied:true});
+  };
+  extendKey = (id) => {
+    const key = this.state.apiKeys.find(k => k.id === id);
+    if (!key || key.expiryLabel === 'Never') return;
+    const m = key.expiryLabel.match(/(\d+)/);
+    const n = (m ? parseInt(m[1],10) : 0) + 30;
+    const newLabel = 'in ' + n + ' days';
+    this.setState(s => ({apiKeys: s.apiKeys.map(k => k.id===id ? {...k, expiryLabel:newLabel} : k), keyActionToast: 'Extended "'+key.name+'" by 30 days — now expires '+newLabel+'.'}));
+    this.pushNotification('Keys & budgets', 'Extended "'+key.name+'" by 30 days — now expires '+newLabel+'.');
+    this._armKeyToastTimer();
+  };
+  deleteKey = (id) => this.setState(s => ({apiKeys: s.apiKeys.filter(k => k.id !== id)}));
+  openDeleteConfirm = (k) => this.setState({deleteConfirmKey: {id:k.id, name:k.name}});
+  closeDeleteConfirm = () => this.setState({deleteConfirmKey: null});
+  confirmSuspendKey = () => {
+    const dc = this.state.deleteConfirmKey; if (!dc) return;
+    this.setState(s => ({apiKeys: s.apiKeys.map(k => k.id===dc.id ? {...k, status:'suspended'} : k), deleteConfirmKey:null, keyActionToast: '"'+dc.name+'" suspended — it will reject all requests until reactivated.'}));
+    this.pushNotification('Keys & budgets', '"'+dc.name+'" suspended.');
+    this._armKeyToastTimer();
+  };
+  confirmDeleteKey = () => {
+    const dc = this.state.deleteConfirmKey; if (!dc) return;
+    this.deleteKey(dc.id);
+    this.setState({deleteConfirmKey:null, keyActionToast: '"'+dc.name+'" revoked permanently.'});
+    this.pushNotification('Keys & budgets', '"'+dc.name+'" revoked permanently.');
+    this._armKeyToastTimer();
+  };
+  reactivateKey = (id) => {
+    const key = this.state.apiKeys.find(k => k.id === id);
+    this.setState(s => ({apiKeys: s.apiKeys.map(k => k.id===id ? {...k, status:'ok'} : k), keyActionToast: key ? '"'+key.name+'" reactivated.' : ''}));
+    this.pushNotification('Keys & budgets', key ? '"'+key.name+'" reactivated.' : 'Key reactivated.');
+    this._armKeyToastTimer();
+  };
+  reactivateFromModal = () => this.reactivateKey(this.state.newKeyEditId);
+  dismissKeyToast = () => this.setState({keyActionToast:''});
+  _armKeyToastTimer = () => { clearTimeout(this._keyToastTimeout); this._keyToastTimeout = setTimeout(() => this.setState({keyActionToast:''}), 4500); };
+
+  openNewPolicy = () => this.setState({
+    newPolicyOpen:true, newPolicyName:'', newPolicyDesc:'', newPolicyAction:'chat.completion', newPolicyEffect:'block',
+    newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxTokens:'', newPolicyMaxCalls:'', newPolicyMaxCost:'',
+    newPolicyPii:false, newPolicyDataTag:false,
+    newPolicyScopeTeams:[], newPolicyScopeRoles:[], newPolicyScopeAgents:[], newPolicyScopeBackends:[], newPolicyScopeModels:[],
+  });
+  closeNewPolicy = () => this.setState({newPolicyOpen:false});
+  setNewPolicyName = (e) => this.setState({newPolicyName: e.target.value});
+  setNewPolicyDesc = (e) => this.setState({newPolicyDesc: e.target.value});
+  setNewPolicyAction = (e) => this.setState({newPolicyAction: e.target.value});
+  setNewPolicyEffect = (e) => this.setState({newPolicyEffect: e.target.value});
+  setNewPolicyUrlAllow = (e) => this.setState({newPolicyUrlAllow: e.target.value});
+  setNewPolicyUrlBlock = (e) => this.setState({newPolicyUrlBlock: e.target.value});
+  setNewPolicyMaxTokens = (e) => this.setState({newPolicyMaxTokens: e.target.value});
+  setNewPolicyMaxCalls = (e) => this.setState({newPolicyMaxCalls: e.target.value});
+  setNewPolicyMaxCost = (e) => this.setState({newPolicyMaxCost: e.target.value});
+  toggleNewPolicyPii = () => this.setState(s => ({newPolicyPii: !s.newPolicyPii}));
+  toggleNewPolicyDataTag = () => this.setState(s => ({newPolicyDataTag: !s.newPolicyDataTag}));
+  toggleScopeValue = (dim, value) => this.setState(s => {
+    const key = 'newPolicyScope' + dim;
+    const arr = s[key];
+    return {[key]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]};
+  });
+  addPolicy = () => {
+    const s = this.state;
+    if (!s.newPolicyName.trim()) { this.setState({newPolicyOpen:false}); return; }
+    const conditions = {};
+    if (s.newPolicyUrlAllow.trim()) conditions.urlAllowlist = s.newPolicyUrlAllow.split(',').map(x=>x.trim()).filter(Boolean);
+    if (s.newPolicyUrlBlock.trim()) conditions.urlBlocklist = s.newPolicyUrlBlock.split(',').map(x=>x.trim()).filter(Boolean);
+    if (s.newPolicyMaxTokens) conditions.maxTokensPerDay = parseInt(s.newPolicyMaxTokens);
+    if (s.newPolicyMaxCalls) conditions.maxCallsPerHour = parseInt(s.newPolicyMaxCalls);
+    if (s.newPolicyMaxCost) conditions.maxDailyCostUsd = parseFloat(s.newPolicyMaxCost);
+    if (s.newPolicyPii) conditions.piiFilterOutput = true;
+    if (s.newPolicyDataTag) conditions.requireDataTag = true;
+    const scope = {teams: s.newPolicyScopeTeams, roles: s.newPolicyScopeRoles, agents: s.newPolicyScopeAgents, backends: s.newPolicyScopeBackends, models: s.newPolicyScopeModels};
+    this.setState(st => ({
+      policies: [...st.policies, {id: Date.now(), name: s.newPolicyName, desc: s.newPolicyDesc || 'Custom policy.', actionType: s.newPolicyAction, effect: s.newPolicyEffect, scope, conditions, enabled:true}],
+      newPolicyOpen: false,
+    }));
+  };
+  togglePolicy = (id) => this.setState(s => ({policies: s.policies.map(p => p.id===id ? {...p, enabled: !p.enabled} : p)}));
+
+  openAttestation = () => this.setState({attestationOpen:true});
+  closeAttestation = () => this.setState({attestationOpen:false});
+  stopPropagation = (e) => e.stopPropagation();
+  verifyChain = () => {};
+
+  openSettings = () => this.setState({settingsOpen:true});
+  signIn = () => this.setState({isLoggedIn:true});
+  signOut = () => this.setState({isLoggedIn:false, profileMenuOpen:false, settingsOpen:false});
+  toggleProfileMenu = () => this.setState(s => ({profileMenuOpen: !s.profileMenuOpen}));
+  closeSettings = () => this.setState({settingsOpen:false});
+  setSettingsTab = (t) => this.setState({settingsTab: t});
+  goToMembersFromAccount = (e) => { e.preventDefault(); this.setState({settingsTab:'members'}); };
+  setMemberRole = (idx, role) => this.setState(s => ({members: s.members.map((m,i) => i===idx ? {...m, role} : m)}));
+  goToPoliciesFromSettings = (e) => { e.preventDefault(); this.setState({settingsOpen:false, screen:'policies'}); };
+
+  setChatModel = (e) => this.setState({chatModel: e.target.value});
+  setChatInput = (e) => this.setState({chatInput: e.target.value});
+  setMessageFeedback = (idx, val) => this.setState(s => ({messages: s.messages.map((m,i) => i===idx ? {...m, feedback: m.feedback===val ? null : val} : m)}));
+  handleChatKey = (e) => { if (e.key === 'Enter') this.sendMessage(); };
+  newChat = () => this.setState({messages:[], chatInput:''});
+  sendPreset = (text, model) => {
+    this.setState({chatInput: text, ...(model ? {chatModel: model} : {})}, () => this.sendMessage());
+  };
+  sendMessage = () => {
+    const text = this.state.chatInput.trim();
+    if (!text) return;
+    const blocked = this.state.chatModel.startsWith('openai') && this.state.securityControls.inBoundary;
+    const userMsg = {who:'You', text, align:'flex-end', textAlign:'right', bg:'#3B82F6', color:'#fff', hasMeta:false};
+    this.setState(s => ({messages: [...s.messages, userMsg], chatInput:''}));
+    setTimeout(() => {
+      let reply;
+      if (blocked) {
+        reply = {
+          who:'preceptaai', text:'Request blocked by policy: route to openai/gpt-4o is out-of-boundary while in-boundary routing is on.',
+          align:'flex-start', textAlign:'left', bg:'#FEF2F2', color:'#991B1B', hasMeta:true,
+          metaBackendBg:'#F3F4F6', metaBackendColor:'#6B7280', metaBackend:'backend: none', metaLatency:'latency: —', metaCost:'cost: $0.00',
+          metaPolicyBg:'#FEF2F2', metaPolicyColor:'#991B1B', metaPolicy:'policy: blocked',
+        };
+      } else {
+        reply = {
+          who:'preceptaai', text:'Based on the applicant\'s repayment history and current DPD status, a restructured EMI plan over 18 months would bring the account current without breaching the internal risk threshold.',
+          align:'flex-start', textAlign:'left', bg:'#F3F4F6', color:'#111827', hasMeta:true,
+          metaBackendBg:'#F3F4F6', metaBackendColor:'#374151', metaBackend:'backend: ' + this.state.chatModel, metaLatency:'latency: 260ms', metaCost:'cost: $0.002',
+          metaPolicyBg:'#ECFDF5', metaPolicyColor:'#065F46', metaPolicy:'policy: allowed',
+        };
+      }
+      this.setState(s => ({messages: [...s.messages, reply]}));
+    }, 500);
+  };
+
+  componentDidMount() { this.iconTimer = setInterval(() => window.lucide && window.lucide.createIcons(), 200); }
+  componentWillUnmount() { clearInterval(this.iconTimer); }
+
+  renderVals() {
+    const s = this.state;
+    const sc = s.securityControls;
+    const activeCount = Object.values(sc).filter(Boolean).length;
+
+    const nav = [
+      {key:'onboarding', label:'Setup', icon:'rocket'},
+      {key:'overview', label:'Overview', icon:'layout-dashboard'},
+      {key:'modelplane', label:'Model plane', icon:'server'},
+      {key:'keys', label:'Keys & budgets', icon:'key'},
+      {key:'policies', label:'Policies', icon:'shield'},
+      {key:'savings', label:'Cache & compression', icon:'zap'},
+      {key:'audit', label:'Audit & Attestation', icon:'file-check'},
+      {key:'playground', label:'Playground', icon:'message-square'},
+    ];
+    const navItems = nav.map(n => ({
+      label: n.label, icon: n.icon,
+      activeBg: n.key === s.screen ? '#EFF6FF' : 'transparent',
+      textColor: n.key === s.screen ? '#1D4ED8' : '#6B7280',
+      weight: n.key === s.screen ? 600 : 500,
+      onClick: () => this.setScreen(n.key),
+    }));
+
+    const steps = ['Connect infra','Network boundary','Review & finish'].map((title, i) => ({
+      num: i+1, title,
+      barColor: i <= s.onboardStep ? '#3B82F6' : '#E5E7EB',
+      numColor: i <= s.onboardStep ? '#1D4ED8' : '#9CA3AF',
+    }));
+
+    const infraOptions = [
+      {id:'onprem', name:'On-prem GPUs (vLLM)', desc:'Serve on your own GPU cluster.', icon:'server'},
+      {id:'local', name:'Local (Ollama)', desc:'Run models on a workstation for dev/test.', icon:'laptop'},
+      {id:'neysa', name:'Neysa sovereign cloud', desc:'Sovereign, in-region managed GPUs.', icon:'cloud'},
+      {id:'hf', name:'Hugging Face (dedicated endpoint)', desc:'Your own private inference endpoint — not the shared public API.', icon:'box'},
+    ].map(o => ({...o, selected: o.id===s.infraSelected ? '#3B82F6' : '#E5E7EB', bg: o.id===s.infraSelected ? '#EFF6FF' : '#fff', onClick: () => this.selectInfra(o.id)}));
+
+    const infraMeta = {
+      onprem: {name:'On-prem GPUs (vLLM)', credTitle:'Point us at your vLLM endpoint', credDesc:'We call this over your internal network only — it never touches the public internet.', endpointLabel:'vLLM base URL', endpointPh:'http://10.0.4.12:8000/v1', keyLabel:'Bearer token (optional)', keyPh:'sk-internal-…'},
+      local: {name:'Local (Ollama)', credTitle:'Point us at your local Ollama instance', credDesc:'Usually running on the same machine — no key needed for local dev/test.', endpointLabel:'Ollama base URL', endpointPh:'http://localhost:11434', keyLabel:'API key (not required locally)', keyPh:'leave blank for local'},
+      neysa: {name:'Neysa sovereign cloud', credTitle:'Connect your Neysa account', credDesc:'Your workspace credentials — traffic stays in-region (Mumbai).', endpointLabel:'Neysa workspace URL', endpointPh:'https://your-org.neysa.ai', keyLabel:'Neysa API key', keyPh:'neysa_live_…'},
+      hf: {name:'Hugging Face (dedicated endpoint)', credTitle:'Connect your dedicated Inference Endpoint', credDesc:'A private endpoint you control — not the shared public API, so nothing leaves your boundary.', endpointLabel:'Endpoint URL', endpointPh:'https://xxxxx.endpoints.huggingface.cloud', keyLabel:'Access token', keyPh:'hf_…'},
+    }[s.infraSelected];
+    const btMetaMap = this.backendTypeMeta();
+    const btMeta = btMetaMap[s.newBackendType] || btMetaMap.onprem;
+    const newBackendTypeOptions = Object.keys(btMetaMap).map(key => ({
+      label: btMetaMap[key].label,
+      bg: key===s.newBackendType ? '#EFF6FF' : '#fff', color: key===s.newBackendType ? '#1D4ED8' : '#374151',
+      borderColor: key===s.newBackendType ? '#93C5FD' : '#E5E7EB',
+      onClick: () => this.setNewBackendType(key),
+    }));
+    const connStatusMap = {
+      idle: null,
+      testing: {label:'Testing…', bg:'#F3F4F6', color:'#6B7280'},
+      success: {label:'Connected', bg:'#ECFDF5', color:'#065F46'},
+    };
+    const connStatus = connStatusMap[s.connectionStatus];
+
+    const maxCost = Math.max(...s.backends.map(b => parseFloat((b.cost||'$0').replace('$','')) || 0), 0.001);
+    const backends = s.backends.map((b, i) => ({
+      ...b,
+      boundaryBg: b.inBoundary ? '#F3F4F6' : '#FEF2F2',
+      boundaryColor: b.inBoundary ? '#374151' : '#991B1B',
+      boundaryLabel: b.inBoundary ? 'In your network' : 'Leaves your network',
+      statusBg: b.status==='healthy' ? '#ECFDF5' : '#FEF2F2',
+      statusColor: b.status==='healthy' ? '#065F46' : '#991B1B',
+      statusLabel: b.status==='healthy' ? 'Healthy' : 'Blocked',
+      onToggleBoundary: () => this.toggleBackendBoundary(i),
+      onCostChange: (e) => this.setBackendCost(i, e),
+      gpuBarPct: b.gpuPct==null?0:b.gpuPct,
+      gpuBarColor: b.gpuPct==null?'#E5E7EB':b.gpuPct>80?'#DC2626':b.gpuPct>55?'#F59E0B':'#3B82F6',
+      gpuLabel: b.gpuPct==null?'—':b.gpuPct+'% · '+b.vramGb+'GB',
+      latBarPct: b.latencyMs==null?0:Math.min(100, Math.round(b.latencyMs/400*100)),
+      latBarColor: b.latencyMs==null?'#E5E7EB':b.latencyMs>350?'#DC2626':b.latencyMs>250?'#F59E0B':'#10B981',
+      latLabel: b.latencyMs==null?'—':b.latencyMs+'ms',
+      rpsBarPct: Math.min(100, Math.round((b.rpsVal/45)*100)),
+      rpsLabel: b.rpsVal+' req/s',
+      weightBarPct: b.weightPct,
+      weightLabel: b.weightPct+'%',
+      costBarPct: Math.min(100, Math.round((parseFloat(b.cost.replace('$',''))||0)/maxCost*100)),
+    }));
+
+    const copilotSuggestions = ['Compare vLLM cluster and Neysa', 'Which backend is cheapest?', 'Which is fastest?', 'Which GPU is hottest?'].map(q => ({label: q, onClick: () => this.askCopilotPreset(q)}));
+
+    const statTiles = [
+      {label:'Requests (24h)', value:'2,148', sub:'+9% vs yesterday', subColor:'#6B7280'},
+      {label:'External calls', value:'0', sub:'zero egress, as designed', subColor:'#6B7280'},
+      {label:'Policy blocks', value:'6', sub:'all out-of-boundary routes', subColor:'#6B7280'},
+      {label:'Avg cost / req', value:'$0.0018', sub:'own infra + open models', subColor:'#6B7280'},
+    ];
+
+    const barVals = [40,55,35,60,80,65,90,75,50,60,45,70];
+    const chartBars = barVals.map((v,i) => ({height: v+'%', color: i===6 ? '#3B82F6' : '#E5E7EB', label: v+' req'}));
+
+    const routeModeCards = [
+      {key:'explicit', label:'Manual', isDefault:false, plainDesc:'You choose the exact backend for each request in your code. Nothing is automatic.'},
+      {key:'cheapest', label:'Cheapest', isDefault:true, plainDesc:'Always uses whichever connected backend costs the least. Good default — saves money with no setup.'},
+      {key:'intent', label:'Automatic', isDefault:false, plainDesc:'Sends simple requests to a cheap backend and hard ones to a stronger backend, on its own.'},
+    ].map(r => ({
+      label:r.label, plainDesc:r.plainDesc, isDefault:r.isDefault, selected: r.key===s.routeMode,
+      bg: r.key===s.routeMode ? '#EFF6FF' : '#fff', borderColor: r.key===s.routeMode ? '#93C5FD' : '#E5E7EB', dotBorder: r.key===s.routeMode ? '#3B82F6' : '#D1D5DB',
+      onClick: () => this.setRouteMode(r.key),
+    }));
+
+    const routerBrainCards = [
+      {key:'classifier', label:'Fast pass (default)', plainDesc:'A small local model glances at each request and decides — quick and consistent.'},
+      {key:'rules', label:'Simple rules', plainDesc:'Fixed if-this-then-that logic, no model involved — easiest to explain to an auditor.'},
+      {key:'llm', label:'Closer look', plainDesc:'Unusual or hard requests get a second, slower look before routing.'},
+    ].map(r => ({
+      label:r.label, plainDesc:r.plainDesc, selected: r.key===s.routerBrain,
+      bg: r.key===s.routerBrain ? '#EFF6FF' : '#fff', borderColor: r.key===s.routerBrain ? '#93C5FD' : '#E5E7EB', dotBorder: r.key===s.routerBrain ? '#3B82F6' : '#D1D5DB',
+      onClick: () => this.setRouterBrain(r.key),
+    }));
+    const brainAdvancedIcon = s.brainAdvancedOpen ? 'chevron-down' : 'chevron-right';
+
+    const effectStyles = {block:{bg:'#FEF2F2',color:'#991B1B'}, warn:{bg:'#FFFBEB',color:'#92400E'}, audit:{bg:'#EFF6FF',color:'#1D4ED8'}};
+    const conditionChips = (c) => {
+      const chips = [];
+      if (c.urlAllowlist) chips.push('allowlist: ' + c.urlAllowlist.length + ' domain' + (c.urlAllowlist.length>1?'s':''));
+      if (c.urlBlocklist) chips.push('blocklist: ' + c.urlBlocklist.length + ' domain' + (c.urlBlocklist.length>1?'s':''));
+      if (c.maxTokensPerDay) chips.push(c.maxTokensPerDay.toLocaleString() + ' tokens/day');
+      if (c.maxCallsPerHour) chips.push(c.maxCallsPerHour + ' calls/hour');
+      if (c.maxDailyCostUsd) chips.push('$' + c.maxDailyCostUsd + '/day cap');
+      if (c.piiFilterOutput) chips.push('PII filter on');
+      if (c.requireDataTag) chips.push('requires data tag');
+      return chips;
+    };
+    const roleLabelsMap = {admin:'Admin', budget_admin:'Budget admin', model_approver:'Model approver', user:'User', auditor:'Auditor'};
+    const policies = s.policies.map(p => {
+      const sc = p.scope || {};
+      const scopeChips = [];
+      if (sc.teams && sc.teams.length) scopeChips.push('team: ' + sc.teams.join(', '));
+      if (sc.roles && sc.roles.length) scopeChips.push('role: ' + sc.roles.map(v => roleLabelsMap[v]||v).join(', '));
+      if (sc.agents && sc.agents.length) scopeChips.push('key: ' + sc.agents.map(id => ((s.apiKeys.find(k=>String(k.id)===id))||{}).name || id).join(', '));
+      if (sc.backends && sc.backends.length) scopeChips.push('backend: ' + sc.backends.join(', '));
+      if (sc.models && sc.models.length) scopeChips.push('model: ' + sc.models.join(', '));
+      const chips = [...scopeChips, ...conditionChips(p.conditions || {})];
+      return {
+        ...p,
+        effectBg: effectStyles[p.effect].bg, effectColor: effectStyles[p.effect].color,
+        effectLabel: p.effect.toUpperCase(),
+        actionLabel: (this.actionOptions.find(a => a.value===p.actionType) || {label:p.actionType}).label,
+        toggleLabel: p.enabled ? 'Disable' : 'Enable',
+        onToggle: () => this.togglePolicy(p.id),
+        chips, hasChips: chips.length > 0,
+      };
+    });
+
+    const outcomeStyles = {blocked:{bg:'#FEF2F2',color:'#991B1B'}, warned:{bg:'#FFFBEB',color:'#92400E'}, allowed:{bg:'#F3F4F6',color:'#374151'}};
+    const eventMeta = {
+      'chat.completion': {label:'Chat completion', group:'chat', bg:'#F3F4F6', color:'#374151'},
+      'cache.hit': {label:'Cache hit', group:'cache', bg:'#EFF6FF', color:'#1D4ED8'},
+      'compression.apply': {label:'Compression applied', group:'cache', bg:'#EFF6FF', color:'#1D4ED8'},
+      'policy.update': {label:'Policy update', group:'policy', bg:'#F5F3FF', color:'#6D28D9'},
+      'attestation.export': {label:'Attestation export', group:'attestation', bg:'#ECFDF5', color:'#065F46'},
+    };
+    const auditFilterOptions = [
+      {value:'all', label:'All events'}, {value:'chat', label:'Chat'}, {value:'cache', label:'Cache & compression'},
+      {value:'policy', label:'Policy'}, {value:'attestation', label:'Attestation'},
+    ];
+    const auditEventFilterChips = auditFilterOptions.map(o => ({
+      value:o.value, label:o.label, onClick: () => this.setAuditEventFilter(o.value),
+      bg: s.auditEventFilter===o.value ? '#111827' : '#fff', color: s.auditEventFilter===o.value ? '#fff' : '#374151',
+      borderColor: s.auditEventFilter===o.value ? '#111827' : '#E5E7EB',
+    }));
+    const allAuditRows = this.auditLog.map(r => {
+      const meta = eventMeta[r.event] || {label:r.event, group:'other', bg:'#F3F4F6', color:'#374151'};
+      return {...r, outcomeBg: outcomeStyles[r.outcome].bg, outcomeColor: outcomeStyles[r.outcome].color, outcomeLabel: r.outcome.charAt(0).toUpperCase()+r.outcome.slice(1),
+        eventLabel: meta.label, eventBg: meta.bg, eventColor: meta.color, eventGroup: meta.group,
+        isExpanded: s.expandedAuditHash === r.hash, onToggle: () => this.toggleAuditRow(r.hash), expandIcon: s.expandedAuditHash === r.hash ? 'chevron-down' : 'chevron-right'};
+    });
+    const auditLog = s.auditEventFilter==='all' ? allAuditRows : allAuditRows.filter(r => r.eventGroup === s.auditEventFilter);
+    const isAuditFiltered = s.auditEventFilter !== 'all';
+    const auditFilterLabel = (auditFilterOptions.find(o => o.value===s.auditEventFilter) || {}).label || '';
+
+    const modelOptions = [
+      {value:'ollama/llama3.1-8b', label:'ollama / llama3.1-8b'},
+      {value:'vllm/mistral-large-2411', label:'vllm / mistral-large-2411'},
+      {value:'neysa/qwen2-72b', label:'neysa / qwen2-72b'},
+      {value:'hf/llama-3.1-70b-instruct', label:'hf / llama-3.1-70b-instruct'},
+      {value:'openai/gpt-4o', label:'openai / gpt-4o (external)'},
+    ];
+
+    const controlDefs = [
+      {key:'inBoundary', icon:'shield-check', label:'In-boundary-only routing', desc:'The router can only send requests to backends flagged in-boundary. Anything else is blocked before it leaves.', hasProbe:false},
+      {key:'egressLock', icon:'wifi-off', label:'Egress lock', desc:'Deny-all network egress except your allowlisted endpoints, enforced at the network layer — not just in the app.', hasProbe:true},
+      {key:'auditOn', icon:'file-check-2', label:'Audit logging', desc:'Every request, decision and policy check is written to the tamper-evident log. Turning this off stops new entries.', hasProbe:false},
+      {key:'residency', icon:'map-pin', label:'Residency policy', desc:'A built-in rule asserting data-classification and residency requirements for your jurisdiction (DPDP).', hasProbe:false},
+    ];
+    const probeStatusText = {idle:'Last probe: 27 Jul, 09:14 IST — blocked / none', running:'Probing…', done:'Just now — blocked / none ✓'}[s.egressProbeStatus];
+    const probeButtonLabel = s.egressProbeStatus==='running' ? 'Running…' : 'Run probe';
+    const securityControls = controlDefs.map(c => ({
+      ...c,
+      iconColor: sc[c.key] ? '#3B82F6' : '#9CA3AF',
+      trackColor: sc[c.key] ? '#3B82F6' : '#E5E7EB',
+      knobPos: sc[c.key] ? '18px' : '2px',
+      onToggle: () => this.toggleControl(c.key),
+      egressProbeStatusText: probeStatusText,
+      egressProbeButtonLabel: probeButtonLabel,
+    }));
+
+    const settingsTabDefs = [
+      {key:'general', label:'General'},
+      {key:'security', label:'Security'},
+      {key:'data', label:'Data controls'},
+      {key:'account', label:'Account'},
+      {key:'members', label:'Members & roles'},
+    ];
+    const settingsTabs = settingsTabDefs.map(t => ({
+      label: t.label,
+      activeBg: s.settingsTab===t.key ? '#EFF6FF' : 'transparent',
+      textColor: s.settingsTab===t.key ? '#1D4ED8' : '#6B7280',
+      onClick: () => this.setSettingsTab(t.key),
+    }));
+
+    const mkToggle = (on) => ({trackColor: on ? '#3B82F6' : '#E5E7EB', knobPos: on ? '18px' : '2px'});
+    const smartRoutingToggle = mkToggle(s.smartRoutingOn);
+    const learningLoopToggle = mkToggle(s.learningLoopEnabled);
+    const cacheExactToggle = mkToggle(s.cacheExactOn);
+    const cacheSemanticToggle = mkToggle(s.cacheSemanticOn);
+    const compressionCostSavingToggle = mkToggle(s.compressionCostSavingOn);
+    const requireReauthToggle = mkToggle(s.requireReauthPolicy);
+    const regionOptions = [
+      {value:'mumbai', label:'India (Mumbai)'}, {value:'pune', label:'India (Pune)'},
+      {value:'eu', label:'European Union'}, {value:'us', label:'United States'},
+      {value:'local', label:'Local / on-device'}, {value:'other', label:'Other / custom'},
+    ];
+    const regionLabelMap = Object.fromEntries(regionOptions.map(r => [r.value, r.label]));
+    const regionsInUseLabel = [...new Set(s.backends.map(b => regionLabelMap[b.region] || b.region))].join(', ') || '—';
+    const retentionYearOptions = [1,2,3,4,5,6,7].map(y => ({value:String(y), label: y+' year'+(y>1?'s':'')}));
+
+    const approvedBackendChips = backends.filter(b => b.inBoundary).map(b => ({
+      name: b.name, selected: s.approvedBackends.includes(b.name),
+      bg: s.approvedBackends.includes(b.name) ? '#EFF6FF' : '#fff',
+      color: s.approvedBackends.includes(b.name) ? '#1D4ED8' : '#374151',
+      borderColor: s.approvedBackends.includes(b.name) ? '#93C5FD' : '#E5E7EB',
+      onClick: () => this.toggleApprovedBackend(b.name),
+    }));
+
+    const mkScopeChips = (options, selectedArr, dim) => options.map(o => {
+      const selected = selectedArr.includes(o.value);
+      return {value:o.value, label:o.label, onClick: () => this.toggleScopeValue(dim, o.value),
+        bg: selected ? '#EFF6FF' : '#fff', color: selected ? '#1D4ED8' : '#374151', borderColor: selected ? '#93C5FD' : '#E5E7EB'};
+    });
+    const scopeTeamChips = mkScopeChips([...new Set(s.apiKeys.map(k => k.team))].map(t => ({value:t, label:t})), s.newPolicyScopeTeams, 'Teams');
+    const scopeRoleChips = mkScopeChips(Object.keys(roleLabelsMap).map(v => ({value:v, label:roleLabelsMap[v]})), s.newPolicyScopeRoles, 'Roles');
+    const scopeAgentChips = mkScopeChips(s.apiKeys.map(k => ({value:String(k.id), label:k.name})), s.newPolicyScopeAgents, 'Agents');
+    const scopeBackendChips = mkScopeChips(backends.map(b => ({value:b.name, label:b.name})), s.newPolicyScopeBackends, 'Backends');
+    const scopeModelChips = mkScopeChips([...new Set(backends.map(b => b.model))].map(m => ({value:m, label:m})), s.newPolicyScopeModels, 'Models');
+    const scopeParts = [];
+    if (s.newPolicyScopeTeams.length) scopeParts.push('team ' + s.newPolicyScopeTeams.join('/'));
+    if (s.newPolicyScopeRoles.length) scopeParts.push('role ' + s.newPolicyScopeRoles.map(v => roleLabelsMap[v]||v).join('/'));
+    if (s.newPolicyScopeAgents.length) scopeParts.push('key ' + s.newPolicyScopeAgents.map(id => ((s.apiKeys.find(k=>String(k.id)===id))||{}).name || id).join('/'));
+    if (s.newPolicyScopeBackends.length) scopeParts.push('backend ' + s.newPolicyScopeBackends.join('/'));
+    if (s.newPolicyScopeModels.length) scopeParts.push('model ' + s.newPolicyScopeModels.join('/'));
+    const scopeExplainer = scopeParts.length ? ('Applies only when ALL of these match: ' + scopeParts.join(' AND ') + '.') : 'Applies to every request, regardless of team, role, key, backend or model.';
+
+    const keyStatusStyles = {ok:{bg:'#ECFDF5',color:'#065F46',label:'OK'}, near:{bg:'#FFFBEB',color:'#92400E',label:'Near limit'}, blocked:{bg:'#FEF2F2',color:'#991B1B',label:'Blocked'}, suspended:{bg:'#F3F4F6',color:'#6B7280',label:'Suspended'}};
+    const apiKeys = s.apiKeys.map(k => {
+      const dailyPct = Math.min(100, Math.round(k.dailyCostUsed / k.dailyCostBudget * 100));
+      const monthlyPct = Math.min(100, Math.round(k.monthlyCostUsed / k.monthlyCostBudget * 100));
+      const barColor = (pct) => pct>=100 ? '#DC2626' : pct>=80 ? '#F59E0B' : '#3B82F6';
+      const rawDailyPct = k.dailyCostUsed / k.dailyCostBudget * 100, rawMonthlyPct = k.monthlyCostUsed / k.monthlyCostBudget * 100;
+      const effectiveStatus = k.status === 'suspended' ? 'suspended'
+        : (rawDailyPct >= 100 || rawMonthlyPct >= 100) ? 'blocked'
+        : (rawDailyPct >= 80 || rawMonthlyPct >= 80) ? 'near' : 'ok';
+      return {
+        ...k, dailyPct, monthlyPct, status: effectiveStatus,
+        dailyUsedLabel: '$' + k.dailyCostUsed.toFixed(2) + ' / $' + k.dailyCostBudget.toFixed(2),
+        monthlyUsedLabel: '$' + k.monthlyCostUsed.toFixed(2) + ' / $' + k.monthlyCostBudget.toFixed(2),
+        dailyBarColor: barColor(dailyPct), monthlyBarColor: barColor(monthlyPct),
+        statusBg: keyStatusStyles[effectiveStatus].bg, statusColor: keyStatusStyles[effectiveStatus].color, statusLabel: keyStatusStyles[effectiveStatus].label,
+        onEdit: () => this.openEditKey(k), onExtend: () => this.extendKey(k.id), onDelete: () => this.openDeleteConfirm(k), onReactivate: () => this.reactivateKey(k.id),
+        canExtend: k.expiryLabel !== 'Never', isSuspended: effectiveStatus === 'suspended',
+        assigneeLabel: k.assignee || 'unassigned',
+        maskedValue: k.keyValue ? k.keyValue.slice(0, 13) + '••••••••' + k.keyValue.slice(-4) : '—',
+        onCopy: () => this.copyKeyValue(k),
+      };
+    });
+    const keyExpiryOptions = [{value:'30',label:'30 days'},{value:'90',label:'90 days (default)'},{value:'365',label:'1 year'},{value:'never',label:'Never'}];
+    const notifAlerts = [];
+    apiKeys.forEach(k => {
+      if (k.status === 'blocked') notifAlerts.push({section:'Keys & budgets', message:'"'+k.name+'" is blocked \u2014 over its cost cap.'});
+      else if (k.status === 'near') notifAlerts.push({section:'Keys & budgets', message:'"'+k.name+'" is nearing its cost cap.'});
+      if (k.status === 'suspended') notifAlerts.push({section:'Keys & budgets', message:'"'+k.name+'" is suspended.'});
+      const m = k.expiryLabel.match(/(\d+)/);
+      if (m && parseInt(m[1],10) <= 14) notifAlerts.push({section:'Keys & budgets', message:'"'+k.name+'" expires '+k.expiryLabel+'.'});
+    });
+    const notifLog = s.notifications.slice(0, 20);
+    const notifEmpty = notifAlerts.length === 0 && notifLog.length === 0;
+    const unreadNotifCount = notifAlerts.length + s.notifications.filter(n => !n.read).length;
+    const newKeyModalTitle = s.newKeyEditId ? 'Edit key' : 'Create a key';
+    const newKeyModalDesc = s.newKeyEditId ? 'Update name, team, expiry or budget caps.' : 'Every key gets an expiry and a real budget — nothing is unlimited by default.';
+    const newKeySubmitLabel = s.newKeyEditId ? 'Save changes' : 'Create key';
+    const isEditingKey = !!s.newKeyEditId;
+    const editingKey = s.newKeyEditId ? apiKeys.find(k => k.id === s.newKeyEditId) : null;
+    const isEditingSuspended = !!(editingKey && editingKey.status === 'suspended');
+    const editingKeyStatusNote = editingKey && editingKey.status !== 'ok' && editingKey.status !== 'suspended'
+      ? (editingKey.status === 'blocked' ? 'This key is blocked — it has reached 100% of its daily or monthly cap.' : 'This key is near its limit (80%+ of its daily or monthly cap) — raise the caps below if needed.')
+      : '';
+
+    const messages = s.messages.map((m,i) => ({
+      ...m,
+      onThumbsUp: () => this.setMessageFeedback(i,'up'),
+      onThumbsDown: () => this.setMessageFeedback(i,'down'),
+      thumbsUpColor: m.feedback==='up' ? '#3B82F6' : '#9CA3AF',
+      thumbsDownColor: m.feedback==='down' ? '#3B82F6' : '#9CA3AF',
+    }));
+
+    return {
+      screen: s.screen,
+      isOnboarding: s.screen==='onboarding', isOverview: s.screen==='overview',
+      isModelPlane: s.screen==='modelplane', isKeys: s.screen==='keys', isSavings: s.screen==='savings',
+      isPolicies: s.screen==='policies', isAudit: s.screen==='audit', isPlayground: s.screen==='playground',
+      navItems, goToPolicies: this.goToPolicies,
+      controlsActiveCount: activeCount,
+      controlsBadgeBg: activeCount===4 ? '#ECFDF5' : activeCount===0 ? '#FEF2F2' : '#FFFBEB',
+      controlsBadgeColor: activeCount===4 ? '#065F46' : activeCount===0 ? '#991B1B' : '#92400E',
+      openSettings: this.openSettings, closeSettings: this.closeSettings, settingsOpen: s.settingsOpen,
+      isLoggedIn: s.isLoggedIn, signIn: this.signIn, signOut: this.signOut,
+      profileMenuOpen: s.profileMenuOpen, toggleProfileMenu: this.toggleProfileMenu,
+      currentUserName: s.members[0].name, currentUserEmail: s.members[0].email,
+      currentUserInitials: s.members[0].name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(),
+      currentUserRoleLabel: {admin:'Admin', budget_admin:'Budget admin', model_approver:'Model approver', user:'User', auditor:'Auditor'}[s.members[0].role],
+      settingsTabs, isSettingsGeneral: s.settingsTab==='general', isSettingsSecurity: s.settingsTab==='security',
+      orgName: s.orgName, setOrgName: this.setOrgName,
+      requireReauthToggle, toggleRequireReauthPolicy: this.toggleRequireReauthPolicy,
+      sessionTimeout: s.sessionTimeout, setSessionTimeout: this.setSessionTimeout,
+      regionOptions, regionsInUseLabel,
+      auditRetentionYears: s.auditRetentionYears, setAuditRetentionYears: this.setAuditRetentionYears, retentionYearOptions,
+      newBackendRegion: s.newBackendRegion, setNewBackendRegion: this.setNewBackendRegion,
+      isSettingsData: s.settingsTab==='data', isSettingsAccount: s.settingsTab==='account',
+      isSettingsMembers: s.settingsTab==='members', goToMembersFromAccount: this.goToMembersFromAccount,
+      members: s.members.map((m,i) => ({...m, onChangeRole: (e) => this.setMemberRole(i, e.target.value)})),
+      goToPoliciesFromSettings: this.goToPoliciesFromSettings,
+      skipOnboarding: this.skipOnboarding,
+      steps, isStep0: s.onboardStep===0, isStep1: s.onboardStep===1, isStep2: s.onboardStep===2,
+      infraOptions, backends, prevStep: this.prevStep, nextStep: this.nextStep,
+      prevStyle: s.onboardStep===0 ? 'visibility:hidden;' : '',
+      nextLabel: s.onboardStep>=2 ? 'Finish setup' : 'Continue',
+      statTiles, chartBars,
+      openAddBackend: this.openAddBackend, closeAddBackend: this.closeAddBackend, addBackendOpen: s.addBackendOpen,
+      copilotSuggestions, copilotQuery: s.copilotQuery, copilotAnswer: s.copilotAnswer,
+      setCopilotQuery: this.setCopilotQuery, askCopilot: this.askCopilot, hasCopilotAnswer: !!s.copilotAnswer,
+      copilotOpen: s.copilotOpen, toggleCopilot: this.toggleCopilot,
+      copilotToggleIcon: s.copilotOpen ? 'x' : 'sparkles',
+      copilotScreenLabel: (nav.find(n => n.key === s.screen) || {label:'Console'}).label,
+      newBackendTypeOptions, newBackendModelPh: btMeta.modelPh, newBackendLocationPh: btMeta.locationPh,
+      newBackendEndpointLabel: btMeta.endpointLabel, newBackendEndpointPh: btMeta.endpointPh,
+      newBackendKeyLabel: btMeta.keyLabel, newBackendKeyPh: btMeta.keyPh,
+      newBackendEndpoint: s.newBackendEndpoint, setNewBackendEndpoint: this.setNewBackendEndpoint,
+      newBackendKey: s.newBackendKey, setNewBackendKey: this.setNewBackendKey,
+      newBackendName: s.newBackendName, setNewBackendName: this.setNewBackendName,
+      newBackendModel: s.newBackendModel, setNewBackendModel: this.setNewBackendModel,
+      newBackendLocation: s.newBackendLocation, setNewBackendLocation: this.setNewBackendLocation,
+      newBackendInBoundary: s.newBackendInBoundary, toggleNewBackendBoundary: this.toggleNewBackendBoundary,
+      addBackend: this.addBackend,
+      securityControls, runEgressProbe: this.runEgressProbe,
+      approvedBackendChips, smartRoutingToggle, toggleSmartRouting: this.toggleSmartRouting,
+      learningLoopToggle, toggleLearningLoop: this.toggleLearningLoop,
+      cacheExactToggle, toggleCacheExact: this.toggleCacheExact, goToAuditCacheFiltered: (e) => { e.preventDefault(); this.goToAuditFiltered('cache'); },
+      cacheSemanticToggle, toggleCacheSemantic: this.toggleCacheSemantic,
+      compressionCostSavingToggle, toggleCompressionCostSaving: this.toggleCompressionCostSaving,
+      compressionKeepCorpusConsent: s.compressionKeepCorpusConsent, toggleCompressionConsent: this.toggleCompressionConsent,
+      apiKeys, keyExpiryOptions, newKeyModalTitle, newKeyModalDesc, newKeySubmitLabel, isEditingKey,
+      isEditingSuspended, reactivateFromModal: this.reactivateFromModal, editingKeyStatusNote, hasEditingKeyStatusNote: !!editingKeyStatusNote,
+      hasKeyActionToast: !!s.keyActionToast, keyActionToast: s.keyActionToast, dismissKeyToast: this.dismissKeyToast,
+      notifOpen: s.notifOpen, toggleNotif: this.toggleNotif, notifAlerts, notifLog, notifEmpty,
+      hasUnreadNotifs: unreadNotifCount > 0, unreadNotifCount: unreadNotifCount > 9 ? '9+' : unreadNotifCount,
+      hasDeleteConfirm: !!s.deleteConfirmKey, deleteConfirmKeyName: s.deleteConfirmKey ? s.deleteConfirmKey.name : '',
+      closeDeleteConfirm: this.closeDeleteConfirm, confirmSuspendKey: this.confirmSuspendKey, confirmDeleteKey: this.confirmDeleteKey,
+      newKeyOpen: s.newKeyOpen, openNewKey: this.openNewKey, closeNewKey: this.closeNewKey,
+      newKeyName: s.newKeyName, setNewKeyName: this.setNewKeyName,
+      newKeyTeam: s.newKeyTeam, setNewKeyTeam: this.setNewKeyTeam,
+      newKeyAssignee: s.newKeyAssignee, setNewKeyAssignee: this.setNewKeyAssignee,
+      newKeyExpiry: s.newKeyExpiry, setNewKeyExpiry: this.setNewKeyExpiry,
+      newKeyDailyCost: s.newKeyDailyCost, setNewKeyDailyCost: this.setNewKeyDailyCost,
+      newKeyMonthlyCost: s.newKeyMonthlyCost, setNewKeyMonthlyCost: this.setNewKeyMonthlyCost,
+      addKey: this.addKey,
+      revealKeyOpen: s.revealKeyOpen, revealKeyValue: s.revealKeyValue, revealKeyCopied: s.revealKeyCopied,
+      revealKeyAssigneeText: s.revealKeyAssignee ? ('"'+s.revealKeyAssignee+'"') : 'them',
+      closeRevealKey: this.closeRevealKey, copyRevealKey: this.copyRevealKey,
+      scopeTeamChips, scopeRoleChips, scopeAgentChips, scopeBackendChips, scopeModelChips, scopeExplainer,
+      policies, newPolicyOpen: s.newPolicyOpen, openNewPolicy: this.openNewPolicy, closeNewPolicy: this.closeNewPolicy,
+      newPolicyName: s.newPolicyName, setNewPolicyName: this.setNewPolicyName,
+      newPolicyDesc: s.newPolicyDesc, setNewPolicyDesc: this.setNewPolicyDesc,
+      newPolicyAction: s.newPolicyAction, setNewPolicyAction: this.setNewPolicyAction,
+      newPolicyEffect: s.newPolicyEffect, setNewPolicyEffect: this.setNewPolicyEffect,
+      newPolicyEffectDesc: (this.effectOptions.find(o=>o.value===s.newPolicyEffect)||{}).desc,
+      actionOptions: this.actionOptions, effectOptions: this.effectOptions,
+      newPolicyUrlAllow: s.newPolicyUrlAllow, setNewPolicyUrlAllow: this.setNewPolicyUrlAllow,
+      newPolicyUrlBlock: s.newPolicyUrlBlock, setNewPolicyUrlBlock: this.setNewPolicyUrlBlock,
+      newPolicyMaxTokens: s.newPolicyMaxTokens, setNewPolicyMaxTokens: this.setNewPolicyMaxTokens,
+      newPolicyMaxCalls: s.newPolicyMaxCalls, setNewPolicyMaxCalls: this.setNewPolicyMaxCalls,
+      newPolicyMaxCost: s.newPolicyMaxCost, setNewPolicyMaxCost: this.setNewPolicyMaxCost,
+      newPolicyPii: s.newPolicyPii, toggleNewPolicyPii: this.toggleNewPolicyPii,
+      newPolicyDataTag: s.newPolicyDataTag, toggleNewPolicyDataTag: this.toggleNewPolicyDataTag,
+      addPolicy: this.addPolicy, stopPropagation: this.stopPropagation,
+      auditLog, verifyChain: this.verifyChain, auditEventFilterChips, isAuditFiltered, auditFilterLabel, clearAuditFilter: () => this.setAuditEventFilter('all'),
+      attestationOpen: s.attestationOpen, openAttestation: this.openAttestation, closeAttestation: this.closeAttestation,
+      modelOptions, chatModel: s.chatModel, setChatModel: this.setChatModel,
+      chatInput: s.chatInput, setChatInput: this.setChatInput, handleChatKey: this.handleChatKey, sendMessage: this.sendMessage,
+      messages, hasNoMessages: messages.length===0, newChat: this.newChat,
+      hasFollowUps: messages.length > 0 && !s.chatInput,
+      followUpPrompts: (() => {
+        const sets = [
+          ['Make that more concise', 'Explain your reasoning', 'Try this on a different backend'],
+          ['Turn this into a checklist', 'What are the risks here?', 'Summarize in one sentence'],
+          ['Draft a follow-up email based on this', 'What would compliance flag here?', 'Give me three alternatives'],
+        ];
+        return sets[messages.length % sets.length].map(label => ({label, onClick: () => this.sendPreset(label)}));
+      })(),
+      suggestedPrompts: [
+        'Draft a restructured EMI plan for a delinquent account',
+        'Summarize this quarter\'s flagged compliance events',
+        'Ask GPT-4o directly (external, watch it get blocked)',
+      ].map((label,i) => ({label, onClick: () => this.sendPreset(i===2 ? 'Draft a customer email' : label, i===2 ? 'openai/gpt-4o' : undefined)})),
+      infraCredentialTitle: infraMeta.credTitle, infraCredentialDesc: infraMeta.credDesc,
+      infraEndpointLabel: infraMeta.endpointLabel, infraEndpointPlaceholder: infraMeta.endpointPh,
+      infraKeyLabel: infraMeta.keyLabel, infraKeyPlaceholder: infraMeta.keyPh,
+      infraEndpoint: s.infraEndpoint, setInfraEndpoint: this.setInfraEndpoint,
+      infraApiKey: s.infraApiKey, setInfraApiKey: this.setInfraApiKey,
+      testConnection: this.testConnection,
+      hasConnectionStatus: !!connStatus,
+      connectionStatusBg: connStatus ? connStatus.bg : '',
+      connectionStatusColor: connStatus ? connStatus.color : '',
+      connectionStatusLabel: connStatus ? connStatus.label : 'Not connected',
+      reviewInfraName: infraMeta.name,
+      inBoundaryCount: backends.filter(b => b.inBoundary).length,
+      backendCount: backends.length,
+      showSetupToast: s.showSetupToast, dismissSetupToast: this.dismissSetupToast,
+    };
+  }
+}
+</script>
+</body>
+</html>

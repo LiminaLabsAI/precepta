@@ -145,6 +145,16 @@ first (Phase 7), then MCP + SSO (Phase 8), then hardening (Phase 9)**.
 
 ## 10. Scope — MVP vs Later
 
+> **Phase 10 — cost / quality / governance controls (scoped; design next).** Turns the control plane
+> from "governs correctly" into "governs, saves cost, and gets smarter" — for the target buyer's
+> non-expert users on metered backends. Items: key expiry + token/cost budgets · policy scoping
+> (all vs selected) · response cache · prompt compression · advanced (LLM-driven, governed) routing ·
+> traces → learning loop · self-hosting/deploy. Full scoping in [`BRAINSTORM.md`](BRAINSTORM.md);
+> architecture in [`DESIGN.md`](DESIGN.md) §11; sequence in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) §Phase 10;
+> plain-English overview in [`preceptaai-plan.md`](preceptaai-plan.md). **Governing stance: safe by
+> default, extra risk only by explicit opt-in, and nothing hidden from the person using it.**
+
+
 **MVP (a demoable, sovereignty-first control plane):**
 - **Model plane:** Ollama (local) + one self-hosted serving path (vLLM) + Neysa/Shakti adapter.
 - **Router:** explicit + cheapest + intent, with failover — *as a feature*.

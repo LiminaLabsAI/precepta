@@ -4,8 +4,8 @@ type: Status
 
 # Project Status
 
-> **Last Updated**: 2026-07-29
-> **Current Phase**: Between phases — Phases 0–9 complete; Phase 10 to be planned (`/brainstorm-phase`)
+> **Last Updated**: 2026-07-30
+> **Current Phase**: Between phases — Phases 0–9 complete; **Phase 10 brainstorm 6 of 7 items scoped, ready for design** (Item 6 deploy still pending)
 > **Latest Release**: v0.2.0 (Enterprise access — Phases 7–9)
 > **Health**: On Track
 
@@ -43,7 +43,7 @@ predates momentum founding; foundation docs were authored from the existing root
 
 | Phase | Name | Status | Key Deliverables |
 |-------|------|--------|-----------------|
-| 10 | _(to plan)_ | Not Started | SSO session hardening · robust PII/PHI detection · deploy hardening (Docker/Helm/air-gap) · retention enforcement |
+| 10 | Cost/quality/governance controls | Brainstorm scoped (6/7); design next | Foundations: pricing (TD-001) · counting rules (TD-002) · quality/eval harness (FEAT-006) · sensitivity quality (TD-004). Features: budgets (FEAT-001) · policy scope (FEAT-002) · cache (FEAT-003) · compression (FEAT-005) · advanced routing (FEAT-007) · traces→learning (FEAT-008). Pending brainstorm: deploy (FEAT-009). |
 
 ## Blockers
 | ID | Description | Severity |
@@ -56,8 +56,9 @@ predates momentum founding; foundation docs were authored from the existing root
 | _(none)_ | | |
 
 ## Next Actions
-1. Run `/brainstorm-phase` to plan Phase 10.
-2. Then `/start-phase` to begin it.
+1. **Enter the design phase** for Phase 10 using the scoped brainstorm (`BRAINSTORM.md`) + build order.
+2. Brainstorm the one remaining item — Item 6 self-hosting/deploy (FEAT-009) — when ready.
+3. Design foundations first (pricing, counting rules, eval harness, sensitivity), then the features.
 
 ## Key Decisions Made
 - Product = self-hosted governed control plane (router is a feature). Self-hosted first, both doors (API + Console).

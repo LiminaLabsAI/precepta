@@ -276,3 +276,34 @@ deploy/                   # docker-compose (egress-locked profile); Helm later
   `call_model` → adding optillm/DSPy never breaks the sovereign loop or the audit.
 - **Neysa-vs-Shakti, optillm-vs-DIY-techniques, DSPy-later, WORM-later** are adapter/config choices = reversible.
 - **Integrating vLLM, metrics & optillm algorithms** (not building them) keeps us out of the giants' lane.
+
+---
+
+## 11. Phase 10 additions (planned) — new ports behind the same core
+
+> Additive only. Every Phase 10 feature clips on as a **new adapter behind a new (or existing) port** —
+> the domain core does not change. Scoped in `BRAINSTORM.md`; sequenced in `IMPLEMENTATION_PLAN.md` §Phase 10.
+> Governing stance: **safe by default, risk only by explicit opt-in, nothing hidden from the caller.**
+
+### New ports
+| Port | Contract (essence) | V1 Phase-10 adapter | Feeds |
+|---|---|---|---|
+| **PricingPort** | `price(backend, model, as_of=None) -> Price`; versioned by `effective_date`; unknown = flagged $0 | `DbPricing` (`model_prices` table) | budgets, cache/compression savings, routing cost signal |
+| **ResponseCachePort** | `get / put / invalidate / stats` — inside the governed loop; exact-match default, semantic opt-in (in-boundary embeddings) | `SqliteCache` | cost/latency savings (admin-only visibility) |
+| **CompressionPort** | `compress(messages, budget) -> (messages, meta)`; never worsens the answer; consent-gated corpus | `Noop` → `HistorySummarizer` → `LLMLingua` | cost/latency; corpus → learning |
+| **TraceSinkPort / FeedbackPort / LearningPort** | capture traces + reward (explicit+implicit) → improve routing; per-customer, in-boundary, consent | trace store + contextual-bandit optimizer | smarter routing (delivers deferred router intelligence) |
+
+### Extended behavior on existing ports (still additive)
+- **AuthorizationPort** → **OpenGuard adapter** (agents + bounded delegation; fail-closed) — de-risked spike ✅; keep role-check default until parity.
+- **RouterBrainPort** → **layered advanced routing**: governance filter (sensitive→approved-only, **block + notify caller & admin**) → LLM intent-router → budget modifier → failover. Sensitivity **auto-derived from the Stage-1 firewall**. Model hosting location surfaced at **approval time**, recorded in the trust registry.
+- **PolicyStorePort** → optional **`scope`** (`scope_json`, default `{}` = all) targeting team / role / subject-type / backend / model; agents governed like humans.
+- **Budgets/key-expiry** extend `api_keys` + `team_scopes`; the shared **budget-pressure signal** drives an opt-in "cost-saving mode" (cheaper routing + compression), surfaced as one consolidated notification.
+
+### Foundations these depend on (build first)
+Pricing (TD-001) · one metering/accounting definition (TD-002) · a locked **eval harness** (FEAT-006, Rule 11) ·
+robust sensitivity detection (TD-004). Cross-cutting: streaming vs governance (TD-003), fail-soft optimizations
+(TD-006), securing the new data stores + expanding the attestation scope (TD-007), attribution incl. agents (TD-005).
+
+### Console
+The operator surface is refreshed to the re-imported design (`design/Precepta Console.dc.html`) and wired
+**surface-by-surface as each backend lands** — screens without a backend show honest empty states, never demo values.

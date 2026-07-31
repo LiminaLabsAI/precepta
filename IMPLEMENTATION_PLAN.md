@@ -1,10 +1,11 @@
 # preceptaai — Implementation Plan & Roadmap (V1: closed sovereign loop)
 
-> **Status:** Draft v3 — ports-based V1 trunk around a *provable* sovereign loop, aligned to the
-> expanded `DESIGN.md` (authN/authZ split, `ReasoningPort`, `RouterBrainPort`, cost-gating) and the
-> **Precepta Console** design (imported from Claude Design).
-> **Companions:** `VISION.md` (why/wedge/moat), `DESIGN.md` (architecture/ports/contracts).
-> **Last updated:** 2026-07-20
+> **Status:** Draft v4 — V1 (Phases 0–9) shipped; **Phase 10** added below (cost / quality / governance
+> controls), scoped in `BRAINSTORM.md` and aligned to the refreshed **Precepta Console** design
+> (re-imported from Claude Design 2026-07-30 → `design/Precepta Console.dc.html`).
+> **Companions:** `VISION.md` (why/wedge/moat), `DESIGN.md` (architecture/ports/contracts),
+> `BRAINSTORM.md` (Phase 10 scoping), `preceptaai-plan.md` (combined plain-English overview).
+> **Last updated:** 2026-07-30
 
 ---
 
@@ -64,12 +65,53 @@ extend reach; hardening (9) makes it enterprise-grade. Real SSO needs the custom
 and real certs are an audit process — both are built as working mechanisms with the external
 piece flagged.
 
+## Phase 10 — Cost / quality / governance controls (next; scoped in `BRAINSTORM.md`)
+
+> Phase 10 turns the control plane from "governs correctly" into "governs, saves cost, and gets
+> smarter" — driven by the target buyer's non-expert users on metered backends. **Governing stance
+> (from the brainstorm): safe by default, extra risk only by explicit opt-in, and nothing hidden
+> from the person using it.** Every item lands behind an existing port (no core rewrite) and is
+> **backend-real** (no demo values). The refreshed **Precepta Console** is the UI surface for all of it,
+> implemented **surface-by-surface as each backing feature lands** (browser-validated, no mock data).
+
+### 10a · Foundations first (the features lean on these — build before them)
+| Step | Backlog | What / why |
+|---|---|---|
+| **Pricing artifact** | TD-001 | One versioned, admin-maintained price list (`model_prices` + `PricingPort`). Every $ figure depends on it; also fixes the live Console-backend `$0` bug. |
+| **Counting rules** | TD-002 | One metering definition (billable vs saved vs usage tokens) so budgets/cache/compression agree. |
+| **Quality test / eval harness** | FEAT-006 | Fixed set + per-use scorers (routing/compression/cache/learning), versioned (Rule 11). Gates the risky features. |
+| **Sensitivity quality** | TD-004 | Reliable "is this sensitive?" (beyond regex) — four governance behaviours rest on it. |
+
+### 10b · The features (each behind its port; UI wired as it lands)
+| Step | Backlog | What ships | Console surface |
+|---|---|---|---|
+| **Budgets + key expiry** | FEAT-001 | Key lifetimes; token+cost budgets per key & team, daily+monthly, timezone; 80% notify / 100% block; usage view; notifications | Keys (expiry/suspend/extend) · **Usage** · bell feed |
+| **Policy scope** | FEAT-002 | Optional "applies to" — team/role/subject-type/backend/model; agents like humans | Policies → "Applies to" (all vs selected) |
+| **Cache** | FEAT-003 | Exact-match by default; semantic opt-in; governed-loop; admin-only savings | **Savings** (cache) · policy toggles |
+| **Compression** | FEAT-005 | Long-prompt/doc compression; never surprises the user; opt-in "cost-saving mode"; consent-gated corpus | **Savings** (compression) · settings |
+| **Advanced routing** | FEAT-007 | Governance filter → LLM intent-router → budget modifier; sensitive→approved-only (block + notify caller & admin); model-approval shows hosting location | Model plane · approval flow · audit "why" |
+| **Traces → learning** | FEAT-008 | Capture traces + reward (explicit + implicit) → smarter routing; per-customer, in-boundary, consent | Playground thumbs/feedback · (learning offline) |
+| **Console refresh** | (design) | Implement the re-imported `Precepta Console.dc.html` — refresh existing surfaces + add the new ones above | The whole operator UI, updated |
+| **OpenGuard authZ** | FEAT-004 | Adopt as `AuthorizationPort` adapter — agents + bounded delegation; keep role-check default until parity | Settings → Members / access |
+
+### 10c · Cross-cutting (decide alongside design, don't defer to the end)
+Streaming vs governance (TD-003) · fail-soft for in-path helpers (TD-006) · secure the new data stores +
+expand the attestation (TD-007) · attribution incl. agents (TD-005) · govern-the-control-plane —
+config precedence, finer roles, alert delivery (TD-008).
+
+### 10d · Still to brainstorm before building
+**Self-hosting / deploy** (FEAT-009) — container + one-command bundle, then Helm / Postgres / Vault /
+air-gapped. Paused in the brainstorm; needs its own scoping pass.
+
+**Build order:** 10a foundations → FEAT-001 (creates the budget-pressure signal) → FEAT-002/003/005/007
+→ FEAT-008 → Console refresh wired surface-by-surface throughout. See `BRAINSTORM.md` "Build order".
+
 ## Roadmap — horizons
 
 | Horizon | Theme | Contents | Exit criteria |
 |---|---|---|---|
 | **H0 · V1 — "Prove the loop"** | Phases 0–6 | Governed sovereign control plane + Console + attestation | Attestation generated for **one design partner's** real workload |
-| **H1 · V1.1 — "Harden for pilot"** | pilot-readiness | SSO/SAML, **open-guard** authZ, optillm reasoning adapter, robust PII/PHI detection, controls-mapped evidence (DPDP/HIPAA), Helm / air-gapped deploy | A regulated pilot runs in the customer's environment |
+| **H1 · V1.1 — "Harden for pilot"** | pilot-readiness | **Phase 10** (cost/quality/governance controls: budgets, cache, compression, advanced routing, traces→learning, refreshed Console) · **open-guard** authZ · robust PII/PHI detection · optillm reasoning · controls-mapped evidence (DPDP/HIPAA) · Helm / air-gapped deploy | A regulated pilot runs in the customer's environment |
 | **H2 · V2 — "Enterprise-grade / sell"** | trust + scale | Certifications (SOC2/ISO), WORM / externally-anchored audit, multi-tenancy, customer KMS, DSPy reasoning, big-provider hybrid governance, compliance policy packs, **Neysa/Shakti channel bundle** | First paid contract; repeatable sales motion |
 
 ## Owner actions (some gate later phases, none block the start)

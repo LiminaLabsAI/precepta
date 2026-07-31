@@ -23,7 +23,7 @@ open-source AI model it runs — routed, governed, attributed, and provably in-b
 | 7 | Enterprise access | ✅ Done | Per-team API keys (attributed), zero-code adoption |
 | 8 | Reach & identity | ✅ Done (v0.2.0) | MCP server; SSO/OIDC + Google login + sessions |
 | 9 | Hardening & tenancy | ✅ Done | Team-scoped authZ, compliance evidence, audit export |
-| 10 | _(next — to plan)_ | Not Started | Candidates: SSO session hardening · robust PII/PHI detection · deploy hardening (Docker/Helm/air-gap) · retention enforcement |
+| 10 | Cost / quality / governance controls | Scoped (design next) | Foundations (pricing TD-001, counting TD-002, eval harness FEAT-006, sensitivity TD-004) → budgets+key-expiry (FEAT-001), policy scope (FEAT-002), cache (FEAT-003), compression (FEAT-005), advanced routing (FEAT-007), traces→learning (FEAT-008); refreshed Precepta Console; OpenGuard authZ (FEAT-004). Pending brainstorm: deploy (FEAT-009). See `BRAINSTORM.md`. |
 
 ## Guiding Principles
 1. Ship working software in every phase.
