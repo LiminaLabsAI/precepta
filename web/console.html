@@ -283,10 +283,6 @@ function topbar(){
       <span style="font-size:13px;color:#6B7280">${esc(org)}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <div onclick="app.goToPolicies()" style="display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:12px;background:${badgeBg};color:${badgeCol};cursor:pointer">
-        <i data-lucide="shield" style="width:12px;height:12px"></i>
-        <span style="font-size:12px;font-weight:500">${active}/4 security controls active</span>
-      </div>
       <div style="position:relative">
         <button class="iconbtn" onclick="event.stopPropagation();app.toggleNotif()" style="width:30px;height:30px;border-radius:50%;background:transparent;border:none;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative"><i data-lucide="bell" style="width:17px;height:17px"></i></button>
         ${state.notifOpen?notifPanel():''}
