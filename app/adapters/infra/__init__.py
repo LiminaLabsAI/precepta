@@ -75,6 +75,13 @@ def snapshot(registry: dict | None = None) -> list[dict]:
             if model != "—":
                 entry["model"] = model
             entry["vram"] = vram
+        # real price from the pricing source of truth (TD-001) — never a silent $0
+        from ...pricing import price_info
+        price, pmeta = price_info(name, entry["model"])
+        entry["price_input_per_1m"] = price.input_per_1m
+        entry["price_output_per_1m"] = price.output_per_1m
+        entry["price_missing"] = pmeta["missing"]
+        entry["price_source"] = pmeta["source"]
         out.append(entry)
     return out
 

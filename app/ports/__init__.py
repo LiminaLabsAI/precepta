@@ -143,9 +143,20 @@ class AuthorizationPort(Protocol):
     def budget(self, principal: Principal) -> dict: ...
 
 
+class PricingPort(Protocol):
+    """The single, versioned source of truth for per-token prices (TD-001).
+
+    Every $ figure = tokens x price. `as_of` (ISO date) selects the price in
+    effect then, so historical reports stay reproducible.
+    """
+    def price_of(self, backend: str, model: str = "", as_of: str | None = None) -> Price: ...
+    def cost_of(self, backend: str, model: str, tokens_in: int, tokens_out: int,
+                as_of: str | None = None) -> float: ...
+
+
 __all__ = [
     "Price", "Principal", "PolicyCheckContext", "Decision", "RoutePlan", "AuditEvent",
     "ModelBackendPort", "RouterBrainPort", "ReasoningPort", "PolicyStorePort",
     "AuditSinkPort", "SecretStorePort", "InfraVisibilityPort", "IdentityPort",
-    "AuthorizationPort",
+    "AuthorizationPort", "PricingPort",
 ]

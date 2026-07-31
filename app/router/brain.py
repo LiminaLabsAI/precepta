@@ -7,6 +7,7 @@ download, so it is deferred — the stub falls back to rules and says so.
 from __future__ import annotations
 
 from ..ports import RoutePlan, PolicyCheckContext
+from ..pricing import price_of
 from ..settings import get_settings
 from .state import latency
 
@@ -52,7 +53,7 @@ class RulesBrain:
             raise LookupError("no eligible in-boundary backend")
 
         if intent == "cheapest":
-            be, model = min(cands, key=lambda c: c[0].price(c[1]).input_per_1m)
+            be, model = min(cands, key=lambda c: price_of(c[0].name, c[1]).input_per_1m)
             return RoutePlan(be.name, model, "passthrough",
                              f"cheapest of {len(cands)} in-boundary backends")
 
@@ -67,7 +68,7 @@ class RulesBrain:
             technique = "best_of_n" if intent in ("best-quality", "auto", "automatic") else "passthrough"
             return RoutePlan(be.name, model, technique,
                              f"hard query → tier-{be.tier} backend, {technique}")
-        be, model = min(cands, key=lambda c: c[0].price(c[1]).input_per_1m)
+        be, model = min(cands, key=lambda c: price_of(c[0].name, c[1]).input_per_1m)
         return RoutePlan(be.name, model, "passthrough", "easy query → cheapest backend")
 
 

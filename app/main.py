@@ -225,8 +225,52 @@ def create_app() -> FastAPI:
             blocks = conn.execute(
                 "SELECT COUNT(*) n FROM audit_log WHERE execution_blocked=1 "
                 "AND timestamp>=?", (start_today,)).fetchone()["n"]
+            # real avg cost/req: telemetry stores the serving backend in agent_id
+            tele = conn.execute(
+                "SELECT agent_id AS backend, tokens_input, tokens_output FROM telemetry "
+                "WHERE captured_at>=?", (day_ago,)).fetchall()
+        from . import pricing
+        total_cost = sum(
+            pricing.cost_of(t["backend"] or "", "", t["tokens_input"] or 0,
+                            t["tokens_output"] or 0) for t in tele)
+        avg_cost = round(total_cost / len(tele), 6) if tele else 0.0
         return JSONResponse({"requests_24h": req, "external_calls": 0,
-                             "blocks_today": blocks, "avg_cost_usd": 0.0})
+                             "blocks_today": blocks, "avg_cost_usd": avg_cost})
+
+    @app.get("/v1/pricing")
+    def get_pricing(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from . import pricing
+        return JSONResponse({"prices": pricing.list_prices()})
+
+    @app.post("/v1/pricing")
+    async def set_pricing(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse(
+                {"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        backend = (b.get("backend") or "").strip()
+        if not backend:
+            return JSONResponse({"error": {"message": "backend required",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        try:
+            pin = float(b.get("input_per_1m", 0) or 0)
+            pout = float(b.get("output_per_1m", 0) or 0)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": {"message": "prices must be numbers",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        from . import pricing
+        row = pricing.upsert_price(
+            backend, (b.get("model") or "").strip(), pin, pout,
+            source=(b.get("source") or "").strip(),
+            effective_date=(b.get("effective_date") or None),
+            created_by=principal.subject)
+        return JSONResponse({"ok": True, "price": row}, status_code=201)
 
     @app.post("/v1/backends")
     async def register_backend(request: Request) -> JSONResponse:
@@ -602,6 +646,13 @@ def create_app() -> FastAPI:
                 backend=payload["precepta"].get("backend_used"),
             )
         return JSONResponse(payload, status_code=status)
+
+    # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.
+    try:
+        from . import pricing
+        pricing.seed_defaults()
+    except Exception:  # pragma: no cover - never block app boot on seeding
+        pass
 
     return app
 

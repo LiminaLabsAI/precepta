@@ -45,7 +45,7 @@ type: Backlog
 
 | ID | Title | Priority | Status | Phase | Detail |
 |----|-------|----------|--------|-------|--------|
-| TD-001 | Pricing source-of-truth — versioned `model_prices` table + `PricingPort` feeding all $ figures (budgets/cache/compression) | P1 | open | pre-10 | **Design agreed** (`BRAINSTORM.md` §X1). Build in design phase. **Live bug it fixes:** Console-added backends get `Price(0.0,0.0)` ⇒ $0 cost/budget/savings for a customer's own metered endpoint. |
+| TD-001 | Pricing source-of-truth — versioned `model_prices` table + `PricingPort` feeding all $ figures (budgets/cache/compression) | P1 | resolved | 10 | **Built + verified 2026-07-31** (`app/pricing.py`, `PricingPort`, wired router/stats/infra, admin `/v1/pricing`, Console price column + avg-cost tile). 7 new tests, 95 total pass; browser-validated. Silent-$0 bug fixed (unknown price → "Set price"). |
 | TD-002 | Canonical metering/accounting — one definition of billable vs saved vs usage tokens across budgets/cache/compression | P1 | open | pre-10 | Define before FEAT-001/003/005. `BRAINSTORM.md` §X2. Prevents contradictory dashboards; sets pipeline order + cache-hit/compression billing rules. |
 | TD-003 | Streaming vs governance — output-firewall/cache/compression assume full response before send | P1 | open | pre-10 | `BRAINSTORM.md` §X3. Enterprises expect streaming; needs buffered-scan / chunk-scan / policy-gated-disable design. |
 | TD-004 | Sensitivity detection quality — regex firewall is load-bearing for 4 features (routing/cache/compression/traces) | P1 | open | pre-10 | Gap #3. If "sensitive" is wrong, governance is silently weak everywhere. VISION flags "PII beyond regex" as open. |

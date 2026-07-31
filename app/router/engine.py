@@ -8,6 +8,7 @@ import time
 import httpx
 
 from ..ports import RoutePlan
+from ..pricing import price_info
 from ..adapters.reasoning import get_reasoner, Passthrough
 from .brain import candidates
 from .state import breaker, record_latency
@@ -31,7 +32,9 @@ async def execute(plan: RoutePlan, messages: list[dict], registry: dict,
     cost_est: float | None = None
     if budget_usd is not None:
         approx_out = kw.get("max_tokens") or 500
-        price = primary_be.price(plan.model)
+        price, pmeta = price_info(primary_be.name, plan.model)
+        if pmeta["missing"]:
+            price = primary_be.price(plan.model)   # adapter-declared price as fallback
         per_call = (approx_out / 1_000_000) * price.output_per_1m
         cost_est = reasoner.estimate_calls() * per_call
         if cost_est > budget_usd and not isinstance(reasoner, Passthrough):

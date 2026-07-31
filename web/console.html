@@ -410,7 +410,7 @@ function overviewView(){
     {label:'Requests (24h)', value: st? String(st.requests_24h) : '—', sub: st?'live from audit log':'Loading…'},
     {label:'External calls', value: st? String(st.external_calls) : '—', sub:'zero egress, as designed'},
     {label:'Policy blocks (today)', value: st? String(st.blocks_today) : '—', sub: st?'from the audit log':'Loading…'},
-    {label:'Avg cost / req', value:'—', sub:'Available when pricing ships (Phase 10)'},
+    {label:'Avg cost / req', value: st? ('$'+Number(st.avg_cost_usd||0).toFixed(4)) : '—', sub: st? (st.avg_cost_usd? 'live · telemetry × price list' : 'local models — $0/token') : 'Loading…'},
   ];
   const healthRows = s.backends.length ? s.backends.map(b=>{
     const p=boundaryPill(b); const sb=b.status==='healthy';
@@ -443,6 +443,12 @@ function overviewView(){
 }
 
 /* ---------- Model plane ---------- */
+function priceCell(b){
+  if(b.priceMissing) return `<span title="No price set — from the pricing source of truth (TD-001)" style="font-size:11.5px;font-weight:500;color:#B45309;background:#FEF3C7;padding:2px 8px;border-radius:10px">Set price</span>`;
+  const pin=Number(b.priceIn||0), pout=Number(b.priceOut||0);
+  if(pin===0 && pout===0) return `<span style="font-size:12px;font-weight:500;color:#059669">Free</span>`;
+  return `<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#111827">$${pin.toFixed(2)} / $${pout.toFixed(2)}</span>`;
+}
 function modelPlaneView(){
   const s=state;
   const btMeta=backendTypeMeta[s.newBackendType]||backendTypeMeta.onprem;
@@ -455,7 +461,7 @@ function modelPlaneView(){
       <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col}">${p.label}</span></td>
       <td style="padding:10px 14px;color:${b.gpu&&b.gpu!=='—'?'#111827':'#9CA3AF'}">${esc(b.gpu||'—')}</td>
       <td style="padding:10px 14px;color:${b.latency&&b.latency!=='—'?'#111827':'#9CA3AF'}">${esc(b.latency||'—')}</td>
-      <td style="padding:10px 14px;color:#9CA3AF">—</td>
+      <td style="padding:10px 14px">${priceCell(b)}</td>
       <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Down'}</span></td>
     </tr>`;
   }).join('') : `<tr><td colspan="8" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No backends yet — click "Add backend" to register your first one.</td></tr>`;
@@ -464,10 +470,10 @@ function modelPlaneView(){
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"In your network" = runs on your own infrastructure, request never touches the public internet. "Leaves your network" = a third-party API call.</div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="app.openAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:12px"><table style="width:100%;min-width:940px;border-collapse:collapse;font-size:13px">
-      <thead><tr style="background:#F9FAFB">${['Backend','Model','Location','Boundary','GPU / VRAM','p50 latency','Cost / 1K tok','Status'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
+      <thead><tr style="background:#F9FAFB">${['Backend','Model','Location','Boundary','GPU / VRAM','p50 latency','Cost / 1M tok (in / out)','Status'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div style="font-size:11px;color:#9CA3AF;margin-bottom:24px;max-width:680px;line-height:1.6">Live health (latency, status) and VRAM come from the infra snapshot. Per-token cost and traffic-weight columns are the admin price list — that pricing model ships in Phase 10 (TD-001), so they read "—" for now rather than showing a made-up number.</div>
+    <div style="font-size:11px;color:#9CA3AF;margin-bottom:24px;max-width:680px;line-height:1.6">Live health (latency, status) and VRAM come from the infra snapshot. Per-token cost comes from the pricing source of truth (TD-001): local backends are <b>Free</b>; a metered backend with no price set shows <b>Set price</b> — never a made-up $0. Manage prices via <span style="font-family:'JetBrains Mono',monospace">POST /v1/pricing</span> (admin).</div>
     ${s.addBackendOpen?addBackendModal(btMeta):''}`;
 }
 
@@ -985,6 +991,8 @@ render();
         gpu:(b.vram && b.vram!=="—")?b.vram:"—",
         latency:(b.latency_ms!=null)?b.latency_ms+"ms":"—",
         status:b.status==="healthy"?"healthy":"down",
+        priceIn:b.price_input_per_1m, priceOut:b.price_output_per_1m,
+        priceMissing:b.price_missing, priceSource:b.price_source,
       }));
       modelOptions.length = 0;
       d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model, label:b.backend+" / "+b.model}));
