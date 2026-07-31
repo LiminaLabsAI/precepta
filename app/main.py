@@ -496,6 +496,12 @@ def create_app() -> FastAPI:
         return HTMLResponse(path.read_text(encoding="utf-8"),
                             headers={"Cache-Control": "no-store, max-age=0"})
 
+    # Static assets for the Console (logo, etc.) — served from web/assets.
+    assets_dir = ROOT / "web" / "assets"
+    if assets_dir.is_dir():
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
     @app.get("/v1/models")
     def list_models() -> dict:
         reg = get_registry()
