@@ -81,7 +81,7 @@ const state = {
   attestationOpen:false, complianceOpen:false,
   auditEventFilter:'all', expandedAuditHash:null,
 
-  settingsOpen:false, settingsTab:'general',
+  settingsOpen:false, settingsTab:'general', routerKeyInput:'',
 
   chatModel:'', chatInput:'', messages:[],
   copilotQuery:'',
@@ -891,9 +891,10 @@ function playgroundView(){
 /* ---------- Settings ---------- */
 function settingsModal(){
   const s=state;
-  const tabs=settingsTabDefs.map(t=>{const a=s.settingsTab===t.key;return `<div onclick="app.setSettingsTab('${t.key}')" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'};margin-bottom:2px">${t.label}</div>`;}).join('');
-  const o = window.__org || {};
   const me = window.__me || {};
+  const tabDefs = me.platform_owner ? settingsTabDefs.concat([{key:'router', label:'Router'}]) : settingsTabDefs;
+  const tabs=tabDefs.map(t=>{const a=s.settingsTab===t.key;return `<div onclick="app.setSettingsTab('${t.key}')" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'};margin-bottom:2px">${t.label}</div>`;}).join('');
+  const o = window.__org || {};
   const rowKV=(k,v,sub)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${k}</div>${sub?`<div style="font-size:11px;color:#9CA3AF">${sub}</div>`:''}</div><span style="font-size:12px;color:#6B7280">${v}</span></div>`;
   const editRow=(label,key,val,ph,type,mono)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div style="font-size:13px;font-weight:500">${label}</div><input ${type?('type="'+type+'"'):''} value="${esc(val==null?'':val)}" onchange="app.saveOrgSetting('${key}',this.value)" placeholder="${esc(ph||'')}" style="width:240px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;text-align:right;${mono?"font-family:'JetBrains Mono',monospace;":''}"></div>`;
   let pane='';
@@ -921,6 +922,29 @@ function settingsModal(){
       +rowKV('Signed in as', esc(me.subject || '—'))
       +rowKV('Team', esc(me.team || '—'))
       +`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0"><div style="font-size:13px;font-weight:500">Members</div><a href="#" onclick="event.preventDefault();app.goToMembersFromAccount()" style="font-size:12px">manage roles →</a></div>`;
+  } else if(s.settingsTab==='router'){
+    const r = window.__router;
+    if(!r){ pane=`<div style="font-size:12px;color:#9CA3AF;padding:12px 0">Loading router configuration…</div>`; }
+    else {
+      const be = r.router_backend;
+      const card=(id,title,desc)=>{const on=be===id;return `<div onclick="app.setRouterBackend('${id}')" style="flex:1;cursor:pointer;border:1.5px solid ${on?'#2563EB':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:600;color:${on?'#1D4ED8':'#111827'}">${on?'● ':'○ '}${title}</div><div style="font-size:11px;color:#6B7280;margin-top:3px;line-height:1.45">${desc}</div></div>`;};
+      const keyStatus = r.hf_key_set
+        ? `<span style="color:#065F46;font-weight:500">✓ key stored</span> — enter a new value to replace it`
+        : `<span style="color:#9CA3AF">no key stored</span>`;
+      pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">The router uses a small model to read each request's goal (cost / speed / quality). That model runs <strong>inside your network</strong> — the router never sends prompts to Precepta. Choose where it runs. <span style="color:#9CA3AF">Platform-owner only.</span></div>
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          ${card('ollama','Ollama (local)','The local model. Free, no key. Best for dev and small installs.')}
+          ${card('hf','Precepta HF endpoint','A dedicated HF endpoint deployed in your boundary, with a Precepta-owned key.')}
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#374151;margin:4px 0 2px">Precepta in-boundary HF endpoint</div>
+        ${editRow('Endpoint URL','__router_hf_endpoint', r.hf_endpoint, 'http://hf.internal:8080/v1', null, true)}
+        ${editRow('Model (optional)','__router_hf_model', r.hf_model, 'llama-3.1-8b-instruct', null, true)}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+          <div style="font-size:13px;font-weight:500">Precepta key<div style="font-size:11px;color:#9CA3AF;font-weight:400">${keyStatus}</div></div>
+          <div style="display:flex;gap:6px"><input type="password" value="${esc(s.routerKeyInput)}" oninput="app.onRouterKeyInput(this.value)" placeholder="paste key" style="width:180px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"><button onclick="app.saveRouterKey()" ${s.routerKeyInput?'':'disabled'} style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:${s.routerKeyInput?'#2563EB':'#E5E7EB'};color:${s.routerKeyInput?'#fff':'#9CA3AF'};border:none;cursor:${s.routerKeyInput?'pointer':'default'}">Save key</button></div>
+        </div>
+        <div style="font-size:11px;color:#9CA3AF;padding:8px 0;line-height:1.5">The key is written to the secret store and never returned by the API — the Console only ever shows whether one is set. Selecting <strong>Precepta HF endpoint</strong> requires both an endpoint and a key.</div>`;
+    }
   } else {
     // members — only the real signed-in account is known to the backend today
     const name=esc(me.name||me.subject||'—'), email=esc(me.subject||''), role=esc(me.role||'user');
@@ -1060,7 +1084,7 @@ render();
   async function loadOrg(){ const d=await getJSON("/v1/settings"); if(d){ window.__org=d; render(); } }
   async function loadMe(){
     const d=await getJSON("/auth/me");
-    if(d){ window.__me=d; render(); return; }
+    if(d){ window.__me=d; render(); loadRouter(); return; }
     // /auth/me failed — if we optimistically logged in from a stored session
     // token, that session is stale/expired. Clear it and return to login
     // rather than showing a half-authenticated console full of empty states.
@@ -1203,8 +1227,31 @@ render();
 
   // Settings
   app.saveOrgSetting = function(key, value){
+    if(key.startsWith('__router_')){ app.saveRouterConfig({[key.slice('__router_'.length)]: value}); return; }
     fetch("/v1/settings",{method:"PUT",headers:hdr,body:JSON.stringify({[key]:value})})
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__org=d; render(); } else alert("Failed: "+((d.error&&d.error.message)||r.status)); });
+  };
+
+  // Router config (platform-owner only)
+  async function loadRouter(){
+    if(!(window.__me && window.__me.platform_owner)) return;
+    const d=await getJSON("/v1/router/config");
+    if(d && !d.error){ window.__router=d; render(); }
+  }
+  app.saveRouterConfig = function(patch){
+    fetch("/v1/router/config",{method:"PUT",headers:hdr,body:JSON.stringify(patch)})
+      .then(async r=>{ const d=await r.json(); if(r.ok){ window.__router=d; render(); }
+        else alert("Router config: "+((d.error&&d.error.message)||r.status)); });
+  };
+  app.setRouterBackend = function(b){
+    const r=window.__router||{};
+    if(b==='hf' && !(r.hf_endpoint && r.hf_key_set)){ alert("Add the HF endpoint and key below first, then switch to it."); return; }
+    app.saveRouterConfig({router_backend:b});
+  };
+  app.onRouterKeyInput = function(v){ state.routerKeyInput=v; render(); };
+  app.saveRouterKey = function(){
+    const v=state.routerKeyInput; if(!v) return;
+    state.routerKeyInput=''; app.saveRouterConfig({hf_key:v});
   };
 
   // Google/OIDC-aware sign-in: real SSO redirect when configured, else dev login

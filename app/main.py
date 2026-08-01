@@ -30,7 +30,8 @@ from .adapters.identity import get_identity
 from .adapters.identity.keys import (get_api_identity, issue_key, revoke_key,
                                       list_keys, update_key, set_suspended)
 from .adapters.identity.session import get_session_identity, create_session, revoke_session
-from .adapters.authz import get_authz
+from .adapters.authz import get_authz, is_platform_owner
+from .router import config as router_config
 from .adapters.audit import get_audit
 from .adapters.audit.chain import get_chain
 from .gateway.pipeline import governed_chat
@@ -328,6 +329,43 @@ def create_app() -> FastAPI:
         _s.unapprove(backend)
         return JSONResponse({"ok": True, "backend": backend})
 
+    # ── Router config (platform-owner-only) — where the router's own model runs ──
+    @app.get("/v1/router/config")
+    def get_router_config(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse(
+                {"error": {"message": "platform owner only", "type": "forbidden"}},
+                status_code=403)
+        cfg = router_config.get_config()
+        cfg["backends"] = ["ollama", "hf"]     # selectable router backends
+        return JSONResponse(cfg)
+
+    @app.put("/v1/router/config")
+    async def put_router_config(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse(
+                {"error": {"message": "platform owner only", "type": "forbidden"}},
+                status_code=403)
+        b = await request.json()
+        try:
+            cfg = router_config.update_config(b)
+        except router_config.RouterConfigError as exc:
+            return JSONResponse(
+                {"error": {"message": str(exc), "type": "invalid_request_error"}},
+                status_code=400)
+        get_chain().append(
+            event_type="router.config", actor=principal.subject, resource="router",
+            action="update", outcome="success",
+            metadata={"router_backend": cfg["router_backend"],
+                      "hf_key_set": cfg["hf_key_set"]})
+        return JSONResponse(cfg)
+
     @app.get("/v1/usage")
     def get_usage(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -544,7 +582,8 @@ def create_app() -> FastAPI:
             return err
         return JSONResponse({"subject": principal.subject, "role": principal.role,
                              "name": principal.display_name or principal.subject,
-                             "team": principal.team})
+                             "team": principal.team,
+                             "platform_owner": is_platform_owner(principal)})
 
     @app.get("/audit/export.csv")
     def audit_export_csv(request: Request):
