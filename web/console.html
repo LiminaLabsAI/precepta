@@ -122,7 +122,7 @@ const controlDefs = [
   {key:'inBoundary', icon:'shield-check', label:'In-boundary-only routing', desc:'The router can only send requests to backends flagged in-boundary. Anything else is blocked before it leaves.', hasProbe:false},
   {key:'egressLock', icon:'wifi-off', label:'Egress lock', desc:'Deny-all network egress except your allowlisted endpoints, enforced at the network layer — not just in the app.', hasProbe:true},
   {key:'auditOn', icon:'file-check-2', label:'Audit logging', desc:'Every request, decision and policy check is written to the tamper-evident log. Turning this off stops new entries.', hasProbe:false},
-  {key:'residency', icon:'map-pin', label:'Residency policy', desc:'A built-in rule asserting data-classification and residency requirements for your jurisdiction (DPDP).', hasProbe:false},
+  {key:'residency', icon:'map-pin', label:'Residency policy', desc:'A built-in rule asserting your declared data-classification and residency requirements.', hasProbe:false},
 ];
 const settingsTabDefs = [
   {key:'general', label:'General'}, {key:'security', label:'Security'},
@@ -210,8 +210,6 @@ const app = {
 
   openAttestation(){ state.attestationOpen=true; render(); },
   closeAttestation(){ state.attestationOpen=false; render(); },
-  openCompliance(){ state.complianceOpen=true; render(); },
-  closeCompliance(){ state.complianceOpen=false; render(); },
   verifyChain(){ render(); },
   setAuditFilter(f){ state.auditEventFilter=f; render(); },
   toggleAuditRow(h){ state.expandedAuditHash = state.expandedAuditHash===h?null:h; render(); },
@@ -800,7 +798,6 @@ function auditView(){
       <div style="font-weight:600;font-size:14px">Tamper-evident audit log</div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;display:inline-flex;align-items:center;gap:4px"><i data-lucide="check" style="width:11px;height:11px"></i>Chain verified</span>
-        <button onclick="app.openCompliance()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#1D4ED8;border:1px solid #BFDBFE;cursor:pointer">Compliance report</button>
         <button onclick="app.exportAudit()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export chain</button>
         <button onclick="app.verifyChain()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Re-verify chain</button>
       </div>
@@ -809,8 +806,7 @@ function auditView(){
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#F9FAFB">${['Time','Actor','Event','Backend','Outcome','Hash'].map(t=>th(t)).join('')}</tr></thead>
       <tbody>${empty ? `<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">${loaded?'No audit events'+(s.auditEventFilter!=='all'?' for this filter':' yet — run a request in the Playground')+'.':'Loading…'}</td></tr>` : rows}</tbody></table></div>
-    ${s.attestationOpen?attestationModal():''}
-    ${s.complianceOpen?complianceModal():''}`;
+    ${s.attestationOpen?attestationModal():''}`;
 }
 
 function attestationModal(){
@@ -835,27 +831,10 @@ function attestationModal(){
     </div></div>`;
 }
 
-function complianceModal(){
-  const c = window.__compliance;
-  const sev = {met:{bg:'#ECFDF5',color:'#065F46',label:'Met'},partial:{bg:'#FFFBEB',color:'#92400E',label:'Partial'},failed:{bg:'#FEF2F2',color:'#991B1B',label:'Failed'}};
-  const rows = c && c.controls ? c.controls.map(x=>{const sv=sev[x.status]||sev.partial;return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:11.5px">${esc(x.id)}</td><td style="padding:9px 12px;font-size:12px;color:#6B7280">${esc(x.framework)}</td><td style="padding:9px 12px;font-size:12px">${esc(x.name)}<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(x.evidence)}</div></td><td style="padding:9px 12px"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${sv.bg};color:${sv.color}">${sv.label}</span></td></tr>`;}).join('') : '<tr><td colspan="4" style="padding:16px;color:#9CA3AF;font-size:13px">Loading…</td></tr>';
-  const score = c ? c.score : '…';
-  return `<div onclick="app.closeCompliance()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
-    <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:24px;max-width:660px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:16px;font-weight:700">Compliance evidence report</div><div style="font-size:22px;font-weight:700;color:#1D4ED8">${score}<span style="font-size:12px;color:#9CA3AF">/100</span></div></div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Live governance state mapped to controls — hand this to an auditor.${c?' '+c.controls_met+' of '+c.controls_total+' met.':''}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
-        <thead><tr style="background:#F9FAFB">${['Control','Framework','Requirement & evidence','Status'].map(t=>th(t,'9px 12px')).join('')}</tr></thead>
-        <tbody>${rows}</tbody></table>
-      ${c&&c.attestation_signature?`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9CA3AF;margin-top:12px;word-break:break-all">signed ${esc(String(c.attestation_signature).slice(0,12))}… · anchored ${esc(String(c.anchored_to||'').slice(0,12))}…</div>`:''}
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px"><button onclick="app.closeCompliance()" style="padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Close</button></div>
-    </div></div>`;
-}
-
 /* ---------- Playground ---------- */
 const SUGGESTED = [
   'Draft a restructured EMI plan for a delinquent account',
-  "Summarize this quarter's flagged compliance events",
+  "Summarize this quarter's blocked and flagged requests",
   'Explain our data-retention policy in plain English',
 ];
 function playgroundView(){
@@ -912,10 +891,10 @@ function settingsModal(){
       +rowKV('Keys issued', String((window.__keys||[]).length), 'Active + revoked');
   } else if(s.settingsTab==='data'){
     pane=editRow('Data residency region','data_residency', o.data_residency, 'India (Mumbai)')
-      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0 10px">A declared jurisdiction shown in the compliance report — it does not move data.</div>`
+      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0 10px">A declared data-residency label recorded in the audit — it does not move data.</div>`
       +`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div style="font-size:13px;font-weight:500">Export audit log</div><button onclick="app.exportCsv()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export CSV</button></div>`
       +editRow('Audit log retention (years)','audit_retention_years', o.audit_retention_years, '7','number')
-      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0">Declared retention for compliance. Automated pruning is deferred — shortening won't silently delete.</div>`;
+      +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0">Declared audit-log retention. Automated pruning is deferred — shortening won't silently delete.</div>`;
   } else if(s.settingsTab==='account'){
     pane=rowKV('Name', esc(me.name || '—'), me.subject ? '' : 'Sign in to load')
       +rowKV('Role', esc(me.role || '—'))
@@ -1107,7 +1086,6 @@ render();
   // Audit
   app.verifyChain = function(){ getJSON("/audit/verify").then(d=>{ if(d) alert("Audit chain "+(d.verified?"VERIFIED ✓":"FAILED")+" — "+d.events+" events"); }); };
   app.openAttestation = function(){ state.attestationOpen=true; window.__att=null; render(); getJSON("/attestation").then(d=>{ if(d){ window.__att=d; render(); } }); };
-  app.openCompliance = function(){ state.complianceOpen=true; window.__compliance=null; render(); getJSON("/compliance/report").then(d=>{ if(d){ window.__compliance=d; render(); } }); };
   app.exportAudit = function(){ getJSON("/audit/export").then(d=>{ if(!d) return;
     const blob=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="precepta-audit-chain.json"; a.click(); }); };
