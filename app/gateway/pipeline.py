@@ -20,7 +20,7 @@ from ..governance.policy import load_enabled, evaluate, scope_matches, DbUsage
 from ..governance import sensitive as _sensitive
 from ..adapters.audit import get_audit
 
-RunInference = Callable[[list[dict]], Awaitable[tuple[dict, dict]]]
+RunInference = Callable[..., Awaitable[tuple[dict, dict]]]
 
 ACTION = "chat.completion"
 
@@ -86,6 +86,15 @@ async def governed_chat(
         aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
         return 403, _blocked_payload(dec, aid, pii, injection=False)
 
+    # Auto path (no explicit backend): restrict the router to the approved set for
+    # a sensitive request, so the LLM router + failover can only pick an approved
+    # backend. If none is approved the router raises → fail-closed block below.
+    allowed_backends: set[str] | None = None
+    if sensitive and req_backend is None:
+        approved = _sensitive.approved_set()
+        if approved:                          # empty = filter off (firewall still redacts)
+            allowed_backends = approved
+
     # ── policy evaluation (most-restrictive), scoped to this request (FEAT-002) ──
     policies = [p for p in load_enabled(ACTION)
                 if scope_matches(p.get("scope", {}), principal.subject, req_backend, req_model)]
@@ -96,13 +105,24 @@ async def governed_chat(
 
     # ── inference (injected router/engine) — failures are audited too ──
     try:
-        result, route_meta = await run_inference(scrubbed)
+        result, route_meta = await run_inference(
+            scrubbed, {"allowed_backends": allowed_backends})
     except httpx.HTTPError as exc:
         dec = Decision("block", f"backend unavailable / inference failed: {exc}")
         aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
         payload = _blocked_payload(dec, aid, pii, injection=False)
         payload["error"]["type"] = "backend_unavailable"
         return 502, payload
+    except LookupError as exc:
+        # No eligible backend. For a sensitive auto request under an active filter
+        # that means nothing approved is available → fail-closed block + notify.
+        if allowed_backends:
+            _sensitive.notify_block(getattr(principal, "subject", ""), None)
+            dec = Decision("block", "sensitive data (auto route) — no approved-for-"
+                           "sensitive backend is available")
+            aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
+            return 403, _blocked_payload(dec, aid, pii, injection=False)
+        raise
 
     ctx.backend = route_meta.get("backend_used")   # record backend on the audit row
 

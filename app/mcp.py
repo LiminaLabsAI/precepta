@@ -56,14 +56,16 @@ def _text(s: str, is_error: bool = False) -> dict:
 
 
 def _make_run_inference(model_str: str, kw: dict, reg: dict, settings):
-    async def run_inference(msgs):
+    async def run_inference(msgs, route_ctx=None):
+        allowed = (route_ctx or {}).get("allowed_backends")
         if is_auto(model_str):
             intent = parse_intent(model_str)
             brain = get_brain("rules", get_registry)
             query = next((m.get("content", "") for m in reversed(msgs)
                           if m.get("role") == "user"), "")
-            plan = brain.decide(query, intent)
-            result, meta = await engine.execute(plan, msgs, reg, settings, budget_usd=None, **kw)
+            plan = brain.decide(query, intent, allowed=allowed)
+            result, meta = await engine.execute(plan, msgs, reg, settings, budget_usd=None,
+                                                allowed=allowed, **kw)
             used = reg.get(meta["backend_used"])
             return result, {"backend_used": meta["backend_used"],
                             "in_boundary": bool(used and used.in_boundary),

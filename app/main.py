@@ -802,15 +802,21 @@ def create_app() -> FastAPI:
                                   "in_boundary": backend.in_boundary}},
                     status_code=403)
 
-        async def run_inference(msgs: list[dict]):
+        async def run_inference(msgs: list[dict], route_ctx: dict | None = None):
+            allowed = (route_ctx or {}).get("allowed_backends")
             if is_auto(model_str):
                 intent = parse_intent(model_str)
-                brain = get_brain(os.environ.get("PRECEPTA_BRAIN", "rules"), get_registry)
+                # "Optimize automatically" (org setting) selects the LLM router;
+                # off = the deterministic rules router. Env var overrides (tests).
+                brain_name = (os.environ.get("PRECEPTA_BRAIN")
+                              or ("llm" if org.get("optimize_auto") == "true" else "rules"))
+                brain = get_brain(brain_name, get_registry)
                 query = next((m.get("content", "") for m in reversed(msgs)
                               if m.get("role") == "user"), "")
-                plan = brain.decide(query, intent)
+                plan = brain.decide(query, intent, allowed=allowed)
                 result, meta = await engine.execute(
-                    plan, msgs, reg, settings, budget_usd=body.get("budget_usd"), **kw)
+                    plan, msgs, reg, settings, budget_usd=body.get("budget_usd"),
+                    allowed=allowed, **kw)
                 used = reg.get(meta["backend_used"])
                 return result, {
                     "backend_used": meta["backend_used"],

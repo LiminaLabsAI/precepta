@@ -196,7 +196,7 @@ const app = {
   toggleBackendBoundary(i){ if(state.backends[i]){ state.backends[i].inBoundary=!state.backends[i].inBoundary; render(); } },
   addBackend(){ state.addBackendOpen=false; render(); },        // overridden live
   toggleApprovedBackend(name){ const a=state.approvedBackends; state.approvedBackends = a.includes(name)?a.filter(n=>n!==name):[...a,name]; render(); },
-  toggleSmartRouting(){ state.smartRoutingOn=!state.smartRoutingOn; render(); },
+  toggleSmartRouting(){ const on=(window.__org||{}).optimize_auto==='true'; app.saveOrgSetting('optimize_auto', on?'false':'true'); },
   toggleLearningLoop(){ state.learningLoopEnabled=!state.learningLoopEnabled; render(); },
 
   openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
@@ -697,9 +697,9 @@ function policiesView(){
       <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Approved for sensitive data</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${approvedChips}</div>
       <div style="font-size:11px;color:${approvedSet.size?'#065F46':'#9CA3AF'};margin-bottom:14px">${approvedSet.size?'Enforced — sensitive requests may only go to the '+approvedSet.size+' approved backend'+(approvedSet.size>1?'s':'')+'.':'Off — approve a backend to enforce sensitive-data routing.'}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6;opacity:.7">
-        <div><div style="font-size:13px;font-weight:500">Optimize automatically for cost &amp; speed <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E;margin-left:4px">Preview · FEAT-007</span></div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">The smart cost/speed router ships next — session-local for now.</div></div>
-        ${toggleHtml(s.smartRoutingOn,'app.toggleSmartRouting()')}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6">
+        <div><div style="font-size:13px;font-weight:500">Optimize automatically for cost &amp; speed</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:560px;line-height:1.45">When on, <code>auto</code> requests are routed by an <strong>in-boundary</strong> model that reads each request's goal (cost/speed/quality) and picks a backend — bounded by the sensitive-data filter above, and falling back to rules if it errors. Off by default (safe): rules-based routing.</div></div>
+        ${toggleHtml((window.__org||{}).optimize_auto==='true','app.toggleSmartRouting()')}
       </div>
     </div>
     ${s.approvingBackend?approveModal():''}

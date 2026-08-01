@@ -16,6 +16,7 @@ _DEFAULTS = {
     "data_residency": "India (Mumbai)",
     "audit_retention_years": "7",
     "timezone": "Asia/Kolkata",          # budget windows + time displays honor this
+    "optimize_auto": "false",            # "Optimize automatically" → LLM router (off = rules)
 }
 
 _ALLOWED = set(_DEFAULTS)

@@ -17,8 +17,11 @@ _CALL_KW = ("temperature", "max_tokens", "top_p")
 
 
 async def execute(plan: RoutePlan, messages: list[dict], registry: dict,
-                  settings, *, budget_usd: float | None = None, **kw) -> tuple[dict, dict]:
-    cands = candidates(registry, settings.sovereign_mode)
+                  settings, *, budget_usd: float | None = None,
+                  allowed: set[str] | None = None, **kw) -> tuple[dict, dict]:
+    # `allowed` (governance filter for a sensitive auto request) also bounds
+    # failover — a sensitive request can never fail over to an un-approved backend.
+    cands = candidates(registry, settings.sovereign_mode, allowed)
     if not cands:
         raise LookupError("no eligible in-boundary backend")
     # primary (plan.backend) first, then the rest as failover targets.
