@@ -1,8 +1,8 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; Phase 4 (all 3 tasks) committed UNLANDED on
-`feat/router-config`→`feat/eval-harness` (stacked)** · **158 tests passing.** See §10 for landing.
+> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; Phases 4–6 complete + Phase 7 partial,
+all committed UNLANDED on a 5-branch stack** · **181 tests passing.** See §10 for the branch order + landing.
 >
 > **Read order for a fresh session:** this file → `specs/status.md` → `IMPLEMENTATION_PLAN.md`
 > (§Phase 10 = the phase-wise plan) → `specs/backlog/backlog.md` → `BRAINSTORM.md` (full scoping).
@@ -131,17 +131,36 @@ Then Phases 6–9 per `IMPLEMENTATION_PLAN.md` §Phase 10.
   switches on `state.screen`; per-view functions; live handlers appended near the bottom; `loadAll()` fans
   out the initial fetches. `app.*` methods are global (used in `onclick`).
 
-## 10. Landing state (IMPORTANT — Phase 4 is committed but NOT on `main`)
-All of Phase 4 is on two **stacked, unlanded** branches off `main` (`e2ef309`):
-- `feat/router-config` — task 1 (2 commits)
-- `feat/eval-harness` — tasks 2 **and** 3 (eval harness + LLM router; branch name predates task 3 landing here).
+## 10. Landing state (IMPORTANT — Phases 4–7 are committed but NOT on `main`)
+Everything is on a **5-branch stack** off `main` (`e2ef309`), each branch built on the previous. Land **in this
+order** (suite is 181-green on the tip). Landing on `main` is gated by the Claude Code auto-mode classifier —
+the agent cannot `git push origin main` nor grant itself that permission (both correctly blocked), so the user
+lands:
+1. `feat/router-config` — Phase 4·1 (router config + secret store)
+2. `feat/eval-harness` — Phase 4·2 + 4·3 (eval harness + LLM router)
+3. `feat/phase5-cache` — Phase 5 (response cache + prompt compression)
+4. `feat/phase6-learning` — Phase 6 (learning loop)
+5. `feat/phase7-hardening` — Phase 7 partial (TD-004 PII + TD-007 attestation scope)
 
-They are unlanded because **landing on `main` is gated by the Claude Code auto-mode classifier** — the agent
-cannot `git push origin main`, nor grant itself that permission (both are correctly blocked). The user must
-land, in order (suite is 158-green on the tip):
 ```
-git checkout main && git merge --ff-only feat/router-config && touch .momentum/merge-approved && git push origin main
-git merge --ff-only feat/eval-harness && touch .momentum/merge-approved && git push origin main
+git checkout main
+for b in feat/router-config feat/eval-harness feat/phase5-cache feat/phase6-learning feat/phase7-hardening; do
+  git merge --ff-only "$b" && touch .momentum/merge-approved && git push origin main || break
+done
 ```
-(Or the user adds a `git push origin main` Bash permission rule so the agent can land verified features itself,
-as HANDOFF §7 originally intended.) After landing, delete the merged branches and bump the `Main @` SHA above.
+(Or add a `git push origin main` Bash permission rule so the agent can land verified features itself, per §7.)
+Because the branches are a clean stack, one ff-merge chain lands them all. After landing, delete the merged
+branches and bump the `Main @` SHA above. **A full cross-feature integration test (cache+compress+router+
+learning+governance together, with the toggles on) is still owed — do it after landing, or with the user.**
+
+## 11. Phase status (this session, 2026-08-01)
+- **Phase 4 (smart routing) — ✅ complete:** router config · eval harness (baseline 0.854) · LLM intent-router.
+- **Phase 5 (cost) — ✅ complete:** response cache (live: 287ms→11ms) · prompt compression (14→5 tokens).
+- **Phase 6 (learning) — ✅ complete:** traces + thumbs feedback → learned routing (live end-to-end).
+- **Phase 7 (hardening) — 🟡 partial:** ✅ TD-004 validated PII · ✅ TD-007 attestation data-stores · TD-006
+  fail-soft (already baked in). **Deferred (each needs its own design pass): FEAT-004 OpenGuard authZ,
+  TD-003 streaming vs governance, TD-005 agent attribution, TD-008 alerts config.**
+- **Phase 8 (deploy) — ⚪ needs a brainstorm.** **Phase 9 (validation) — business, not code:** a metered
+  workload + a design-partner pilot. **HF validation finding:** the `Ternary-Bonsai-27B` (public HF API,
+  NOT sovereign) did not beat local 3B on the eval (ternary quantization); machinery proven, model isn't an
+  upgrade. hf backend reverted to tier 1 so nothing auto-routes to it.
