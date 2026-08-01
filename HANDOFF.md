@@ -166,7 +166,10 @@ learning+governance together, with the toggles on) is still owed — do it after
   ✅ TD-008 configurable alerts · ✅ FEAT-004 OpenGuard authZ (configurable RBAC + ABAC + per-agent daily
   request budgets, behind AuthorizationPort). *Note: a full external OpenGuard/OPA engine + real in-boundary
   NER for PII would slot behind the same seams — V1 is the in-boundary implementation.*
-- **Phase 8 (deploy) — ⚪ needs a brainstorm.** **Phase 9 (validation) — business, not code:** a metered
+- **Phase 8 (deploy) — ⚪ needs a brainstorm.** **Must-address at deploy (TD-009, user-parked 2026-08-01):**
+  Precepta's router/helper models (router intent `.env` HF, cache embeddings, eval judge) read customer prompts,
+  so the deploy strategy must run them **in-boundary** (dedicated endpoints in the customer's network) — that's
+  where data sovereignty is actually enforced. Bring the router-model-public-endpoint concern back here. **Phase 9 (validation) — business, not code:** a metered
   workload + a design-partner pilot. **HF validation finding (updated 2026-08-01):** the current backend is
   `google/gemma-4-31B-it` (via HF/Novita public API — validates quality/routing, NOT sovereign; production
   needs a dedicated in-boundary endpoint). Set to **tier 3**. On the frozen eval it **beats local 3B**: scalar
