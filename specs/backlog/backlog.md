@@ -25,7 +25,7 @@ type: Backlog
 
 | ID | Title | Priority | Status | Phase | Detail |
 |----|-------|----------|--------|-------|--------|
-| _(none)_ | | | | | |
+| BUG-001 | Model Plane: adding a 2nd backend of the same provider **type** overwrites the first | P2 | open | 10 | Backends are keyed by provider *type*, not per-model. Console sends `provider=PROVIDER_OF[type]` (e.g. every HF backend → `"hf"`); `registered_backends.provider` is PK with `ON CONFLICT DO UPDATE`, and `registry[provider]=backend`, so a 2nd HF (or vLLM/Ollama) model **replaces** the first. The typed **Name** is sent but ignored. Fix: give each backend a unique id (slug of Name, or provider+name) and key the registry/store/pricing/routing/sensitive-approved/key-scopes by that id. Ripples through anything that references a backend by name — do as a small scoped change. Reported by user 2026-08-01. |
 
 ## Features
 
