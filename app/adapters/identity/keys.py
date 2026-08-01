@@ -100,7 +100,8 @@ def issue_key(name: str, role: str = "user", team: str = "",
 def update_key(kid: str, **fields) -> bool:
     """Edit an existing key's config (never its name or secret)."""
     ensure_table()
-    allowed = {"role", "allowed_backends", "allowed_models", "cost_cap_daily",
+    # role is intentionally NOT editable — keys are app-level, never admin.
+    allowed = {"allowed_backends", "allowed_models", "cost_cap_daily",
                "cost_cap_monthly", "token_cap_daily", "token_cap_monthly"}
     sets, vals = [], []
     for k, v in fields.items():

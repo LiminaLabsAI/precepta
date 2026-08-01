@@ -370,7 +370,7 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": {"message": "name required", "type": "invalid_request_error"}},
                 status_code=400)
-        role = b.get("role") or "user"
+        role = "user"   # keys are app-level credentials — admin is human-only (Console/SSO)
         team = (b.get("team") or "").strip()
         # expiry (FEAT-001): default 90 days; 0/None/"never" = never expires
         exp_raw = b.get("expires_in_days", 90)
@@ -413,7 +413,7 @@ def create_app() -> FastAPI:
                 {"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
         b = await request.json()
         fields = {k: b[k] for k in (
-            "role", "allowed_backends", "allowed_models", "cost_cap_daily",
+            "allowed_backends", "allowed_models", "cost_cap_daily",
             "cost_cap_monthly", "token_cap_daily", "token_cap_monthly",
             "expires_in_days") if k in b}
         if not update_key(kid, **fields):

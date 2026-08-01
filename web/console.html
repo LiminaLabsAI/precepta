@@ -531,7 +531,7 @@ function keysView(){
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="font-weight:600;font-size:13.5px">${esc(k.name)}</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(roleLbl[k.role]||k.role||'user')}${created?' · created '+esc(created):''} · <span style="color:${expired?'#B45309':'#9CA3AF'}">${esc(expLabel)}</span></div>
+          <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${created?'created '+esc(created)+' · ':''}<span style="color:${expired?'#B45309':'#9CA3AF'}">${esc(expLabel)}</span></div>
           ${(capBits.length||scopeBits.length||spendBadge)?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">${capBits.map(c=>`<span style="font-size:10.5px;font-weight:500;color:#3730A3;background:#EEF2FF;padding:2px 7px;border-radius:10px">${c}</span>`).join('')}${scopeBits.map(x=>`<span style="font-size:10.5px;color:#6B7280;background:#F3F4F6;padding:2px 7px;border-radius:10px">${esc(x)}</span>`).join('')}${spendBadge}</div>`:''}
           <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
             <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6B7280;background:#F9FAFB;border:1px solid #F3F4F6;padding:2px 7px;border-radius:4px">pk-••••••••••••  (secret shown once at creation)</span>
@@ -561,7 +561,6 @@ function newKeyModal(){
       <div style="font-size:16px;font-weight:600;margin-bottom:4px">${s.editingKeyId?'Edit key':'Create a key'}</div>
       <div style="font-size:12px;color:#6B7280;margin-bottom:16px">${s.editingKeyId?'Update this key&#39;s limits and scope — the secret is unchanged.':'A key is an external app&#39;s credential into Precepta. The secret is shown once, at creation.'}</div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input ${s.editingKeyId?'disabled':''} style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;${s.editingKeyId?'background:#F9FAFB;color:#6B7280':''}" value="${esc(s.newKeyName)}" oninput="app.set('newKeyName',this.value)" placeholder="e.g. Underwriting service"></div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Role</label><select onchange="app.onSelect('newKeyRole',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff"><option value="user" ${s.newKeyRole==='user'?'selected':''}>User</option><option value="admin" ${s.newKeyRole==='admin'?'selected':''}>Admin</option><option value="auditor" ${s.newKeyRole==='auditor'?'selected':''}>Auditor</option></select></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Expires</label>
         <select onchange="app.onSelect('newKeyExpiry',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff">${s.editingKeyId?'<option value="keep" '+(s.newKeyExpiry==='keep'?'selected':'')+'>Keep current</option>':''}${keyExpiryOptions.map(k=>`<option value="${k.value}" ${s.newKeyExpiry===k.value?'selected':''}>${k.label}</option>`).join('')}</select>
         <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">Default 90 days · an expired key stops working (401).</div>
@@ -1170,7 +1169,7 @@ render();
   // Keys → real create/revoke; secret revealed once
   app.saveKey = function(){
     const s=state;
-    const body={ role:s.newKeyRole, allowed_backends:s.newKeyBackends, allowed_models:s.newKeyModels,
+    const body={ allowed_backends:s.newKeyBackends, allowed_models:s.newKeyModels,
       cost_cap_daily:parseFloat(s.newKeyDailyCost)||0, cost_cap_monthly:parseFloat(s.newKeyMonthlyCost)||0,
       token_cap_daily:parseInt(s.newKeyTokenDaily)||0, token_cap_monthly:parseInt(s.newKeyTokenMonthly)||0 };
     if(s.editingKeyId){
