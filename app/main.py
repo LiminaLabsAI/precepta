@@ -433,6 +433,60 @@ def create_app() -> FastAPI:
         from . import cache as _c
         return JSONResponse({"ok": True, "cleared": _c.clear()})
 
+    # ── OpenGuard authZ (FEAT-004): RBAC config + agent budgets (admin-only) ──
+    @app.get("/v1/authz/roles")
+    def get_authz_roles(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        from .adapters.authz import openguard as _og
+        return JSONResponse({"roles": _og.all_roles()})
+
+    @app.put("/v1/authz/roles/{role}")
+    async def put_authz_role(role: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        perms = b.get("permissions")
+        if not isinstance(perms, list):
+            return JSONResponse({"error": {"message": "permissions must be a list",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        from .adapters.authz import openguard as _og
+        _og.set_role_permissions(role, perms)
+        return JSONResponse({"ok": True, "roles": _og.all_roles()})
+
+    @app.get("/v1/authz/agent-budgets")
+    def get_agent_budgets(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        from .adapters.authz import openguard as _og
+        return JSONResponse({"agents": _og.list_agent_budgets()})
+
+    @app.post("/v1/authz/agent-budgets")
+    async def post_agent_budget(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        agent = (b.get("agent_id") or "").strip()
+        cap = b.get("daily_request_cap")
+        if not agent or cap is None:
+            return JSONResponse({"error": {"message": "agent_id and daily_request_cap required",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        from .adapters.authz import openguard as _og
+        _og.set_agent_budget(agent, int(cap), (b.get("note") or "").strip())
+        return JSONResponse({"ok": True, "agents": _og.list_agent_budgets()}, status_code=201)
+
     # ── Learning loop (FEAT-008): feedback + stats ──
     @app.post("/v1/feedback")
     async def submit_feedback(request: Request) -> JSONResponse:
@@ -957,6 +1011,15 @@ def create_app() -> FastAPI:
                 "backend_used": backend.name, "in_boundary": backend.in_boundary,
                 "route_mode": "explicit", "technique": "passthrough", "model": model_str,
             }
+
+        # Agent budget (FEAT-004): bound an autonomous caller's daily requests,
+        # independently of the human/key it runs under.
+        if attribution.get("agent_id"):
+            from .adapters.authz.openguard import check_and_record_agent
+            _ok, _why = check_and_record_agent(attribution["agent_id"])
+            if not _ok:
+                return JSONResponse({"error": {"message": _why, "type": "rate_limit_exceeded"}},
+                                    status_code=429)
 
         t0 = time.perf_counter()
         try:

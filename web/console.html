@@ -214,7 +214,7 @@ const app = {
   setAuditFilter(f){ state.auditEventFilter=f; render(); },
   toggleAuditRow(h){ state.expandedAuditHash = state.expandedAuditHash===h?null:h; render(); },
 
-  openSettings(){ state.settingsOpen=true; state.profileMenuOpen=false; render(); },
+  openSettings(){ state.settingsOpen=true; state.profileMenuOpen=false; render(); if(window.__loadAuthz) window.__loadAuthz(); },
   closeSettings(){ state.settingsOpen=false; render(); },
   setSettingsTab(t){ state.settingsTab=t; render(); },
   goToMembersFromAccount(){ state.settingsTab='members'; render(); },
@@ -992,9 +992,14 @@ function settingsModal(){
   } else {
     // members — only the real signed-in account is known to the backend today
     const name=esc(me.name||me.subject||'—'), email=esc(me.subject||''), role=esc(me.role||'user');
-    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.5">Login (Google SSO) proves who someone is — role decides what they can do. Auditors get read-only access to Audit &amp; Attestation.</div>`
-      +`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${name}</div><div style="font-size:11px;color:#9CA3AF">${email}</div></div><span style="font-size:12px;color:#6B7280;padding:4px 10px;border:1px solid #E5E7EB;border-radius:6px">${{admin:'Admin',user:'User',auditor:'Auditor'}[role]||role}</span></div>`
-      +pendingBanner('Org-wide member directory &amp; role editing needs a members API (not yet built). Only your own signed-in account is shown — no fabricated roster.');
+    const roles=window.__authzRoles, agents=window.__agentBudgets;
+    const roleRows = roles ? Object.keys(roles).map(rn=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F3F4F6"><div style="font-size:12.5px;font-weight:500;text-transform:capitalize">${esc(rn)}</div><div style="font-size:11px;color:#6B7280;max-width:360px;text-align:right">${(roles[rn]||[]).map(p=>esc(typeof p==='string'?p:(p.action+(p.when?' ·'+Object.entries(p.when).map(e=>e[0]+'='+e[1]).join(','):''))) ).join(', ')||'—'}</div></div>`).join('') : '<div style="font-size:12px;color:#9CA3AF;padding:8px 0">Loading roles…</div>';
+    const agentRows = !agents ? '<div style="font-size:12px;color:#9CA3AF;padding:8px 0">Loading…</div>' : (agents.length ? agents.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:12.5px;font-weight:500">${esc(a.agent_id)}</div>${a.note?`<div style="font-size:11px;color:#9CA3AF">${esc(a.note)}</div>`:''}</div><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${a.used_today>=a.daily_request_cap?'#FEF2F2':'#F3F4F6'};color:${a.used_today>=a.daily_request_cap?'#991B1B':'#374151'}">${a.used_today}/${a.daily_request_cap} today</span></div>`).join('') : '<div style="font-size:12px;color:#9CA3AF;padding:8px 0">No agent budgets set. Cap an autonomous caller\'s daily requests below.</div>');
+    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:12px;line-height:1.5">Login (SSO) proves who someone is; <strong>role</strong> decides what they can do (OpenGuard RBAC). Agents that call the API can be capped independently.</div>`
+      +`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${name} <span style="font-size:11px;color:#9CA3AF">(you)</span></div><div style="font-size:11px;color:#9CA3AF">${email}</div></div><span style="font-size:12px;color:#6B7280;padding:4px 10px;border:1px solid #E5E7EB;border-radius:6px">${{admin:'Admin',user:'User',auditor:'Auditor'}[role]||role}</span></div>`
+      +`<div style="font-size:12px;font-weight:600;color:#374151;margin:16px 0 2px">Roles &amp; permissions</div>${roleRows}`
+      +`<div style="font-size:12px;font-weight:600;color:#374151;margin:16px 0 2px">Agent budgets <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#EFF6FF;color:#1D4ED8">FEAT-004</span></div>${agentRows}`
+      +`<div style="display:flex;gap:6px;margin-top:12px"><input id="agIdIn" placeholder="agent_id" style="flex:1;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px"><input id="agCapIn" type="number" min="1" placeholder="daily cap" style="width:100px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px"><button onclick="app.addAgentBudget()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Set cap</button></div>`;
   }
   return `<div onclick="app.closeSettings()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:100%;max-width:640px;height:540px;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden">
@@ -1322,6 +1327,17 @@ render();
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); }
     if(sc==="savings"){ loadCache(); loadCompression(); }
+  };
+  async function loadAuthz(){
+    const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
+    const ab=await getJSON("/v1/authz/agent-budgets"); if(ab && Array.isArray(ab.agents)){ window.__agentBudgets=ab.agents; render(); }
+  }
+  window.__loadAuthz=loadAuthz;
+  app.addAgentBudget=function(){
+    const id=(document.getElementById('agIdIn')||{}).value, cap=(document.getElementById('agCapIn')||{}).value;
+    if(!id||!cap){ alert('agent_id and daily cap required'); return; }
+    fetch("/v1/authz/agent-budgets",{method:"POST",headers:hdr,body:JSON.stringify({agent_id:id,daily_request_cap:Number(cap)})})
+      .then(async r=>{ const d=await r.json(); if(r.ok){ window.__agentBudgets=d.agents; render(); } else alert('Failed: '+((d.error&&d.error.message)||r.status)); });
   };
   async function loadCache(){ const d=await getJSON("/v1/cache/stats"); if(d && !d.error){ window.__cache=d; render(); } }
   async function loadCompression(){ const d=await getJSON("/v1/compression/stats"); if(d && !d.error){ window.__compression=d; render(); } }

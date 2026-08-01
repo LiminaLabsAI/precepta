@@ -46,8 +46,10 @@ class RoleCheck:
         return {}
 
 
-_authz = RoleCheck()
+# FEAT-004: OpenGuard (configurable RBAC/ABAC) is the active adapter; RoleCheck
+# stays as the reference/fallback implementation of the same port.
+from .openguard import get_openguard
 
 
-def get_authz() -> RoleCheck:
-    return _authz
+def get_authz():
+    return get_openguard()
