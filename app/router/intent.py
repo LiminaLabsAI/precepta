@@ -39,12 +39,27 @@ _SYSTEM = (
 
 
 def _target() -> tuple[str, str, str | None]:
-    """(base_url, model, api_key) for the in-boundary classifier model."""
+    """(base_url, model, api_key) for **Precepta's own router model** — the app's
+    IP, NOT a customer backend. Resolution order:
+
+      1. Platform-owner override (Console → Router config), if explicitly set.
+      2. Precepta's proprietary model from `.env` (HF_BASE_URL/HF_API_KEY/
+         HF_DEFAULT_MODEL) — the standard place it is configured.
+      3. Local Ollama — the in-boundary dev fallback.
+
+    SOVEREIGNTY: this model sees the customer's prompt (to classify intent), so
+    in production it MUST be an **in-boundary** deployment of Precepta's model
+    (a dedicated endpoint inside the customer's network). A public URL here
+    (e.g. router.huggingface.co) leaks prompts and is a DEV shortcut only.
+    """
     cfg = get_config()
-    if cfg["router_backend"] == "hf" and cfg["hf_endpoint"]:
-        key = get_secret_store().get(HF_KEY_SECRET)
-        return cfg["hf_endpoint"].rstrip("/"), (cfg["hf_model"] or "default"), key
-    port = get_settings().ollama_port           # local Ollama, in-boundary
+    if cfg["router_backend"] == "hf" and cfg["hf_endpoint"]:            # (1) Console override
+        return cfg["hf_endpoint"].rstrip("/"), (cfg["hf_model"] or "default"), \
+            get_secret_store().get(HF_KEY_SECRET)
+    base, model = os.environ.get("HF_BASE_URL"), os.environ.get("HF_DEFAULT_MODEL")
+    if base and model:                                                  # (2) .env — Precepta's model
+        return base.rstrip("/"), model, os.environ.get("HF_API_KEY")
+    port = get_settings().ollama_port                                  # (3) local Ollama (in-boundary)
     return (f"http://127.0.0.1:{port}/v1",
             os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:3b"), None)
 

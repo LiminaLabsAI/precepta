@@ -42,14 +42,11 @@ def build_registry() -> dict[str, OpenAICompatBackend]:
             default_model=os.environ.get("NEYSA_DEFAULT_MODEL", "qwen2-72b"), tier=3,
         )
 
-    # HF dedicated inference endpoint (private, not the shared public API). Tier 2.
-    if os.environ.get("HF_BASE_URL"):
-        reg["hf"] = OpenAICompatBackend(
-            "hf", os.environ["HF_BASE_URL"], in_boundary=True,
-            api_key=os.environ.get("HF_API_KEY"),
-            prices={"": Price(0.60, 0.60)},
-            default_model=os.environ.get("HF_DEFAULT_MODEL", "llama-3.1-70b-instruct"), tier=2,
-        )
+    # NOTE: the `.env` HF vars (HF_BASE_URL/HF_API_KEY/HF_DEFAULT_MODEL) are
+    # **Precepta's own proprietary router model** (the app's IP), consumed by the
+    # router/intent classifier (app/router/intent.py) — NOT a customer inference
+    # backend. So they are deliberately NOT registered here; the customer's
+    # models come only from the Console (registered_backends) below.
 
     # Persisted backends registered at runtime (Console/onboarding) — survive restart.
     from .store import load_backends
