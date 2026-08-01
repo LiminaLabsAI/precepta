@@ -167,6 +167,12 @@ learning+governance together, with the toggles on) is still owed — do it after
   request budgets, behind AuthorizationPort). *Note: a full external OpenGuard/OPA engine + real in-boundary
   NER for PII would slot behind the same seams — V1 is the in-boundary implementation.*
 - **Phase 8 (deploy) — ⚪ needs a brainstorm.** **Phase 9 (validation) — business, not code:** a metered
-  workload + a design-partner pilot. **HF validation finding:** the `Ternary-Bonsai-27B` (public HF API,
-  NOT sovereign) did not beat local 3B on the eval (ternary quantization); machinery proven, model isn't an
-  upgrade. hf backend reverted to tier 1 so nothing auto-routes to it.
+  workload + a design-partner pilot. **HF validation finding (updated 2026-08-01):** the current backend is
+  `google/gemma-4-31B-it` (via HF/Novita public API — validates quality/routing, NOT sovereign; production
+  needs a dedicated in-boundary endpoint). Set to **tier 3**. On the frozen eval it **beats local 3B**: scalar
+  **0.854 → 0.888** (rules) / 0.882 (llm); hard-category **0.726 → 0.808** (e.g. reason 0.8→0.96, explain
+  0.76→0.95), real cost ~$0.00011/req, p50 latency actually lower. This is the result the eval harness exists
+  to catch — a genuinely stronger model raises the number, proving router+eval end-to-end. (The earlier
+  `Ternary-Bonsai-27B` did NOT beat 3B — ternary quantization — so it was reverted; Gemma replaces it.)
+  **Implication to flag:** with hf at tier 3, hard `auto` queries now route to the paid, non-sovereign Gemma
+  by default (both rules and llm brains). Lower its tier if you don't want that as the default.
