@@ -272,6 +272,23 @@ def create_app() -> FastAPI:
             created_by=principal.subject)
         return JSONResponse({"ok": True, "price": row}, status_code=201)
 
+    @app.get("/v1/usage")
+    def get_usage(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from . import budgets as _b
+        from .adapters.identity import keys as _k
+        rows = []
+        for key in _k.list_keys():
+            sp = _b.spend(key["name"])
+            rows.append({"key": key["name"], "team": key.get("team") or "",
+                         "active": key.get("active", True),
+                         "spent_day": sp["day"], "spent_month": sp["month"],
+                         "cap_day": key.get("cost_cap_daily") or 0,
+                         "cap_month": key.get("cost_cap_monthly") or 0})
+        return JSONResponse({"usage": rows})
+
     @app.post("/v1/backends")
     async def register_backend(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -360,7 +377,13 @@ def create_app() -> FastAPI:
             expires_in_days = None if exp_raw in (None, 0, "never", "0") else int(exp_raw)
         except (TypeError, ValueError):
             expires_in_days = 90
-        kid, token = issue_key(name, role, team, expires_in_days=expires_in_days)
+        kid, token = issue_key(
+            name, role, team, expires_in_days=expires_in_days,
+            subject_type=(b.get("subject_type") or "user"),
+            allowed_backends=b.get("allowed_backends") or [],
+            allowed_models=b.get("allowed_models") or [],
+            cost_cap_daily=b.get("cost_cap_daily") or 0,
+            cost_cap_monthly=b.get("cost_cap_monthly") or 0)
         # the plaintext key is returned exactly once
         return JSONResponse({"id": kid, "name": name, "role": role, "team": team,
                              "key": token, "expires_in_days": expires_in_days}, status_code=201)
@@ -580,16 +603,35 @@ def create_app() -> FastAPI:
                 {"error": {"message": f"role {principal.role!r} may not run chat.completion",
                            "type": "forbidden"}}, status_code=403)
 
+        # ── per-key cost caps + scope (FEAT-001) — only for key-authenticated callers ──
+        from .adapters.identity import keys as _keys
+        from . import budgets as _budgets, metering as _metering
+        _key_meta = _keys.get_key_meta(principal.subject)
+        if _key_meta:
+            _bud = _budgets.check(principal.subject)
+            if _bud["effect"] == "block":
+                ctx = PolicyCheckContext(action_type="chat.completion", principal=principal)
+                aid = get_audit().append_check(
+                    ctx, Decision("block", _bud["reason"]),
+                    tokens=body.get("max_tokens"), pii_count=0, blocked=True)
+                return JSONResponse(
+                    {"error": {"message": _bud["reason"], "type": "budget_exceeded"},
+                     "precepta": {"policy_decision": "block", "policy_reason": _bud["reason"],
+                                  "audit_id": aid, "budget": _bud.get("spend")}},
+                    status_code=429)
+
         # explicit model must resolve, and pass Sovereign-Mode enforcement
         if not is_auto(model_str):
             try:
-                backend, _ = resolve(model_str, reg)
+                backend, resolved_model = resolve(model_str, reg)
             except RouteError as exc:
                 return JSONResponse(
                     {"error": {"message": str(exc), "type": "invalid_request_error"}},
                     status_code=400)
             from .adapters.authz.scopes import check_backend
-            reason = enforce_backend(backend, settings) or check_backend(principal, backend.name)
+            reason = (enforce_backend(backend, settings)
+                      or check_backend(principal, backend.name)
+                      or _keys.scope_violation(principal.subject, backend.name, resolved_model))
             if reason:
                 ctx = PolicyCheckContext(action_type="chat.completion", principal=principal)
                 aid = get_audit().append_check(
@@ -651,6 +693,14 @@ def create_app() -> FastAPI:
                 tokens_out=usage.get("completion_tokens"),
                 backend=payload["precepta"].get("backend_used"),
             )
+            # record real cost against the key's budget (FEAT-001)
+            if _key_meta:
+                _bk = payload["precepta"].get("backend_used") or ""
+                _mm = _metering.meter(_bk, "", usage.get("prompt_tokens") or 0,
+                                      usage.get("completion_tokens") or 0)
+                _budgets.record_usage(principal.subject, principal.team,
+                                      _mm["billable_tokens"], _mm["budget_charge_usd"])
+                payload["precepta"]["budget"] = _budgets.spend(principal.subject)
         return JSONResponse(payload, status_code=status)
 
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.

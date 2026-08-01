@@ -15,6 +15,7 @@ _DEFAULTS = {
     "default_model": "ollama/llama3.2:3b",
     "data_residency": "India (Mumbai)",
     "audit_retention_years": "7",
+    "timezone": "Asia/Kolkata",          # budget windows + time displays honor this
 }
 
 _ALLOWED = set(_DEFAULTS)

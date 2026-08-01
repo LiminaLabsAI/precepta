@@ -229,7 +229,9 @@ const app = {
   stop(e){ e.stopPropagation(); },
 
   // keys
-  openNewKey(){ Object.assign(state,{newKeyOpen:true,newKeyName:'',newKeyTeam:'',newKeyRole:'user',newKeyAssignee:'',newKeyExpiry:'90',newKeyDailyCost:'',newKeyMonthlyCost:''}); render(); },
+  openNewKey(){ Object.assign(state,{newKeyOpen:true,newKeyName:'',newKeyTeam:'',newKeyRole:'user',newKeyAssignee:'',newKeyExpiry:'90',newKeyDailyCost:'',newKeyMonthlyCost:'',newKeySubjectType:'user',newKeyBackends:[],newKeyModels:[]}); render(); },
+  toggleKeyBackend(n){ const a=state.newKeyBackends; const i=a.indexOf(n); if(i<0)a.push(n); else a.splice(i,1); render(); },
+  toggleKeyModel(v){ const a=state.newKeyModels; const i=a.indexOf(v); if(i<0)a.push(v); else a.splice(i,1); render(); },
   closeNewKey(){ state.newKeyOpen=false; render(); },
   addKey(){ state.newKeyOpen=false; render(); },                // overridden live
   closeRevealKey(){ state.revealKeyOpen=false; state.revealKeyCopied=false; render(); },
@@ -505,11 +507,17 @@ function keysView(){
     const active = k.active!==false && !expired;
     const created = (k.created_at||'').slice(0,10);
     const expLabel = k.expires_at ? (expired?'expired '+(k.expires_at||'').slice(0,10):'expires '+(k.expires_at||'').slice(0,10)) : 'never expires';
+    const u = (window.__usage||{})[k.name];
+    const capBits=[]; if(k.cost_cap_daily) capBits.push('$'+Number(k.cost_cap_daily).toFixed(2)+'/day'); if(k.cost_cap_monthly) capBits.push('$'+Number(k.cost_cap_monthly).toFixed(2)+'/mo');
+    const scopeBits=[]; if((k.backends_list||[]).length) scopeBits.push(k.backends_list.length+' backend'+(k.backends_list.length>1?'s':'')); if((k.models_list||[]).length) scopeBits.push(k.models_list.length+' model'+(k.models_list.length>1?'s':''));
+    const subjBadge=(k.subject_type&&k.subject_type!=='user')?`<span style="font-size:10.5px;font-weight:600;color:#5B21B6;background:#F3E8FF;padding:2px 7px;border-radius:10px;text-transform:capitalize">${esc(k.subject_type)}</span>`:'';
+    const spendBadge=u?`<span style="font-size:10.5px;color:#6B7280">today $${Number(u.spent_day||0).toFixed(4)}${k.cost_cap_daily?' / $'+Number(k.cost_cap_daily).toFixed(2):''}</span>`:'';
     return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="font-weight:600;font-size:13.5px">${esc(k.name)}</div>
           <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${esc(roleLbl[k.role]||k.role||'user')}${k.team?' · '+esc(k.team):''}${created?' · created '+esc(created):''} · <span style="color:${expired?'#B45309':'#9CA3AF'}">${esc(expLabel)}</span></div>
+          ${(subjBadge||capBits.length||scopeBits.length||spendBadge)?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">${subjBadge}${capBits.map(c=>`<span style="font-size:10.5px;font-weight:500;color:#3730A3;background:#EEF2FF;padding:2px 7px;border-radius:10px">${c}</span>`).join('')}${scopeBits.map(x=>`<span style="font-size:10.5px;color:#6B7280;background:#F3F4F6;padding:2px 7px;border-radius:10px">${esc(x)}</span>`).join('')}${spendBadge}</div>`:''}
           <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
             <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6B7280;background:#F9FAFB;border:1px solid #F3F4F6;padding:2px 7px;border-radius:4px">pk-••••••••••••  (secret shown once at creation)</span>
           </div>
@@ -523,7 +531,7 @@ function keysView(){
   }).join('') : `<div style="border:1px dashed #E5E7EB;border-radius:8px;padding:24px;text-align:center;color:#9CA3AF;font-size:13px">No keys yet — create one to give an app or team governed access.</div>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Keys &amp; budgets</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:680px;line-height:1.6">Give each app or team its own key — every call it makes is attributed to that key in the tamper-evident audit log. The secret is shown once, at creation.</div>
-    ${pendingBanner('<strong>Key expiry is live</strong> (default 90 days; expired keys fail auth). <strong>Cost budgets, assignee and suspend/reactivate</strong> are the next FEAT-001 slice — those fields stay disabled and show no fabricated numbers until then. Revoke is fully live.')}
+    <div style="font-size:12px;color:#6B7280;margin-bottom:16px;max-width:680px;line-height:1.6">A key is an external app's credential into Precepta. Each key can be pinned to a <strong>team, role, subject-type (agent), backend(s) and model(s)</strong>, given <strong>daily &amp; monthly cost caps</strong> (warn at 80%, block at 100% — spend metered from real usage × the price list), and an <strong>expiry</strong>. All enforced live.</div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button onclick="app.openNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create key</button></div>
     <div style="display:flex;flex-direction:column;gap:10px">${cards}</div>
     ${s.newKeyOpen?newKeyModal():''}
@@ -547,9 +555,17 @@ function newKeyModal(){
         <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">Default 90 days · an expired key stops working (401).</div>
       </div>
       <div style="border-top:1px solid #F3F4F6;padding-top:12px;margin-top:4px">
-        <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i data-lucide="clock" style="width:12px;height:12px"></i>Assignee &amp; cost budgets — persisted next (FEAT-001 budgets)</div>
-        <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Issued to (person's email)</label><input disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF" value="${esc(s.newKeyAssignee)}" placeholder="e.g. priya@company.com"></div>
-        <div><label style="display:block;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px">Daily cost cap ($)</label><input disabled style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#F9FAFB;color:#9CA3AF" placeholder="5.00"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Subject type</label><select onchange="app.onSelect('newKeySubjectType',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;box-sizing:border-box;background:#fff"><option value="user" ${s.newKeySubjectType==='user'?'selected':''}>Human user</option><option value="agent" ${s.newKeySubjectType==='agent'?'selected':''}>Agent</option><option value="service" ${s.newKeySubjectType==='service'?'selected':''}>Service</option></select></div>
+          <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Daily cost cap ($)</label><input type="number" min="0" step="0.01" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newKeyDailyCost)}" oninput="app.set('newKeyDailyCost',this.value)" placeholder="blank = no cap"></div>
+        </div>
+        <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Monthly cost cap ($)</label><input type="number" min="0" step="0.01" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newKeyMonthlyCost)}" oninput="app.set('newKeyMonthlyCost',this.value)" placeholder="blank = no cap"></div>
+        <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed backends <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${(s.backends||[]).map(b=>{const on=s.newKeyBackends.includes(b.name);return `<div onclick="app.toggleKeyBackend('${esc(b.name)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No backends yet</span>'}</div>
+        </div>
+        <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed models <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
+        </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button onclick="app.closeNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create key</button></div>
     </div></div>`;
@@ -1017,6 +1033,7 @@ render();
   async function loadStats(){ const d=await getJSON("/stats"); if(d){ window.__stats=d; render(); } }
   async function loadAuditLog(){ const d=await getJSON("/audit/log?limit=50"); if(d && Array.isArray(d.log)){ window.__auditlog=d.log; render(); } }
   async function loadKeys(){ const d=await getJSON("/v1/keys"); if(d && Array.isArray(d.keys)){ window.__keys=d.keys; render(); } }
+  async function loadUsage(){ const d=await getJSON("/v1/usage"); if(d && Array.isArray(d.usage)){ const m={}; d.usage.forEach(r=>m[r.key]=r); window.__usage=m; render(); } }
   async function loadSso(){ const d=await getJSON("/auth/sso/status"); if(d){ window.__sso=d; render(); } }
   async function loadOrg(){ const d=await getJSON("/v1/settings"); if(d){ window.__org=d; render(); } }
   async function loadMe(){
@@ -1133,7 +1150,7 @@ render();
   // Keys → real create/revoke; secret revealed once
   app.addKey = function(){
     const s=state; if(!(s.newKeyName||"").trim()){ s.newKeyOpen=false; render(); return; }
-    fetch("/v1/keys",{method:"POST",headers:hdr,body:JSON.stringify({name:s.newKeyName, role:s.newKeyRole, team:s.newKeyTeam, expires_in_days: s.newKeyExpiry==='never'?0:parseInt(s.newKeyExpiry||'90')})})
+    fetch("/v1/keys",{method:"POST",headers:hdr,body:JSON.stringify({name:s.newKeyName, role:s.newKeyRole, team:s.newKeyTeam, expires_in_days: s.newKeyExpiry==='never'?0:parseInt(s.newKeyExpiry||'90'), subject_type:s.newKeySubjectType, allowed_backends:s.newKeyBackends, allowed_models:s.newKeyModels, cost_cap_daily:parseFloat(s.newKeyDailyCost)||0, cost_cap_monthly:parseFloat(s.newKeyMonthlyCost)||0})})
     .then(async r=>{ const d=await r.json();
       if(r.ok){ state.newKeyOpen=false; state.revealKeyOpen=true; state.revealKeyValue=d.key; state.revealKeyAssignee=s.newKeyAssignee; state.revealKeyCopied=false; state.newKeyName=""; state.newKeyTeam=""; state.newKeyAssignee=""; await loadKeys(); }
       else { alert("Failed: "+((d.error&&d.error.message)||r.status)); render(); } });
@@ -1163,7 +1180,7 @@ render();
     if(sc==="overview"){ loadStats(); loadInfra(); }
     if(sc==="modelplane"){ loadInfra(); }
     if(sc==="audit"){ loadAuditLog(); }
-    if(sc==="keys"){ loadKeys(); }
+    if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); }
   };
 

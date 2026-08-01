@@ -29,13 +29,30 @@ CREATE TABLE IF NOT EXISTS api_keys (
 _PREFIX = "pk-"
 
 
+# FEAT-001: per-key scope + cost caps. Added via guarded migrations.
+_MIGRATIONS = {
+    "expires_at": "TEXT",              # NULL = never expires
+    "subject_type": "TEXT DEFAULT 'user'",   # user | agent | service
+    "allowed_backends": "TEXT DEFAULT ''",   # comma-sep; '' = all
+    "allowed_models": "TEXT DEFAULT ''",     # comma-sep; '' = all
+    "cost_cap_daily": "REAL DEFAULT 0",      # USD/day; 0 = no cap
+    "cost_cap_monthly": "REAL DEFAULT 0",    # USD/month; 0 = no cap
+}
+
+
 def ensure_table() -> None:
     with get_conn() as conn:
         conn.execute(_DDL)
-        # migration: optional key expiry (FEAT-001). NULL = never expires.
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(api_keys)")}
-        if "expires_at" not in cols:
-            conn.execute("ALTER TABLE api_keys ADD COLUMN expires_at TEXT")
+        for name, decl in _MIGRATIONS.items():
+            if name not in cols:
+                conn.execute(f"ALTER TABLE api_keys ADD COLUMN {name} {decl}")
+
+
+def _csv(values) -> str:
+    if isinstance(values, str):
+        values = values.split(",")
+    return ",".join(v.strip() for v in (values or []) if str(v).strip())
 
 
 def _is_expired(expires_at: str | None, now: str | None = None) -> bool:
@@ -49,10 +66,14 @@ def _hash(token: str) -> str:
 
 
 def issue_key(name: str, role: str = "user", team: str = "",
-              expires_in_days: int | None = 90) -> tuple[str, str]:
-    """Create a key. Returns (id, plaintext_token) — the token is shown once.
+              expires_in_days: int | None = 90, *, subject_type: str = "user",
+              allowed_backends=None, allowed_models=None,
+              cost_cap_daily: float = 0, cost_cap_monthly: float = 0) -> tuple[str, str]:
+    """Create a key with optional scope + cost caps. Returns (id, plaintext_token).
 
-    expires_in_days: default 90; pass None (or 0) for a key that never expires.
+    The key is an external app's credential into Precepta. It can be pinned to a
+    team/role/subject-type, restricted to specific backends & models, and given
+    daily/monthly USD cost caps. expires_in_days: default 90; None/0 = never.
     """
     ensure_table()
     token = _PREFIX + secrets.token_urlsafe(32)
@@ -62,11 +83,39 @@ def issue_key(name: str, role: str = "user", team: str = "",
                   if expires_in_days else None)
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO api_keys (id,key_hash,name,role,team,created_at,expires_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (kid, _hash(token), name, role, team, now.isoformat(), expires_at),
+            "INSERT INTO api_keys (id,key_hash,name,role,team,created_at,expires_at,"
+            "subject_type,allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (kid, _hash(token), name, role, team, now.isoformat(), expires_at,
+             subject_type or "user", _csv(allowed_backends), _csv(allowed_models),
+             float(cost_cap_daily or 0), float(cost_cap_monthly or 0)),
         )
     return kid, token
+
+
+def get_key_meta(name: str) -> dict | None:
+    """Scope + caps for a key, looked up by its name (= Principal.subject)."""
+    ensure_table()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT name,team,role,subject_type,allowed_backends,allowed_models,"
+            "cost_cap_daily,cost_cap_monthly FROM api_keys "
+            "WHERE name=? AND revoked_at IS NULL", (name,)).fetchone()
+    return dict(row) if row else None
+
+
+def scope_violation(name: str, backend: str, model: str) -> str | None:
+    """Block reason if this key may not use this backend/model; else None."""
+    meta = get_key_meta(name)
+    if not meta:
+        return None
+    ab = [x for x in (meta["allowed_backends"] or "").split(",") if x]
+    if ab and backend not in ab:
+        return f"key {name!r} is scoped to backends {ab} and may not use {backend!r}"
+    am = [x for x in (meta["allowed_models"] or "").split(",") if x]
+    if am and model and model not in am:
+        return f"key {name!r} is scoped to models {am} and may not use {model!r}"
+    return None
 
 
 def revoke_key(kid: str) -> bool:
@@ -83,7 +132,8 @@ def list_keys() -> list[dict]:
     ensure_table()
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id,name,role,team,created_at,revoked_at,expires_at FROM api_keys "
+            "SELECT id,name,role,team,created_at,revoked_at,expires_at,subject_type,"
+            "allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly FROM api_keys "
             "ORDER BY created_at DESC").fetchall()
     out = []
     for r in rows:
@@ -91,6 +141,8 @@ def list_keys() -> list[dict]:
         out.append(dict(r) | {
             "expired": expired,
             "active": r["revoked_at"] is None and not expired,
+            "backends_list": [x for x in (r["allowed_backends"] or "").split(",") if x],
+            "models_list": [x for x in (r["allowed_models"] or "").split(",") if x],
         })
     return out
 
