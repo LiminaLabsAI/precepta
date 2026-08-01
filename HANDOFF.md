@@ -1,8 +1,8 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; Phases 4–6 complete + Phase 7 partial,
-all committed UNLANDED on a 6-branch stack** · **184 tests passing.** See §10 for the branch order + landing.
+> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; Phases 4–7 COMPLETE, all committed
+UNLANDED on a 9-branch stack** · **198 tests passing.** See §10 for the branch order + landing.
 >
 > **Read order for a fresh session:** this file → `specs/status.md` → `IMPLEMENTATION_PLAN.md`
 > (§Phase 10 = the phase-wise plan) → `specs/backlog/backlog.md` → `BRAINSTORM.md` (full scoping).
@@ -140,12 +140,15 @@ lands:
 2. `feat/eval-harness` — Phase 4·2 + 4·3 (eval harness + LLM router)
 3. `feat/phase5-cache` — Phase 5 (response cache + prompt compression)
 4. `feat/phase6-learning` — Phase 6 (learning loop)
-5. `feat/phase7-hardening` — Phase 7 partial (TD-004 PII + TD-007 attestation scope)
+5. `feat/phase7-hardening` — Phase 7 (TD-004 PII + TD-007 attestation scope)
 6. `feat/streaming` — Phase 7 TD-003 (SSE streaming, govern-then-stream)
+7. `feat/agent-attribution` — Phase 7 TD-005 (agent attribution in audit chain)
+8. `feat/alerts-config` — Phase 7 TD-008 (configurable alerts)
+9. `feat/openguard-authz` — Phase 7 FEAT-004 (RBAC/ABAC + agent budgets)
 
 ```
 git checkout main
-for b in feat/router-config feat/eval-harness feat/phase5-cache feat/phase6-learning feat/phase7-hardening feat/streaming; do
+for b in feat/router-config feat/eval-harness feat/phase5-cache feat/phase6-learning feat/phase7-hardening feat/streaming feat/agent-attribution feat/alerts-config feat/openguard-authz; do
   git merge --ff-only "$b" && touch .momentum/merge-approved && git push origin main || break
 done
 ```
@@ -158,9 +161,11 @@ learning+governance together, with the toggles on) is still owed — do it after
 - **Phase 4 (smart routing) — ✅ complete:** router config · eval harness (baseline 0.854) · LLM intent-router.
 - **Phase 5 (cost) — ✅ complete:** response cache (live: 287ms→11ms) · prompt compression (14→5 tokens).
 - **Phase 6 (learning) — ✅ complete:** traces + thumbs feedback → learned routing (live end-to-end).
-- **Phase 7 (hardening) — 🟡 partial:** ✅ TD-004 validated PII · ✅ TD-007 attestation data-stores · ✅ TD-006
-  fail-soft (baked in) · ✅ TD-003 streaming vs governance (SSE, govern-then-stream). **Deferred (each needs its
-  own design pass): FEAT-004 OpenGuard authZ, TD-005 agent attribution, TD-008 alerts config.**
+- **Phase 7 (hardening) — ✅ complete:** ✅ TD-004 validated PII · ✅ TD-007 attestation data-stores · ✅ TD-006
+  fail-soft · ✅ TD-003 streaming (SSE, govern-then-stream) · ✅ TD-005 agent attribution (audit chain) ·
+  ✅ TD-008 configurable alerts · ✅ FEAT-004 OpenGuard authZ (configurable RBAC + ABAC + per-agent daily
+  request budgets, behind AuthorizationPort). *Note: a full external OpenGuard/OPA engine + real in-boundary
+  NER for PII would slot behind the same seams — V1 is the in-boundary implementation.*
 - **Phase 8 (deploy) — ⚪ needs a brainstorm.** **Phase 9 (validation) — business, not code:** a metered
   workload + a design-partner pilot. **HF validation finding:** the `Ternary-Bonsai-27B` (public HF API,
   NOT sovereign) did not beat local 3B on the eval (ternary quantization); machinery proven, model isn't an
