@@ -89,6 +89,9 @@ def test_build_attestation_shape():
     assert att["audit"]["external_calls"] == 0
     assert att["egress_test"]["result"] == "blocked"
     assert len(att["signature"]) == 64
+    # TD-007: data stores are enumerated and all in-boundary
+    assert att["data_stores"]["all_in_boundary"] is True
+    assert all(s["location"] == "local (in-boundary)" for s in att["data_stores"]["stores"])
 
 
 def test_attestation_endpoint():

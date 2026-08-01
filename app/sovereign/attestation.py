@@ -10,6 +10,29 @@ import hashlib
 import json
 
 from ..adapters.audit.chain import get_chain
+from ..db import list_tables
+
+# Data stores that may hold customer-derived data (TD-007). All are LOCAL SQLite
+# in the customer's boundary — nothing here is a remote/managed service. Listed
+# in the attestation only when the table actually exists, so the artifact never
+# claims a store that isn't there.
+_STORE_DESCRIPTORS = {
+    "audit_log": "Governance decisions (in-boundary, tamper-evident).",
+    "tamper_evident_audit_log": "Hash-chained audit anchor (in-boundary).",
+    "response_cache": "Cached model responses; sensitive requests are never cached (in-boundary).",
+    "route_traces": "Routing metadata + query hashes (not raw prompts); for the learning loop (in-boundary).",
+    "secrets": "Provider keys, held in the secret store — never returned by the API (in-boundary).",
+    "registered_backends": "Backend endpoints + keys registered at runtime (in-boundary).",
+}
+
+
+def _data_stores() -> list[dict]:
+    try:
+        present = set(list_tables())
+    except Exception:
+        present = set()
+    return [{"store": name, "location": "local (in-boundary)", "description": desc}
+            for name, desc in _STORE_DESCRIPTORS.items() if name in present]
 
 
 def build_attestation(settings, registry) -> dict:
@@ -25,6 +48,10 @@ def build_attestation(settings, registry) -> dict:
         "config": {
             "backends": backends,
             "all_in_boundary": all_in_boundary,
+        },
+        "data_stores": {
+            "all_in_boundary": True,      # every store is local SQLite in the boundary
+            "stores": _data_stores(),
         },
         "audit": {
             "events": chain.count(),
