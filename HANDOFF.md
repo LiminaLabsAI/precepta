@@ -1,7 +1,7 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Written:** 2026-08-01. **Main @ `77774cd`** · **124 tests passing.**
+> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; `feat/router-config` = Phase 4·1** · **131 tests passing.**
 >
 > **Read order for a fresh session:** this file → `specs/status.md` → `IMPLEMENTATION_PLAN.md`
 > (§Phase 10 = the phase-wise plan) → `specs/backlog/backlog.md` → `BRAINSTORM.md` (full scoping).
@@ -61,14 +61,18 @@ behind a port; never rewrite the core.
 | **Keys (FEAT-001)** | `app/adapters/identity/keys.py`, `app/budgets.py`, `app/notifications.py` | Expiry (90d/never/401) · per-key **cost + token** caps (daily/monthly, org-tz windows, warn 80% / block 100% → 429) · backend/model **scope** (block) · **edit** (PUT) · **suspend/reactivate** · real **bell notifications** (deduped). `GET /v1/usage`. **Dropped role/team/subject-type** — a key is an app-level credential; admin stays human-only. |
 | **Policy scope + edit (FEAT-002)** | `app/governance/policy.py` | `scope_json` + `scope_matches(key/backend/model)` enforced pre-inference (empty=all, AND across dims, unknown value w/ restriction=no match); `update_policy` bumps **version**; `PUT /v1/policies/{id}`. Console: Key/Backend/Model pickers + Edit + scope/version on cards. |
 | **Sensitive routing filter (FEAT-007·C)** | `app/governance/sensitive.py` | `sensitive_backends` store (backend + hosting location + approver + ts). Sensitivity auto = firewall PII/PHI OR caller `data_tag`. Sensitive → approved-backend-only, else **block 403 + critical admin notification**. **Off until ≥1 backend approved** (non-breaking; firewall still redacts). `GET/POST/DELETE /v1/routing/approved`. Console "Advanced routing — sensitive data" box real, with location-confirm approval modal. |
+| **Router config (Phase 4·1)** | `app/adapters/secret/`, `app/router/config.py`, `app/adapters/authz` | Platform-owner-only surface for where the router's own **in-boundary** model runs. `SecretStorePort` adapter (keys set/checked, **never returned by the API**). `router_config` store (ollama/hf · endpoint · model; HF key → secret store; **fail-closed** — hf needs endpoint+key). `is_platform_owner` (`PRECEPTA_PLATFORM_OWNERS`). `GET/PUT /v1/router/config`; `/auth/me` → `platform_owner`. Console "Router" settings tab. **Consumed by the LLM router (task 3), not yet wired.** |
 | **Console/cleanup** | `web/console.html`, `app/main.py` | Rebuilt to the imported design (`design/Precepta Console.dc.html`); logo via `/assets`; top-right "security controls" badge removed; **compliance report + DPDP/GDPR/HIPAA/SOC2 claims removed** (we haven't certified — was a trust risk). Audit log + zero-egress attestation remain (technical facts). |
 
 ## 5. What's NEXT — execute in this order (Phase 4 → 5)
 **Phase 4 · Smart routing (in progress):**
-1. **Router config in Settings** — platform-owner-only (`123.sarang@gmail.com`): choose the router's
-   model backend (**Ollama or HF**, configurable), set **Precepta's own HF endpoint + key** which runs
-   **inside the customer's network** (in-boundary — the router never sends prompts to Precepta's servers).
-   Store the key via the secret store (don't return it in GET; return only "is set").
+1. ✅ **DONE — Router config in Settings** — platform-owner-only (`123.sarang@gmail.com` / `admin@local`
+   in dev, via `PRECEPTA_PLATFORM_OWNERS`). New `app/adapters/secret/` (SecretStorePort adapter) +
+   `app/router/config.py` (router_backend ollama|hf, hf_endpoint, hf_model; key in the secret store as
+   `router.hf_key`, surfaced only as `hf_key_set`; fail-closed — hf needs endpoint+key). `is_platform_owner`
+   gate in `app/adapters/authz`. `GET/PUT /v1/router/config` (owner-only); `/auth/me` returns
+   `platform_owner`. Console: owner-only "Router" settings tab. **The intent-router (task 3) consumes this
+   config to decide where its model runs — not yet wired (config surface only).** 131 tests; browser-verified.
 2. **Eval harness (FEAT-006)** — fixed test set + a scorer producing a scalar for routing quality
    (later reused for cache/compression/learning), versioned in `tests/benchmarks/` (Rule 11). Gates the router.
 3. **LLM intent-router (FEAT-007·A)** — a small **in-boundary** model infers the caller's goal
