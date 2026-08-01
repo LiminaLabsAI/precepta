@@ -1,7 +1,11 @@
 """In-app notifications (the bell) — real, DB-backed (FEAT-001).
 
-Fires on budget warn/block (extensible later). Deduped so a cap that's hit on
-every request produces ONE alert per day, not a flood.
+Fires on budget warn/block, sensitive-data blocks, aggressive compression, etc.
+Deduped so a condition hit on every request produces ONE alert per day.
+
+TD-008 — alerts config: which categories fire, and a minimum severity, are
+admin-configurable (org settings). `notify()` consults that config first, so a
+deployment can quiet categories it doesn't want without touching code.
 """
 from __future__ import annotations
 
@@ -9,6 +13,33 @@ import datetime as _dt
 import uuid
 
 from .db import get_conn
+from . import org
+
+_SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
+
+
+def _category(ntype: str) -> str:
+    t = (ntype or "").lower()
+    if t.startswith("budget"):
+        return "budget"
+    if "sensitive" in t:
+        return "sensitive"
+    if "compression" in t:
+        return "compression"
+    return "system"
+
+
+def _should_fire(ntype: str, severity: str) -> bool:
+    """Honor the admin's alerts config: master switch, per-category, min severity.
+    `system` alerts follow only the master switch + severity (not silenceable)."""
+    if org.get("alerts_enabled", "true") != "true":
+        return False
+    if _SEVERITY_RANK.get(severity, 0) < _SEVERITY_RANK.get(org.get("alert_min_severity", "info"), 0):
+        return False
+    cat = _category(ntype)
+    if cat in ("budget", "sensitive", "compression"):
+        return org.get(f"alert_{cat}", "true") == "true"
+    return True
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS notifications (
@@ -30,7 +61,10 @@ def _today_start() -> str:
 
 
 def notify(ntype: str, severity: str, title: str, body: str, *, dedup: bool = True) -> None:
-    """Create a notification. With dedup, skip if the same title already fired today."""
+    """Create a notification. With dedup, skip if the same title already fired today.
+    Respects the admin alerts config (TD-008) — a silenced category never fires."""
+    if not _should_fire(ntype, severity):
+        return
     ensure_table()
     with get_conn() as conn:
         if dedup:

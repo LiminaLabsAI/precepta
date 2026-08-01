@@ -23,6 +23,11 @@ _DEFAULTS = {
     "compression_enabled": "false",      # prompt compression (FEAT-005) — off by default (safe)
     "compression_aggressive": "false",   # aggressive "cost-saving mode" — opt-in, notifies
     "learning_enabled": "false",         # learning loop (FEAT-008) — off by default (safe)
+    "alerts_enabled": "true",            # master alert switch (TD-008)
+    "alert_min_severity": "info",        # info | warning | critical
+    "alert_budget": "true",              # per-category alert toggles
+    "alert_sensitive": "true",
+    "alert_compression": "true",
 }
 
 _ALLOWED = set(_DEFAULTS)

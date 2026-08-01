@@ -127,7 +127,7 @@ const controlDefs = [
 const settingsTabDefs = [
   {key:'general', label:'General'}, {key:'security', label:'Security'},
   {key:'keys', label:'API keys'},
-  {key:'data', label:'Data controls'}, {key:'account', label:'Account'}, {key:'members', label:'Members & roles'},
+  {key:'data', label:'Data controls'}, {key:'alerts', label:'Alerts'}, {key:'account', label:'Account'}, {key:'members', label:'Members & roles'},
 ];
 const regionOptions = [
   {value:'mumbai', label:'India (Mumbai)'}, {value:'pune', label:'India (Pune)'},
@@ -950,6 +950,16 @@ function settingsModal(){
       +`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div style="font-size:13px;font-weight:500">Export audit log</div><button onclick="app.exportCsv()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Export CSV</button></div>`
       +editRow('Audit log retention (years)','audit_retention_years', o.audit_retention_years, '7','number')
       +`<div style="font-size:11px;color:#9CA3AF;padding:6px 0">Declared audit-log retention. Automated pruning is deferred — shortening won't silently delete.</div>`;
+  } else if(s.settingsTab==='alerts'){
+    const master = o.alerts_enabled!=='false';
+    const catRow=(label,key,desc)=>{const on=o[key]!=='false';return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6;${master?'':'opacity:.5'}"><div><div style="font-size:13px;font-weight:500">${label}</div><div style="font-size:11px;color:#9CA3AF">${desc}</div></div>${toggleHtml(on,'app.saveOrgSetting(\''+key+'\',\''+(on?'false':'true')+'\')')}</div>`;};
+    const sev=['info','warning','critical'].map(v=>`<option value="${v}" ${o.alert_min_severity===v?'selected':''}>${v.charAt(0).toUpperCase()+v.slice(1)} and above</option>`).join('');
+    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:6px;line-height:1.5">Control which alerts reach the bell. System alerts (health) always come through when alerts are on.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">Alerts</div><div style="font-size:11px;color:#9CA3AF">Master switch for all in-app notifications</div></div>${toggleHtml(master,'app.saveOrgSetting(\'alerts_enabled\',\''+(master?'false':'true')+'\')')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6;${master?'':'opacity:.5'}"><div style="font-size:13px;font-weight:500">Minimum severity</div><select onchange="app.saveOrgSetting('alert_min_severity',this.value)" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;background:#fff">${sev}</select></div>
+      ${catRow('Budget alerts','alert_budget','Cost/token cap warnings (80%) and blocks (100%)')}
+      ${catRow('Sensitive-data alerts','alert_sensitive','A sensitive request was blocked (no approved backend)')}
+      ${catRow('Compression alerts','alert_compression','Aggressive cost-saving compression is active')}`;
   } else if(s.settingsTab==='account'){
     pane=rowKV('Name', esc(me.name || '—'), me.subject ? '' : 'Sign in to load')
       +rowKV('Role', esc(me.role || '—'))
