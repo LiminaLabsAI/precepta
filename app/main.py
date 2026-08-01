@@ -292,6 +292,42 @@ def create_app() -> FastAPI:
             created_by=principal.subject)
         return JSONResponse({"ok": True, "price": row}, status_code=201)
 
+    # ── Advanced routing: approved-for-sensitive backends (FEAT-007 / Rule C) ──
+    @app.get("/v1/routing/approved")
+    def get_approved_backends(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from .governance import sensitive as _s
+        return JSONResponse({"approved": _s.list_approved()})
+
+    @app.post("/v1/routing/approved")
+    async def approve_backend(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        backend = (b.get("backend") or "").strip()
+        if not backend:
+            return JSONResponse({"error": {"message": "backend required",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        from .governance import sensitive as _s
+        _s.approve(backend, (b.get("location") or "").strip(), principal.subject)
+        return JSONResponse({"ok": True, "backend": backend}, status_code=201)
+
+    @app.delete("/v1/routing/approved/{backend}")
+    def unapprove_backend(backend: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        from .governance import sensitive as _s
+        _s.unapprove(backend)
+        return JSONResponse({"ok": True, "backend": backend})
+
     @app.get("/v1/usage")
     def get_usage(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)

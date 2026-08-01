@@ -61,7 +61,7 @@ const state = {
   newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:'', newBackendRegion:'mumbai',
 
   // Phase-10 (not yet persisted) — local intent only, clearly labelled in UI
-  approvedBackends: [],
+  approvedBackends: [], approvingBackend:null, approvingLocation:'',
   smartRoutingOn: false,
   learningLoopEnabled: false,
 
@@ -634,6 +634,23 @@ function savingsView(){
 }
 
 /* ---------- Policies ---------- */
+function approveModal(){
+  const s=state;
+  const b=(s.backends||[]).find(x=>x.name===s.approvingBackend)||{};
+  return `<div onclick="app.cancelApprove()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;padding:26px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Approve &ldquo;${esc(s.approvingBackend)}&rdquo; for sensitive data</div>
+      <div style="font-size:12.5px;color:#6B7280;line-height:1.55;margin-bottom:14px">Sensitive requests (PII/PHI) will be allowed to reach this backend. Confirm where it is hosted — recorded for the audit.</div>
+      <div style="background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:#374151">
+        <div><strong>Backend:</strong> ${esc(s.approvingBackend)}</div>
+        <div style="margin-top:4px"><strong>Boundary:</strong> ${b.inBoundary?'In your network':'External'}</div>
+        <div style="margin-top:4px"><strong>Model:</strong> <span style="font-family:'JetBrains Mono',monospace">${esc(b.model||'—')}</span></div>
+      </div>
+      <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Hosting location (recorded)</label>
+      <input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.approvingLocation)}" oninput="app.set('approvingLocation',this.value)" placeholder="e.g. On-prem GPU (Mumbai) / in-VPC endpoint">
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px"><button onclick="app.cancelApprove()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.confirmApprove()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#059669;color:#fff;border:none;cursor:pointer">Approve for sensitive data</button></div>
+    </div></div>`;
+}
 function policiesView(){
   const s=state, sc=s.securityControls;
   const probeText={idle:'Egress probe: not run this session',running:'Probing…',done:'Just now — blocked / none ✓'}[s.egressProbeStatus];
@@ -664,25 +681,28 @@ function policiesView(){
       <div style="font-size:10.5px;color:#9CA3AF;margin-top:6px;margin-left:68px">Applies to: <strong style="color:#6B7280">${((p.scope&&(p.scope.keys||p.scope.backends||p.scope.models))?[].concat((p.scope.keys||[]).length?[(p.scope.keys.length)+' key'+(p.scope.keys.length>1?'s':'')]:[],(p.scope.backends||[]).length?[(p.scope.backends.length)+' backend'+(p.scope.backends.length>1?'s':'')]:[],(p.scope.models||[]).length?[(p.scope.models.length)+' model'+(p.scope.models.length>1?'s':'')]:[]).join(' · '):'all requests')}</strong>${p.version>1?` · v${p.version}`:''}</div>
     </div>`;}).join('') : `<div style="padding:20px;border:1px dashed #E5E7EB;border-radius:8px;text-align:center;color:#9CA3AF;font-size:13px">No custom policies yet — add one with "New policy".</div>`;
 
+  const approvedSet = new Set((window.__approved||[]).map(a=>a.backend));
   const approvedChips = s.backends.filter(b=>b.inBoundary).map(b=>{
-    const sel=s.approvedBackends.includes(b.name);
-    return `<div onclick="app.toggleApprovedBackend('${esc(b.name)}')" style="padding:6px 12px;border-radius:14px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${sel?'#93C5FD':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};color:${sel?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;
+    const on=approvedSet.has(b.name);
+    return `<div onclick="app.${on?'unapproveBackend':'approveBackend'}('${esc(b.name)}')" title="${on?'Approved — click to remove':'Click to approve for sensitive data'}" style="padding:6px 12px;border-radius:14px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${on?'#6EE7B7':'#E5E7EB'};background:${on?'#ECFDF5':'#fff'};color:${on?'#065F46':'#374151'}">${on?'✓ ':''}${esc(b.name)}</div>`;
   }).join('') || `<span style="font-size:12px;color:#9CA3AF">No in-boundary backends yet.</span>`;
 
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Policies &amp; security controls</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:24px;max-width:680px;line-height:1.6">Every request is checked against these rules before it runs. The four controls below are the sovereignty essentials, on by default. Add your own rules underneath for anything else.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px">${controls}</div>
 
-    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:18px;margin-bottom:28px;opacity:.9">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-weight:600;font-size:14px">Advanced routing</div><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#FFFBEB;color:#92400E">Preview · Phase 10</span></div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:14px;max-width:640px;line-height:1.5">Safety first — sensitive data only reaches an approved backend — then optimize for cost/speed. Selections here are session-local until advanced routing is enforced (FEAT-007).</div>
+    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:18px;margin-bottom:28px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">Advanced routing — sensitive data</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:14px;max-width:640px;line-height:1.5">Approve which backends may receive <strong>sensitive</strong> requests (auto-detected from the firewall — PII/PHI — or a caller data-tag). Once you approve at least one, a sensitive request to any <strong>un-approved</strong> backend is <strong>blocked</strong> and an admin is alerted. Leave it empty to keep this check off (the firewall still redacts PII).</div>
       <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Approved for sensitive data</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${approvedChips}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6">
-        <div><div style="font-size:13px;font-weight:500">Optimize automatically for cost &amp; speed</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">After the safety check, let the system pick the cheapest/fastest fit.</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${approvedChips}</div>
+      <div style="font-size:11px;color:${approvedSet.size?'#065F46':'#9CA3AF'};margin-bottom:14px">${approvedSet.size?'Enforced — sensitive requests may only go to the '+approvedSet.size+' approved backend'+(approvedSet.size>1?'s':'')+'.':'Off — approve a backend to enforce sensitive-data routing.'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6;opacity:.7">
+        <div><div style="font-size:13px;font-weight:500">Optimize automatically for cost &amp; speed <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E;margin-left:4px">Preview · FEAT-007</span></div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">The smart cost/speed router ships next — session-local for now.</div></div>
         ${toggleHtml(s.smartRoutingOn,'app.toggleSmartRouting()')}
       </div>
     </div>
+    ${s.approvingBackend?approveModal():''}
 
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:600;font-size:14px">Custom policies</div><button onclick="app.openNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">New policy</button></div>
     <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Evaluated on every request, most-restrictive wins: block &gt; warn &gt; audit-only.</div>
@@ -1029,6 +1049,11 @@ render();
   async function loadKeys(){ const d=await getJSON("/v1/keys"); if(d && Array.isArray(d.keys)){ window.__keys=d.keys; render(); } }
   async function loadUsage(){ const d=await getJSON("/v1/usage"); if(d && Array.isArray(d.usage)){ const m={}; d.usage.forEach(r=>m[r.key]=r); window.__usage=m; render(); } }
   async function loadNotifs(){ const d=await getJSON("/notifications"); if(d){ window.__notifs=d; render(); } }
+  async function loadApproved(){ const d=await getJSON("/v1/routing/approved"); if(d && Array.isArray(d.approved)){ window.__approved=d.approved; render(); } }
+  app.approveBackend = function(name){ state.approvingBackend=name; state.approvingLocation=''; render(); };
+  app.cancelApprove = function(){ state.approvingBackend=null; render(); };
+  app.confirmApprove = function(){ const name=state.approvingBackend; fetch("/v1/routing/approved",{method:"POST",headers:hdr,body:JSON.stringify({backend:name,location:state.approvingLocation})}).then(()=>{ state.approvingBackend=null; loadApproved(); }); };
+  app.unapproveBackend = function(name){ fetch("/v1/routing/approved/"+encodeURIComponent(name),{method:"DELETE",headers:hdr}).then(()=>loadApproved()); };
   app.markNotifsRead = function(){ fetch("/notifications/read",{method:"POST",headers:hdr}).then(()=>loadNotifs()); };
   app.toggleNotif = function(){ state.notifOpen=!state.notifOpen; state.profileMenuOpen=false; if(state.notifOpen) loadNotifs(); render(); };
   async function loadSso(){ const d=await getJSON("/auth/sso/status"); if(d){ window.__sso=d; render(); } }
@@ -1197,11 +1222,11 @@ render();
     if(sc==="modelplane"){ loadInfra(); }
     if(sc==="audit"){ loadAuditLog(); }
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
-    if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); }
+    if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); }
   };
 
   function loadAll(){
-    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage();
+    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved();
   }
   loadAll();
 })();

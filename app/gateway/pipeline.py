@@ -17,6 +17,7 @@ import httpx
 from ..ports import Decision, PolicyCheckContext, Principal
 from ..governance.firewall import scrub_input, scan_output
 from ..governance.policy import load_enabled, evaluate, scope_matches, DbUsage
+from ..governance import sensitive as _sensitive
 from ..adapters.audit import get_audit
 
 RunInference = Callable[[list[dict]], Awaitable[tuple[dict, dict]]]
@@ -75,6 +76,15 @@ async def governed_chat(
         dec = Decision("block", "prompt-injection/jailbreak detected in input")
         aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
         return 403, _blocked_payload(dec, aid, pii, injection=True)
+
+    # ── governance routing filter (FEAT-007 / Rule C): sensitive → approved backend only ──
+    sensitive = _sensitive.is_sensitive(pii, data_tag)
+    reason = _sensitive.block_reason(sensitive, req_backend)   # explicit backend only
+    if reason:
+        _sensitive.notify_block(getattr(principal, "subject", ""), req_backend)
+        dec = Decision("block", reason)
+        aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
+        return 403, _blocked_payload(dec, aid, pii, injection=False)
 
     # ── policy evaluation (most-restrictive), scoped to this request (FEAT-002) ──
     policies = [p for p in load_enabled(ACTION)
