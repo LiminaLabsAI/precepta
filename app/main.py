@@ -389,6 +389,38 @@ def create_app() -> FastAPI:
         from . import cache as _c
         return JSONResponse({"ok": True, "cleared": _c.clear()})
 
+    # ── Learning loop (FEAT-008): feedback + stats ──
+    @app.post("/v1/feedback")
+    async def submit_feedback(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        b = await request.json()
+        tid = (b.get("trace_id") or "").strip()
+        rating = b.get("rating")
+        try:
+            rating = int(rating)
+        except (ValueError, TypeError):
+            return JSONResponse({"error": {"message": "rating must be +1 or -1",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        from . import learning as _learn
+        ok = _learn.apply_feedback(tid, rating)
+        if not ok:
+            return JSONResponse({"error": {"message": "unknown trace_id",
+                                 "type": "not_found"}}, status_code=404)
+        return JSONResponse({"ok": True, "trace_id": tid, "rating": 1 if rating > 0 else -1})
+
+    @app.get("/v1/learning/stats")
+    def learning_stats(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from . import learning as _learn
+        return JSONResponse(_learn.stats())
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -840,10 +872,16 @@ def create_app() -> FastAPI:
             allowed = (route_ctx or {}).get("allowed_backends")
             if is_auto(model_str):
                 intent = parse_intent(model_str)
-                # "Optimize automatically" (org setting) selects the LLM router;
-                # off = the deterministic rules router. Env var overrides (tests).
-                brain_name = (os.environ.get("PRECEPTA_BRAIN")
-                              or ("llm" if org.get("optimize_auto") == "true" else "rules"))
+                # Router selection (env overrides for tests): learning loop wraps
+                # the LLM router; "Optimize automatically" = LLM router; else rules.
+                brain_name = os.environ.get("PRECEPTA_BRAIN")
+                if not brain_name:
+                    if org.get("learning_enabled") == "true":
+                        brain_name = "learned"
+                    elif org.get("optimize_auto") == "true":
+                        brain_name = "llm"
+                    else:
+                        brain_name = "rules"
                 brain = get_brain(brain_name, get_registry)
                 query = next((m.get("content", "") for m in reversed(msgs)
                               if m.get("role") == "user"), "")
@@ -903,6 +941,21 @@ def create_app() -> FastAPI:
                 _budgets.record_usage(principal.subject, principal.team,
                                       _mm["billable_tokens"], _mm["budget_charge_usd"])
                 payload["precepta"]["budget"] = _budgets.spend(principal.subject)
+            # learning loop (FEAT-008): record a routing trace for auto requests
+            # (never for cache hits — no routing decision was made).
+            if is_auto(model_str) and payload["precepta"].get("cache") != "hit":
+                from . import learning as _learn
+                from .router.brain import _difficulty
+                query = next((m.get("content", "") for m in reversed(messages)
+                              if m.get("role") == "user"), "")
+                _bk = payload["precepta"].get("backend_used") or ""
+                _cost = (_metering.meter(_bk, "", usage.get("prompt_tokens") or 0,
+                                         usage.get("completion_tokens") or 0)["budget_charge_usd"])
+                tid = _learn.record_trace(
+                    query, _difficulty(query), _bk,
+                    payload["precepta"].get("technique") or "",
+                    latency_ms, _cost, bool(payload["precepta"].get("fell_over")))
+                payload["precepta"]["trace_id"] = tid
         return JSONResponse(payload, status_code=status)
 
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.

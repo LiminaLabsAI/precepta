@@ -836,9 +836,9 @@ function auditView(){
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Audit &amp; Attestation</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Every request — allowed, warned or blocked — is written here in a tamper-evident, hash-chained log nothing can quietly edit. Use the attestation below whenever an auditor needs proof — not just a claim — that nothing left your network.</div>
 
-    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:24px;opacity:.9">
-      <div><div style="font-weight:600;font-size:14px">Learn from usage <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E">Phase 10</span></div><div style="font-size:12px;color:#6B7280;margin-top:4px;max-width:560px;line-height:1.5">Uses thumbs-up/down from the Playground to route smarter over time, inside your boundary. Preview toggle — traces→learning ships in FEAT-008.</div></div>
-      ${toggleHtml(s.learningLoopEnabled,'app.toggleLearningLoop()')}
+    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:24px">
+      <div><div style="font-weight:600;font-size:14px">Learn from usage</div><div style="font-size:12px;color:#6B7280;margin-top:4px;max-width:560px;line-height:1.5">Uses thumbs-up/down from the Playground plus routing outcomes to prefer, per difficulty, the backend that earns the best reward — inside your boundary, never pooled. Needs a few rated requests before it acts; always bounded by governance. Off by default.</div></div>
+      ${toggleHtml((window.__org||{}).learning_enabled==='true','app.saveOrgSetting(\'learning_enabled\',\''+(((window.__org||{}).learning_enabled==='true')?'false':'true')+'\')')}
     </div>
 
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:28px;margin-bottom:32px">
@@ -900,10 +900,10 @@ function playgroundView(){
       ${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
     </div>
   </div>`;
-  const msgs=s.messages.map(m=>`<div style="align-self:${m.align};max-width:78%">
+  const msgs=s.messages.map((m,mi)=>`<div style="align-self:${m.align};max-width:78%">
     <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px;text-align:${m.textAlign}">${m.who}</div>
     <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${esc(m.text)}</div>
-    ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span></div>`:''}
+    ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span>${m.traceId?`<span style="display:inline-flex;gap:2px;margin-left:2px">${m.feedback==='up'?'<span title="marked helpful" style="font-size:12px">👍</span>':`<button title="helpful — teach the router" onclick="app.rateMessage(${mi},1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👍</button>`}${m.feedback==='down'?'<span title="marked unhelpful" style="font-size:12px">👎</span>':`<button title="unhelpful — teach the router" onclick="app.rateMessage(${mi},-1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👎</button>`}</span>`:''}</div>`:''}
   </div>`).join('');
   const modelSel = modelOptions.length ? modelOptions.map(mo=>`<option value="${esc(mo.value)}" ${mo.value===s.chatModel?'selected':''}>${esc(mo.label)}</option>`).join('') : `<option value="">No backends — add one first</option>`;
   return `<div style="display:flex;flex-direction:column;height:calc(100vh - 168px);max-width:720px;margin:0 auto">
@@ -1155,9 +1155,10 @@ render();
       } else {
         const content=(d.choices&&d.choices[0]&&d.choices[0].message.content)||"";
         reply={who:"preceptaai",text:content,align:"flex-start",textAlign:"left",bg:"#F3F4F6",color:"#111827",hasMeta:true,
-          metaBackendBg:"#F3F4F6",metaBackendColor:"#374151",metaBackend:"backend: "+(p.backend_used||""),
+          metaBackendBg:"#F3F4F6",metaBackendColor:"#374151",metaBackend:"backend: "+(p.backend_used||"")+(p.cache==="hit"?" (cache)":""),
           metaLatency:"latency: "+(p.latency_ms!=null?p.latency_ms+"ms":"?"),metaCost:"pii: "+(p.pii_redacted||0),
-          metaPolicyBg:"#ECFDF5",metaPolicyColor:"#065F46",metaPolicy:"policy: "+(p.policy_decision||"allow")};
+          metaPolicyBg:"#ECFDF5",metaPolicyColor:"#065F46",metaPolicy:"policy: "+(p.policy_decision||"allow"),
+          traceId:p.trace_id||null,feedback:null};
       }
       state.messages.push(reply); render(); loadAuditLog(); loadStats();
     })
@@ -1165,6 +1166,12 @@ render();
   }
   app.sendMessage = function(){ const el=document.getElementById("chatInput"); sendText(el ? el.value : state.chatInput); };
   app.sendSuggested = function(i){ sendText(SUGGESTED[i]); };
+  app.rateMessage = function(mi,rating){
+    const m=state.messages[mi]; if(!m||!m.traceId) return;
+    m.feedback = rating>0?'up':'down'; render();      // optimistic
+    fetch("/v1/feedback",{method:"POST",headers:hdr,body:JSON.stringify({trace_id:m.traceId,rating})})
+      .catch(()=>{});
+  };
 
   // Audit
   app.verifyChain = function(){ getJSON("/audit/verify").then(d=>{ if(d) alert("Audit chain "+(d.verified?"VERIFIED ✓":"FAILED")+" — "+d.events+" events"); }); };

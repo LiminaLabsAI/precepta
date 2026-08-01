@@ -162,7 +162,45 @@ class ClassifierBrain:
                          f"[classifier deferred → rules] {plan.reason}")
 
 
+class LearnedBrain:
+    """Learning loop (FEAT-008) — biases the LLM router toward the backend that
+    has earned the best reward for this difficulty bucket (see app/learning.py).
+    Falls back to the base plan when there isn't enough evidence, and never
+    escapes the governance filter (`allowed`) or the eligible-candidate set.
+    """
+
+    name = "learned"
+
+    def __init__(self, registry_getter, settings_getter=get_settings) -> None:
+        self._base = LLMBrain(registry_getter, settings_getter)
+        self._registry_getter = registry_getter
+        self._settings_getter = settings_getter
+
+    def decide(self, query: str, intent: str,
+               ctx: PolicyCheckContext | None = None,
+               budget: dict | None = None,
+               allowed: set[str] | None = None) -> RoutePlan:
+        plan = self._base.decide(query, intent, ctx, budget, allowed)
+        if intent not in ("auto", "automatic"):
+            return plan
+        from .. import learning
+        diff = _difficulty(query)              # same bucket used when recording traces
+        pref = learning.preference(diff, allowed)
+        if not pref or pref == plan.backend:
+            return plan
+        cands = candidates(self._registry_getter(),
+                           self._settings_getter().sovereign_mode, allowed)
+        match = next(((be, m) for be, m in cands if be.name == pref), None)
+        if match is None:                      # learned pick not eligible → keep base
+            return plan
+        be, model = match
+        return RoutePlan(be.name, model, plan.technique,
+                         f"[learned] {diff} → {pref} (best historical reward); base: {plan.reason}")
+
+
 def get_brain(name: str, registry_getter):
+    if name == "learned":
+        return LearnedBrain(registry_getter)
     if name == "llm":
         return LLMBrain(registry_getter)
     if name == "classifier":

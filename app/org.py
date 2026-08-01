@@ -22,6 +22,7 @@ _DEFAULTS = {
     "cache_threshold": "1.0",            # semantic similarity threshold (1.0 = exact only)
     "compression_enabled": "false",      # prompt compression (FEAT-005) — off by default (safe)
     "compression_aggressive": "false",   # aggressive "cost-saving mode" — opt-in, notifies
+    "learning_enabled": "false",         # learning loop (FEAT-008) — off by default (safe)
 }
 
 _ALLOWED = set(_DEFAULTS)
