@@ -53,10 +53,12 @@ async def governed_chat(
     messages: list[dict], kw: dict, principal: Principal, data_tag: bool,
     run_inference: RunInference, req_backend: str | None = None,
     req_model: str | None = None, model_str: str = "",
+    attribution: dict | None = None,
 ) -> tuple[int, dict]:
     audit = get_audit()
     usage = DbUsage()
     tokens = kw.get("max_tokens")
+    attribution = attribution or {}
 
     # ── Stage 1: input firewall (redact PII, detect injection) ──
     pii = 0
@@ -72,7 +74,12 @@ async def governed_chat(
             scrubbed.append(m)
 
     ctx = PolicyCheckContext(action_type=ACTION, principal=principal,
-                             tokens_requested=tokens, has_data_tag=data_tag)
+                             tokens_requested=tokens, has_data_tag=data_tag,
+                             workflow_id=attribution.get("workflow_id"),
+                             run_id=attribution.get("run_id"),
+                             step_name=attribution.get("step_name"),
+                             agent_id=attribution.get("agent_id"),
+                             end_user=attribution.get("end_user"))
 
     if injection:
         dec = Decision("block", "prompt-injection/jailbreak detected in input")
@@ -186,4 +193,6 @@ async def governed_chat(
     }
     if comp_stats and comp_stats["saved_tokens"] > 0:      # transparent — never hidden
         result["precepta"]["compression"] = comp_stats
+    if attribution:                                        # echo who/what was attributed
+        result["precepta"]["attribution"] = attribution
     return 200, result

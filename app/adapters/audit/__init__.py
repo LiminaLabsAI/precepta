@@ -26,16 +26,27 @@ class SqliteAudit:
                 "action_type,policy_id,policy_name,decision,reason,context_url,"
                 "tokens_requested,pii_detected_count,execution_blocked) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (aid, _now(), ctx.workflow_id, ctx.run_id, actor,
+                # workflow_id/run_id columns are FK-constrained to real workflow
+                # rows; free-form agent attribution lives in the chain metadata
+                # below instead, so these stay null (their prior behaviour).
+                (aid, _now(), None, None, actor,
                  ctx.action_type, decision.policy_id, None, decision.effect,
                  decision.reason, ctx.url, tokens, pii_count, 1 if blocked else 0),
             )
         # Also anchor the decision into the tamper-evident chain (Phase 4).
+        # Agent attribution (TD-005): who/what made the call — only non-empty
+        # fields are recorded, so ordinary human requests stay clean.
+        meta = {"reason": decision.reason, "pii": pii_count, "audit_id": aid,
+                "backend": ctx.backend}
+        for k, v in (("workflow_id", ctx.workflow_id), ("run_id", ctx.run_id),
+                     ("step_name", ctx.step_name), ("agent_id", ctx.agent_id),
+                     ("end_user", ctx.end_user)):
+            if v:
+                meta[k] = v
         get_chain().append(
             event_type="governance.check", actor=actor, resource=ctx.action_type,
             action=decision.effect, outcome="blocked" if blocked else "allowed",
-            metadata={"reason": decision.reason, "pii": pii_count, "audit_id": aid,
-                      "backend": ctx.backend},
+            metadata=meta,
         )
         return aid
 

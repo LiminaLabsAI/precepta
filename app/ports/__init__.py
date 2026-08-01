@@ -43,6 +43,8 @@ class PolicyCheckContext:
     workflow_id: str | None = None
     run_id: str | None = None
     step_name: str | None = None
+    agent_id: str | None = None      # the agent/tool making the call (TD-005)
+    end_user: str | None = None      # OpenAI `user` — the human the agent acts for
 
 
 @dataclass(frozen=True)

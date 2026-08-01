@@ -860,6 +860,12 @@ def create_app() -> FastAPI:
         kw = {"temperature": body.get("temperature"),
               "max_tokens": body.get("max_tokens"), "top_p": body.get("top_p")}
         stream = bool(body.get("stream"))
+        # Agent attribution (TD-005): who/what is calling — recorded in the audit
+        # chain. `user` is the standard OpenAI field; the rest identify the agent.
+        attribution = {k: (str(body[k]).strip() if body.get(k) is not None else None)
+                       for k in ("workflow_id", "run_id", "step_name", "agent_id")}
+        attribution["end_user"] = (str(body["user"]).strip() if body.get("user") else None)
+        attribution = {k: v for k, v in attribution.items() if v}
 
         # ── authN → authZ (gate the whole request) ──
         principal, err = _resolve_principal(request)
@@ -956,7 +962,8 @@ def create_app() -> FastAPI:
         try:
             status, payload = await governed_chat(
                 messages, kw, principal, bool(body.get("data_tag")), run_inference,
-                req_backend=req_backend, req_model=req_model, model_str=model_str)
+                req_backend=req_backend, req_model=req_model, model_str=model_str,
+                attribution=attribution)
         except LookupError as exc:
             return JSONResponse(
                 {"error": {"message": str(exc), "type": "no_backend"}}, status_code=503)
