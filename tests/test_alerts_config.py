@@ -15,12 +15,18 @@ def _fired(title: str) -> bool:
 def _reset():
     org.update({"alerts_enabled": "true", "alert_min_severity": "info",
                 "alert_budget": "true", "alert_sensitive": "true", "alert_compression": "true"})
+    notif.ensure_table()
+    with get_conn() as conn:      # never leak test notifications into the real feed
+        conn.execute("DELETE FROM notifications WHERE title LIKE 'alert-%'")
 
 
 def test_default_fires():
     _reset()
-    notif.notify("budget_warn", "warning", "alert-default-1", "b")
-    assert _fired("alert-default-1")
+    try:
+        notif.notify("budget_warn", "warning", "alert-default-1", "b")
+        assert _fired("alert-default-1")
+    finally:
+        _reset()
 
 
 def test_master_switch_off():

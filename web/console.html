@@ -305,15 +305,25 @@ function topbar(){
   </div>`;
 }
 
+function notifDest(type){
+  const t=(type||'').toLowerCase();
+  if(t.indexOf('budget')===0) return {screen:'keys', label:'Keys & budgets'};
+  if(t.indexOf('sensitive')>=0) return {screen:'policies', label:'Policies'};
+  if(t.indexOf('compression')>=0) return {screen:'savings', label:'Cache & compression'};
+  return null;                         // system/other → informational, no destination
+}
 function notifPanel(){
   const feed=(window.__notifs&&window.__notifs.notifications)||[];
+  const dest=notifDest;
   const rows = feed.length ? feed.map(n=>{
     const crit=n.severity==='critical';
     const when=(n.sent_at||'').replace('T',' ').slice(0,16);
-    return `<div style="padding:11px 14px;border-bottom:1px solid #F9FAFB;background:${n.read?'#fff':'#FafBff'}">
+    const d=dest(n.type);
+    return `<div onclick="app.onNotifClick('${esc(n.type)}')" style="padding:11px 14px;border-bottom:1px solid #F9FAFB;background:${n.read?'#fff':'#F5F8FF'};cursor:pointer">
       <div style="display:flex;align-items:center;gap:7px">
         <span style="width:7px;height:7px;border-radius:50%;background:${crit?'#EF4444':'#F59E0B'};flex:none"></span>
-        <div style="font-size:12.5px;font-weight:600;color:#111827">${esc(n.title)}</div>
+        <div style="font-size:12.5px;font-weight:600;color:#111827;flex:1">${esc(n.title)}</div>
+        ${d?`<span style="font-size:10.5px;color:#2563EB;flex:none">${esc(d.label)} →</span>`:''}
       </div>
       <div style="font-size:11.5px;color:#6B7280;margin-top:3px;line-height:1.45;padding-left:14px">${esc(n.body)}</div>
       <div style="font-size:10px;color:#B4B2A9;margin-top:3px;padding-left:14px">${esc(when)}</div>
@@ -1142,6 +1152,12 @@ render();
   app.confirmApprove = function(){ const name=state.approvingBackend; fetch("/v1/routing/approved",{method:"POST",headers:hdr,body:JSON.stringify({backend:name,location:state.approvingLocation})}).then(()=>{ state.approvingBackend=null; loadApproved(); }); };
   app.unapproveBackend = function(name){ fetch("/v1/routing/approved/"+encodeURIComponent(name),{method:"DELETE",headers:hdr}).then(()=>loadApproved()); };
   app.markNotifsRead = function(){ fetch("/notifications/read",{method:"POST",headers:hdr}).then(()=>loadNotifs()); };
+  app.onNotifClick = function(type){
+    state.notifOpen=false;
+    const d=notifDest(type);
+    fetch("/notifications/read",{method:"POST",headers:hdr}).then(()=>loadNotifs());
+    if(d){ app.setScreen(d.screen); } else { render(); }
+  };
   app.toggleNotif = function(){ state.notifOpen=!state.notifOpen; state.profileMenuOpen=false; if(state.notifOpen) loadNotifs(); render(); };
   async function loadSso(){ const d=await getJSON("/auth/sso/status"); if(d){ window.__sso=d; render(); } }
   async function loadOrg(){ const d=await getJSON("/v1/settings"); if(d){ window.__org=d; render(); } }
