@@ -5,7 +5,7 @@
 > (re-imported from Claude Design 2026-07-30 → `design/Precepta Console.dc.html`).
 > **Companions:** `VISION.md` (why/wedge/moat), `DESIGN.md` (architecture/ports/contracts),
 > `BRAINSTORM.md` (Phase 10 scoping), `preceptaai-plan.md` (combined plain-English overview).
-> **Last updated:** 2026-07-30
+> **Last updated:** 2026-08-01 — Phase 10 rewritten as a status-tracked, phase-wise development plan.
 
 ---
 
@@ -65,46 +65,36 @@ extend reach; hardening (9) makes it enterprise-grade. Real SSO needs the custom
 and real certs are an audit process — both are built as working mechanisms with the external
 piece flagged.
 
-## Phase 10 — Cost / quality / governance controls (next; scoped in `BRAINSTORM.md`)
+## Phase 10 — Cost / quality / governance controls (phase-wise plan)
 
 > Phase 10 turns the control plane from "governs correctly" into "governs, saves cost, and gets
-> smarter" — driven by the target buyer's non-expert users on metered backends. **Governing stance
-> (from the brainstorm): safe by default, extra risk only by explicit opt-in, and nothing hidden
-> from the person using it.** Every item lands behind an existing port (no core rewrite) and is
-> **backend-real** (no demo values). The refreshed **Precepta Console** is the UI surface for all of it,
-> implemented **surface-by-surface as each backing feature lands** (browser-validated, no mock data).
+> smarter." **Governing stance:** safe by default, extra risk only by explicit opt-in, nothing hidden
+> from the person using it. Every item lands behind an existing port (no core rewrite) and is
+> **backend-real** (no demo values), UI wired surface-by-surface as each backend lands.
+> **Status legend:** ✅ done (on `main`, tested + browser-verified) · 🔵 in progress · ⚪ pending.
+> **Reflects live state as of 2026-08-01.**
 
-### 10a · Foundations first (the features lean on these — build before them)
-| Step | Backlog | What / why |
-|---|---|---|
-| **Pricing artifact** | TD-001 | One versioned, admin-maintained price list (`model_prices` + `PricingPort`). Every $ figure depends on it; also fixes the live Console-backend `$0` bug. |
-| **Counting rules** | TD-002 | One metering definition (billable vs saved vs usage tokens) so budgets/cache/compression agree. |
-| **Quality test / eval harness** | FEAT-006 | Fixed set + per-use scorers (routing/compression/cache/learning), versioned (Rule 11). Gates the risky features. |
-| **Sensitivity quality** | TD-004 | Reliable "is this sensitive?" (beyond regex) — four governance behaviours rest on it. |
+| Phase | Focus | Contents | Status | Needs first |
+|---|---|---|---|---|
+| **1 · Money foundations** | Make every $ real | Pricing source-of-truth (TD-001) · one counting definition (TD-002) | ✅ Done | — |
+| **2 · Access & keys** | Governed app credentials | Key expiry · cost + token caps · backend/model scope · edit · suspend · bell alerts (FEAT-001). *Dropped role/team/subject-type from keys — a key is an app-level credential; admin stays human-only.* | ✅ Done | Phase 1 |
+| **3 · Policy governance** | Targeted rules + sensitive routing | Policy scope (Key/Backend/Model) + editing with version bump (FEAT-002) · sensitive-data → approved-backend filter, fail-closed + notify, approval-with-location (FEAT-007·C) | ✅ Done | Phase 2 |
+| **4 · Smart routing** | Make "Optimize automatically" real | Router config in Settings (platform-owner-only, Ollama/HF, Precepta in-boundary key) · **eval harness (FEAT-006)** · LLM intent-router · budget-aware modifier (FEAT-007·A/B) | 🔵 In progress | eval harness gates the router |
+| **5 · Cost optimization** | Cut cost & latency | Response cache — exact default, semantic opt-in (FEAT-003) · prompt/history compression (FEAT-005) | ⚪ Pending | eval harness · fail-soft · streaming decision |
+| **6 · Learning loop** | Router gets smarter | Traces + reward (explicit + implicit) → learned routing (FEAT-008) | ⚪ Pending | eval harness · traces |
+| **7 · Enterprise hardening** | Robust & secure | OpenGuard authZ (FEAT-004) · sensitivity beyond regex (TD-004) · fail-soft (TD-006) · streaming vs governance (TD-003) · secure new data stores + attestation scope (TD-007) · attribution incl. agents (TD-005) · control-plane roles/config/alerts (TD-008) | ⚪ Pending | interleave with Phase 5 |
+| **8 · Deploy** | Customer can actually run it | Container + one-command bundle → Helm / Postgres / Vault / air-gap (FEAT-009) | ⚪ Pending | **needs its own brainstorm** |
+| **9 · Validation** *(business, parallel)* | Prove someone pays | A metered workload + a design-partner pilot | ⚪ Not started | — |
 
-### 10b · The features (each behind its port; UI wired as it lands)
-| Step | Backlog | What ships | Console surface |
-|---|---|---|---|
-| **Budgets + key expiry** | FEAT-001 | Key lifetimes; token+cost budgets per key & team, daily+monthly, timezone; 80% notify / 100% block; usage view; notifications | Keys (expiry/suspend/extend) · **Usage** · bell feed |
-| **Policy scope** | FEAT-002 | Optional "applies to" — team/role/subject-type/backend/model; agents like humans | Policies → "Applies to" (all vs selected) |
-| **Cache** | FEAT-003 | Exact-match by default; semantic opt-in; governed-loop; admin-only savings | **Savings** (cache) · policy toggles |
-| **Compression** | FEAT-005 | Long-prompt/doc compression; never surprises the user; opt-in "cost-saving mode"; consent-gated corpus | **Savings** (compression) · settings |
-| **Advanced routing** | FEAT-007 | Governance filter → LLM intent-router → budget modifier; sensitive→approved-only (block + notify caller & admin); model-approval shows hosting location | Model plane · approval flow · audit "why" |
-| **Traces → learning** | FEAT-008 | Capture traces + reward (explicit + implicit) → smarter routing; per-customer, in-boundary, consent | Playground thumbs/feedback · (learning offline) |
-| **Console refresh** | (design) | Implement the re-imported `Precepta Console.dc.html` — refresh existing surfaces + add the new ones above | The whole operator UI, updated |
-| **OpenGuard authZ** | FEAT-004 | Adopt as `AuthorizationPort` adapter — agents + bounded delegation; keep role-check default until parity | Settings → Members / access |
+**Sequencing notes:**
+- Phases 1–3 complete; Phase 4 is current. Inside Phase 4 the one hard dependency is *eval harness before the LLM router*.
+- Phases 5–7 **interleave**: build cache/compression (5) *with* fail-soft + the streaming decision (7 items), not after, to avoid rework.
+- Phase 8 (deploy) is **unscoped** — needs a brainstorm pass before build.
+- Phase 9 is the vision's real risk (will a regulated customer pilot this) — run in parallel with the build.
 
-### 10c · Cross-cutting (decide alongside design, don't defer to the end)
-Streaming vs governance (TD-003) · fail-soft for in-path helpers (TD-006) · secure the new data stores +
-expand the attestation (TD-007) · attribution incl. agents (TD-005) · govern-the-control-plane —
-config precedence, finer roles, alert delivery (TD-008).
-
-### 10d · Still to brainstorm before building
-**Self-hosting / deploy** (FEAT-009) — container + one-command bundle, then Helm / Postgres / Vault /
-air-gapped. Paused in the brainstorm; needs its own scoping pass.
-
-**Build order:** 10a foundations → FEAT-001 (creates the budget-pressure signal) → FEAT-002/003/005/007
-→ FEAT-008 → Console refresh wired surface-by-surface throughout. See `BRAINSTORM.md` "Build order".
+**Removed from the plan (deliberately, 2026-08-01):** the compliance-evidence report + named-regulation
+claims (DPDP/GDPR/HIPAA/SOC2) — we haven't certified against them, so implying compliance was a trust risk.
+Audit log + zero-egress attestation remain (technical facts, not compliance claims).
 
 ## Roadmap — horizons
 
