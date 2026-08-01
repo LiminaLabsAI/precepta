@@ -583,6 +583,25 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
 
+    @app.post("/v1/backends/{provider}/boundary")
+    async def set_backend_boundary(provider: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        b = await request.json()
+        in_boundary = bool(b.get("in_boundary"))
+        existed = backend_store.set_boundary(provider, in_boundary)
+        reg = get_registry()
+        if provider in reg:                                   # keep the live registry in sync
+            reg[provider].in_boundary = in_boundary
+        if not existed and provider not in reg:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        return JSONResponse({"ok": True, "provider": provider, "in_boundary": in_boundary})
+
     @app.delete("/v1/backends/{provider}")
     def remove_backend(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)

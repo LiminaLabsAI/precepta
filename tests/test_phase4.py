@@ -82,9 +82,13 @@ def test_sovereign_blocks_foreign_route_e2e():
 
 # ── attestation ────────────────────────────────────────────────────────
 def test_build_attestation_shape():
-    att = build_attestation(get_settings(), get_registry())
+    reg = get_registry()
+    att = build_attestation(get_settings(), reg)
     assert att["sovereign_mode"] is True
-    assert att["config"]["all_in_boundary"] is True
+    # all_in_boundary must reflect the ACTUAL registry (a customer may register
+    # an external backend; sovereign mode blocks routing to it). Test the
+    # computation, not a fixed value.
+    assert att["config"]["all_in_boundary"] is all(b.in_boundary for b in reg.values())
     assert att["audit"]["chain_verified"] is True
     assert att["audit"]["external_calls"] == 0
     assert att["egress_test"]["result"] == "blocked"
@@ -97,7 +101,8 @@ def test_build_attestation_shape():
 def test_attestation_endpoint():
     r = client.get("/attestation")
     assert r.status_code == 200
-    assert r.json()["config"]["all_in_boundary"] is True
+    assert isinstance(r.json()["config"]["all_in_boundary"], bool)
+    assert r.json()["data_stores"]["all_in_boundary"] is True   # stores are always local
 
 
 def test_audit_verify_endpoint():

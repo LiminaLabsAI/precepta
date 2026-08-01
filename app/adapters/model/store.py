@@ -53,6 +53,15 @@ def delete_backend(provider: str) -> bool:
         return cur.rowcount > 0
 
 
+def set_boundary(provider: str, in_boundary: bool) -> bool:
+    """Correct a backend's in-boundary flag without a full re-register."""
+    ensure_table()
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE registered_backends SET in_boundary=? WHERE provider=?",
+                           (1 if in_boundary else 0, provider))
+        return cur.rowcount > 0
+
+
 def load_backends() -> list[dict]:
     ensure_table()
     with get_conn() as conn:
