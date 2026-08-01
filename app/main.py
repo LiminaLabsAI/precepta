@@ -9,7 +9,7 @@ import time
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 
 import os
 
@@ -38,6 +38,50 @@ from .gateway.pipeline import governed_chat
 from .sovereign import enforce_backend
 from .sovereign.attestation import build_attestation
 from .adapters.infra import snapshot as infra_snapshot, record_telemetry
+
+
+def _sse_response(payload: dict) -> StreamingResponse:
+    """Deliver an already-GOVERNED result as an OpenAI-compatible SSE stream.
+
+    The streaming DECISION (TD-003): governance must see the *entire* output
+    before any of it is released — the Stage-3 leak scan can't un-send a token.
+    So we run the full governed pipeline first (firewall in, policy, cache,
+    compression, inference, firewall out), then stream the approved result to
+    the client. This honors `stream: true` for OpenAI-client compatibility
+    without ever letting an unscanned token escape the boundary. True
+    token-passthrough streaming would require windowed governance and is a
+    deferred, explicit opt-in — never the default for a governed control plane.
+    """
+    import json as _json
+    import re as _re
+    import uuid as _uuid
+
+    cid = payload.get("id") or ("chatcmpl-" + _uuid.uuid4().hex[:24])
+    created = payload.get("created") or 0
+    model = payload.get("model") or payload.get("precepta", {}).get("model") or ""
+    try:
+        content = payload["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        content = ""
+    precepta = payload.get("precepta", {})
+    usage = payload.get("usage")
+
+    def _chunk(delta: dict, finish=None, extra: dict | None = None) -> str:
+        obj = {"id": cid, "object": "chat.completion.chunk", "created": created,
+               "model": model, "choices": [{"index": 0, "delta": delta,
+                                            "finish_reason": finish}]}
+        if extra:
+            obj.update(extra)
+        return "data: " + _json.dumps(obj) + "\n\n"
+
+    def gen():
+        yield _chunk({"role": "assistant"})
+        for part in (_re.findall(r"\S+\s*", content) or ([content] if content else [])):
+            yield _chunk({"content": part})
+        yield _chunk({}, finish="stop", extra={"precepta": precepta, "usage": usage})
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 def _resolve_principal(request: Request):
@@ -815,6 +859,7 @@ def create_app() -> FastAPI:
         reg = get_registry()
         kw = {"temperature": body.get("temperature"),
               "max_tokens": body.get("max_tokens"), "top_p": body.get("top_p")}
+        stream = bool(body.get("stream"))
 
         # ── authN → authZ (gate the whole request) ──
         principal, err = _resolve_principal(request)
@@ -956,6 +1001,10 @@ def create_app() -> FastAPI:
                     payload["precepta"].get("technique") or "",
                     latency_ms, _cost, bool(payload["precepta"].get("fell_over")))
                 payload["precepta"]["trace_id"] = tid
+        # `stream: true` — deliver the fully-governed result as SSE (TD-003).
+        # Errors (blocks) stay plain JSON so clients see the status + reason.
+        if stream and status == 200:
+            return _sse_response(payload)
         return JSONResponse(payload, status_code=status)
 
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.
