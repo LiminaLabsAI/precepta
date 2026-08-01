@@ -199,7 +199,8 @@ const app = {
   toggleSmartRouting(){ state.smartRoutingOn=!state.smartRoutingOn; render(); },
   toggleLearningLoop(){ state.learningLoopEnabled=!state.learningLoopEnabled; render(); },
 
-  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeTeams:[],newPolicyScopeRoles:[],newPolicyScopeAgents:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
+  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
+  openEditPolicy(id){ const p=(window.__policies||[]).find(x=>x.id===id); if(!p)return; const c=p.conditions||{}, sc=p.scope||{}; Object.assign(state,{newPolicyOpen:true,editingPolicyId:id,newPolicyName:p.name||'',newPolicyDesc:p.description||'',newPolicyAction:p.action_type||'chat.completion',newPolicyEffect:p.effect||'block',newPolicyUrlAllow:(c.url_allowlist||[]).join(', '),newPolicyUrlBlock:(c.url_blocklist||[]).join(', '),newPolicyMaxTokens:c.max_tokens_per_day||'',newPolicyMaxCalls:c.max_calls_per_hour||'',newPolicyMaxCost:c.max_daily_cost_usd||'',newPolicyPii:!!c.pii_filter_output,newPolicyDataTag:!!c.require_data_tag,newPolicyScopeKeys:(sc.keys||[]).slice(),newPolicyScopeBackends:(sc.backends||[]).slice(),newPolicyScopeModels:(sc.models||[]).slice()}); render(); },
   closeNewPolicy(){ state.newPolicyOpen=false; render(); },
   toggleNewPolicyPii(){ state.newPolicyPii=!state.newPolicyPii; },
   toggleNewPolicyDataTag(){ state.newPolicyDataTag=!state.newPolicyDataTag; },
@@ -659,9 +660,10 @@ function policiesView(){
           <span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${e.bg};color:${e.color};min-width:52px;text-align:center">${String(p.effect||'').toUpperCase()}</span>
           <div><div style="font-weight:600;font-size:13px">${esc(p.name)}</div><div style="font-size:12px;color:#6B7280;margin-top:2px">${esc(p.desc)}</div></div>
         </div>
-        <div style="display:flex;align-items:center;gap:14px"><span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(al)}</span><button onclick="app.togglePolicy('${esc(p.id)}')" style="background:transparent;border:none;color:#6B7280;font-size:13px;font-weight:500;cursor:pointer">${p.enabled?'Disable':'Enable'}</button></div>
+        <div style="display:flex;align-items:center;gap:14px"><span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(al)}</span><button onclick="app.openEditPolicy('${esc(p.id)}')" style="background:transparent;border:none;color:#6B7280;font-size:13px;font-weight:500;cursor:pointer">Edit</button><button onclick="app.togglePolicy('${esc(p.id)}')" style="background:transparent;border:none;color:#6B7280;font-size:13px;font-weight:500;cursor:pointer">${p.enabled?'Disable':'Enable'}</button></div>
       </div>
       ${chips.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;margin-left:68px">${chips.map(c=>`<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#F3F4F6;color:#374151">${esc(c)}</span>`).join('')}</div>`:''}
+      <div style="font-size:10.5px;color:#9CA3AF;margin-top:6px;margin-left:68px">Applies to: <strong style="color:#6B7280">${((p.scope&&(p.scope.keys||p.scope.backends||p.scope.models))?[].concat((p.scope.keys||[]).length?[(p.scope.keys.length)+' key'+(p.scope.keys.length>1?'s':'')]:[],(p.scope.backends||[]).length?[(p.scope.backends.length)+' backend'+(p.scope.backends.length>1?'s':'')]:[],(p.scope.models||[]).length?[(p.scope.models.length)+' model'+(p.scope.models.length>1?'s':'')]:[]).join(' · '):'all requests')}</strong>${p.version>1?` · v${p.version}`:''}</div>
     </div>`;}).join('') : `<div style="padding:20px;border:1px dashed #E5E7EB;border-radius:8px;text-align:center;color:#9CA3AF;font-size:13px">No custom policies yet — add one with "New policy".</div>`;
 
   const approvedChips = s.backends.filter(b=>b.inBoundary).map(b=>{
@@ -702,17 +704,14 @@ function scopeChipRow(label, dim, options){
 function newPolicyModal(){
   const s=state;
   const effDesc=(effectOptions.find(o=>o.value===s.newPolicyEffect)||{}).desc||'';
-  const roleLbl={admin:'Admin',user:'User',auditor:'Auditor'};
-  const teams=[...new Set((window.__keys||[]).map(k=>k.team).filter(Boolean))].map(t=>({value:t,label:t}));
-  const agents=(window.__keys||[]).map(k=>({value:String(k.id),label:k.name}));
-  const roles=Object.keys(roleLbl).map(v=>({value:v,label:roleLbl[v]}));
+  const keys=(window.__keys||[]).filter(k=>k.active!==false).map(k=>({value:k.name,label:k.name}));
   const backs=s.backends.map(b=>({value:b.name,label:b.name}));
-  const models=[...new Set(s.backends.map(b=>b.model))].map(m=>({value:m,label:m}));
-  const anyScope = s.newPolicyScopeTeams.length||s.newPolicyScopeRoles.length||s.newPolicyScopeAgents.length||s.newPolicyScopeBackends.length||s.newPolicyScopeModels.length;
+  const models=modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>({value:m.value,label:m.value}));
+  const anyScope = s.newPolicyScopeKeys.length||s.newPolicyScopeBackends.length||s.newPolicyScopeModels.length;
   return `<div onclick="app.closeNewPolicy()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <div style="font-size:16px;font-weight:600;margin-bottom:2px">New policy rule</div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:18px">Define a governance constraint checked before every matching request.</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:2px">${s.editingPolicyId?'Edit policy rule':'New policy rule'}</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:18px">${s.editingPolicyId?'Editing bumps the policy version (change trail).':'Define a governance constraint checked before every matching request.'}</div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Policy name *</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newPolicyName)}" oninput="app.set('newPolicyName',this.value)" placeholder="e.g. Block PAN numbers in prompts"></div>
       <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Description</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newPolicyDesc)}" oninput="app.set('newPolicyDesc',this.value)" placeholder="What does this policy enforce, and why?"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
@@ -721,16 +720,14 @@ function newPolicyModal(){
       </div>
 
       <div style="border-top:1px solid #F3F4F6;padding-top:14px;margin-top:2px;margin-bottom:4px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span style="font-size:12px;font-weight:600;color:#374151">Scope — applies to</span><span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E">not yet persisted</span></div>
-        <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Combine filters across team, role, key, backend and model. The backend's <code style="font-family:'JetBrains Mono',monospace">/v1/policies</code> doesn't store scope yet (FEAT-002) — these picks are shown but <strong>not saved</strong>; the rest of the policy is saved for real.</div>
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:2px">Applies to</div>
+        <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Leave all blank to apply to <strong>every</strong> request. Pick specific keys/backends/models to scope it (AND across the groups you set).</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${scopeChipRow('Team','Teams',teams)}
-          ${scopeChipRow('Role','Roles',roles)}
-          ${scopeChipRow('Key / agent','Agents',agents)}
+          ${scopeChipRow('Key (app)','Keys',keys)}
           ${scopeChipRow('Backend','Backends',backs)}
           ${scopeChipRow('Model','Models',models)}
         </div>
-        <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px;line-height:1.5">${anyScope?'Scope selected (display only until FEAT-002 lands).':'Applies to every request, regardless of team, role, key, backend or model.'}</div>
+        <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px;line-height:1.5">${anyScope?'Scoped — applies only to matching requests.':'Applies to every request (all keys, backends and models).'}</div>
       </div>
 
       <div style="border-top:1px solid #F3F4F6;padding-top:14px;margin-top:4px">
@@ -745,7 +742,7 @@ function newPolicyModal(){
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${s.newPolicyPii?'checked':''} onchange="app.toggleNewPolicyPii()"><span style="font-size:12.5px;color:#374151">Filter PII in output (emails, phone numbers, card numbers)</span></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${s.newPolicyDataTag?'checked':''} onchange="app.toggleNewPolicyDataTag()"><span style="font-size:12.5px;color:#374151">Require a data-classification tag on the request</span></label>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px"><button onclick="app.closeNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Create policy</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px"><button onclick="app.closeNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.savePolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">${s.editingPolicyId?'Save changes':'Create policy'}</button></div>
     </div></div>`;
 }
 
@@ -1041,8 +1038,10 @@ render();
     if(d && Array.isArray(d.policies)){
       state.policies = d.policies.map(p=>({
         id:p.id, name:p.name, desc:p.description||"", actionType:p.action_type,
-        effect:p.effect, conditions:p.conditions||{}, enabled:!!p.enabled,
+        effect:p.effect, conditions:p.conditions||{}, scope:p.scope||{},
+        version:p.version, enabled:!!p.enabled,
       }));
+      window.__policies = d.policies;
       render();
     }
   }
@@ -1118,7 +1117,7 @@ render();
 
   // Policies → real CRUD
   app.togglePolicy = function(id){ fetch("/v1/policies/"+id+"/toggle",{method:"POST",headers:hdr}).then(loadPolicies); };
-  app.addPolicy = function(){
+  app.savePolicy = function(){
     const s=state; if(!s.newPolicyName.trim()){ s.newPolicyOpen=false; render(); return; }
     const c={};
     if(s.newPolicyUrlAllow.trim()) c.url_allowlist=s.newPolicyUrlAllow.split(",").map(x=>x.trim()).filter(Boolean);
@@ -1128,9 +1127,14 @@ render();
     if(s.newPolicyMaxCost) c.max_daily_cost_usd=parseFloat(s.newPolicyMaxCost);
     if(s.newPolicyPii) c.pii_filter_output=true;
     if(s.newPolicyDataTag) c.require_data_tag=true;
-    fetch("/v1/policies",{method:"POST",headers:hdr,body:JSON.stringify({
-      name:s.newPolicyName, description:s.newPolicyDesc, action_type:s.newPolicyAction,
-      effect:s.newPolicyEffect, conditions:c})}).then(()=>{ s.newPolicyOpen=false; loadPolicies(); });
+    const scope={};
+    if(s.newPolicyScopeKeys.length) scope.keys=s.newPolicyScopeKeys;
+    if(s.newPolicyScopeBackends.length) scope.backends=s.newPolicyScopeBackends;
+    if(s.newPolicyScopeModels.length) scope.models=s.newPolicyScopeModels;
+    const body={ name:s.newPolicyName, description:s.newPolicyDesc, action_type:s.newPolicyAction, effect:s.newPolicyEffect, conditions:c, scope:scope };
+    const url = s.editingPolicyId ? "/v1/policies/"+s.editingPolicyId : "/v1/policies";
+    const method = s.editingPolicyId ? "PUT" : "POST";
+    fetch(url,{method:method,headers:hdr,body:JSON.stringify(body)}).then(()=>{ s.newPolicyOpen=false; s.editingPolicyId=null; loadPolicies(); });
   };
 
   // Onboarding "Test & connect" → register the backend

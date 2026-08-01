@@ -13,10 +13,33 @@ from ..db import get_conn
 from ..ports import Decision, PolicyCheckContext
 
 
+# ── policy scope (FEAT-002) ─────────────────────────────────────────────
+def _ensure_scope_column() -> None:
+    with get_conn() as conn:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(governance_policies)")}
+        if "scope_json" not in cols:
+            conn.execute("ALTER TABLE governance_policies "
+                         "ADD COLUMN scope_json TEXT NOT NULL DEFAULT '{}'")
+
+
+def scope_matches(scope: dict, key: str | None, backend: str | None, model: str | None) -> bool:
+    """A policy applies when, for each non-empty scope dimension, the request's value
+    is in the list. Empty scope = applies to all. An unknown request value (None) with
+    a restricting list = no match (we can't confirm it's in scope)."""
+    if not scope:
+        return True
+    for dim, val in (("keys", key), ("backends", backend), ("models", model)):
+        allowed = scope.get(dim) or []
+        if allowed and (val is None or val not in allowed):
+            return False
+    return True
+
+
 # ── policy loading ──────────────────────────────────────────────────────
 def load_enabled(action_type: str) -> list[dict]:
     """Enabled policies whose action_type matches `action_type` or '*',
-    oldest first (created_at ASC), with conditions parsed."""
+    oldest first (created_at ASC), with conditions + scope parsed."""
+    _ensure_scope_column()
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM governance_policies "
@@ -27,10 +50,11 @@ def load_enabled(action_type: str) -> list[dict]:
     out = []
     for r in rows:
         d = dict(r)
-        try:
-            d["conditions"] = json.loads(d.get("conditions_json") or "{}")
-        except (json.JSONDecodeError, TypeError):
-            d["conditions"] = {}
+        for col, key in (("conditions_json", "conditions"), ("scope_json", "scope")):
+            try:
+                d[key] = json.loads(d.get(col) or "{}")
+            except (json.JSONDecodeError, TypeError):
+                d[key] = {}
         out.append(d)
     return out
 
@@ -82,14 +106,16 @@ def _violation(cond: dict, ctx: PolicyCheckContext, usage) -> str | None:
 # ── CRUD (for the Console) ──────────────────────────────────────────────
 def _parse(row: dict) -> dict:
     d = dict(row)
-    try:
-        d["conditions"] = json.loads(d.get("conditions_json") or "{}")
-    except (json.JSONDecodeError, TypeError):
-        d["conditions"] = {}
+    for col, key in (("conditions_json", "conditions"), ("scope_json", "scope")):
+        try:
+            d[key] = json.loads(d.get(col) or "{}")
+        except (json.JSONDecodeError, TypeError):
+            d[key] = {}
     return d
 
 
 def list_all() -> list[dict]:
+    _ensure_scope_column()
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM governance_policies ORDER BY created_at ASC").fetchall()
@@ -97,18 +123,43 @@ def list_all() -> list[dict]:
 
 
 def create_policy(name: str, description: str, action_type: str, effect: str,
-                  conditions: dict) -> str:
+                  conditions: dict, scope: dict | None = None) -> str:
+    _ensure_scope_column()
     pid = uuid.uuid4().hex
     now = _dt.datetime.now(_dt.UTC).isoformat()
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO governance_policies (id,name,description,enabled,action_type,"
-            "effect,conditions_json,version,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "effect,conditions_json,scope_json,version,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (pid, name, description, 1, action_type, effect,
-             json.dumps(conditions or {}), 1, now, now),
+             json.dumps(conditions or {}), json.dumps(scope or {}), 1, now, now),
         )
     return pid
+
+
+def update_policy(pid: str, *, name: str | None = None, description: str | None = None,
+                  action_type: str | None = None, effect: str | None = None,
+                  conditions: dict | None = None, scope: dict | None = None) -> int | None:
+    """Edit a policy and BUMP its version (governance change trail). Returns new version."""
+    _ensure_scope_column()
+    with get_conn() as conn:
+        row = conn.execute("SELECT version FROM governance_policies WHERE id=?", (pid,)).fetchone()
+        if row is None:
+            return None
+        sets, vals = ["version=?", "updated_at=?"], [row["version"] + 1,
+                                                     _dt.datetime.now(_dt.UTC).isoformat()]
+        for col, v in (("name", name), ("description", description),
+                       ("action_type", action_type), ("effect", effect)):
+            if v is not None:
+                sets.append(f"{col}=?"); vals.append(v)
+        if conditions is not None:
+            sets.append("conditions_json=?"); vals.append(json.dumps(conditions))
+        if scope is not None:
+            sets.append("scope_json=?"); vals.append(json.dumps(scope))
+        vals.append(pid)
+        conn.execute(f"UPDATE governance_policies SET {','.join(sets)} WHERE id=?", vals)
+        return row["version"] + 1
 
 
 def toggle_policy(pid: str) -> int | None:

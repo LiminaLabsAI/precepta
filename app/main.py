@@ -173,7 +173,8 @@ def create_app() -> FastAPI:
         pols = [
             {"id": p["id"], "name": p["name"], "description": p.get("description"),
              "enabled": bool(p["enabled"]), "action_type": p["action_type"],
-             "effect": p["effect"], "conditions": p.get("conditions", {})}
+             "effect": p["effect"], "conditions": p.get("conditions", {}),
+             "scope": p.get("scope", {}), "version": p.get("version", 1)}
             for p in policy_store.list_all()
         ]
         return JSONResponse({"policies": pols})
@@ -189,8 +190,26 @@ def create_app() -> FastAPI:
         b = await request.json()
         pid = policy_store.create_policy(
             b.get("name", ""), b.get("description", ""), b.get("action_type", "*"),
-            b.get("effect", "audit"), b.get("conditions", {}) or {})
+            b.get("effect", "audit"), b.get("conditions", {}) or {},
+            scope=b.get("scope", {}) or {})
         return JSONResponse({"id": pid}, status_code=201)
+
+    @app.put("/v1/policies/{pid}")
+    async def edit_policy(pid: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse(
+                {"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        fields = {k: b[k] for k in ("name", "description", "action_type", "effect",
+                                    "conditions", "scope") if k in b}
+        ver = policy_store.update_policy(pid, **fields)
+        if ver is None:
+            return JSONResponse(
+                {"error": {"message": "not found", "type": "not_found"}}, status_code=404)
+        return JSONResponse({"id": pid, "version": ver})
 
     @app.post("/v1/policies/{pid}/toggle")
     def toggle_policy(pid: str, request: Request) -> JSONResponse:
@@ -683,6 +702,7 @@ def create_app() -> FastAPI:
                     status_code=429)
 
         # explicit model must resolve, and pass Sovereign-Mode enforcement
+        req_backend = req_model = None   # policy scope (FEAT-002) — known when explicit
         if not is_auto(model_str):
             try:
                 backend, resolved_model = resolve(model_str, reg)
@@ -690,6 +710,7 @@ def create_app() -> FastAPI:
                 return JSONResponse(
                     {"error": {"message": str(exc), "type": "invalid_request_error"}},
                     status_code=400)
+            req_backend, req_model = backend.name, model_str
             from .adapters.authz.scopes import check_backend
             reason = (enforce_backend(backend, settings)
                       or check_backend(principal, backend.name)
@@ -736,7 +757,8 @@ def create_app() -> FastAPI:
         t0 = time.perf_counter()
         try:
             status, payload = await governed_chat(
-                messages, kw, principal, bool(body.get("data_tag")), run_inference)
+                messages, kw, principal, bool(body.get("data_tag")), run_inference,
+                req_backend=req_backend, req_model=req_model)
         except LookupError as exc:
             return JSONResponse(
                 {"error": {"message": str(exc), "type": "no_backend"}}, status_code=503)
