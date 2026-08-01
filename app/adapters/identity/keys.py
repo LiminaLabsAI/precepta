@@ -29,14 +29,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
 _PREFIX = "pk-"
 
 
-# FEAT-001: per-key scope + cost caps. Added via guarded migrations.
+# FEAT-001: per-key scope + cost/token caps + suspend. Added via guarded migrations.
 _MIGRATIONS = {
     "expires_at": "TEXT",              # NULL = never expires
-    "subject_type": "TEXT DEFAULT 'user'",   # user | agent | service
+    "subject_type": "TEXT DEFAULT 'user'",   # legacy; no longer set from the UI
     "allowed_backends": "TEXT DEFAULT ''",   # comma-sep; '' = all
     "allowed_models": "TEXT DEFAULT ''",     # comma-sep; '' = all
     "cost_cap_daily": "REAL DEFAULT 0",      # USD/day; 0 = no cap
     "cost_cap_monthly": "REAL DEFAULT 0",    # USD/month; 0 = no cap
+    "token_cap_daily": "INTEGER DEFAULT 0",  # tokens/day; 0 = no cap
+    "token_cap_monthly": "INTEGER DEFAULT 0",# tokens/month; 0 = no cap
+    "suspended_at": "TEXT",           # non-NULL = temporarily disabled
 }
 
 
@@ -66,14 +69,14 @@ def _hash(token: str) -> str:
 
 
 def issue_key(name: str, role: str = "user", team: str = "",
-              expires_in_days: int | None = 90, *, subject_type: str = "user",
+              expires_in_days: int | None = 90, *,
               allowed_backends=None, allowed_models=None,
-              cost_cap_daily: float = 0, cost_cap_monthly: float = 0) -> tuple[str, str]:
-    """Create a key with optional scope + cost caps. Returns (id, plaintext_token).
+              cost_cap_daily: float = 0, cost_cap_monthly: float = 0,
+              token_cap_daily: int = 0, token_cap_monthly: int = 0) -> tuple[str, str]:
+    """Create a key (an external app's credential into Precepta). Returns (id, token).
 
-    The key is an external app's credential into Precepta. It can be pinned to a
-    team/role/subject-type, restricted to specific backends & models, and given
-    daily/monthly USD cost caps. expires_in_days: default 90; None/0 = never.
+    Restrictable to specific backends & models, with daily/monthly USD cost caps and
+    token caps. expires_in_days: default 90; None/0 = never.
     """
     ensure_table()
     token = _PREFIX + secrets.token_urlsafe(32)
@@ -84,13 +87,47 @@ def issue_key(name: str, role: str = "user", team: str = "",
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO api_keys (id,key_hash,name,role,team,created_at,expires_at,"
-            "subject_type,allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly,"
+            "token_cap_daily,token_cap_monthly) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (kid, _hash(token), name, role, team, now.isoformat(), expires_at,
-             subject_type or "user", _csv(allowed_backends), _csv(allowed_models),
-             float(cost_cap_daily or 0), float(cost_cap_monthly or 0)),
+             _csv(allowed_backends), _csv(allowed_models),
+             float(cost_cap_daily or 0), float(cost_cap_monthly or 0),
+             int(token_cap_daily or 0), int(token_cap_monthly or 0)),
         )
     return kid, token
+
+
+def update_key(kid: str, **fields) -> bool:
+    """Edit an existing key's config (never its name or secret)."""
+    ensure_table()
+    allowed = {"role", "allowed_backends", "allowed_models", "cost_cap_daily",
+               "cost_cap_monthly", "token_cap_daily", "token_cap_monthly"}
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k in ("allowed_backends", "allowed_models"):
+            v = _csv(v)
+        if k == "expires_in_days":
+            k = "expires_at"
+            v = ((_dt.datetime.now(_dt.UTC) + _dt.timedelta(days=int(v))).isoformat()
+                 if v else None)
+            sets.append("expires_at=?"); vals.append(v); continue
+        if k in allowed:
+            sets.append(f"{k}=?"); vals.append(v)
+    if not sets:
+        return False
+    vals.append(kid)
+    with get_conn() as conn:
+        cur = conn.execute(f"UPDATE api_keys SET {','.join(sets)} WHERE id=?", vals)
+        return cur.rowcount > 0
+
+
+def set_suspended(kid: str, suspended: bool) -> bool:
+    ensure_table()
+    val = _dt.datetime.now(_dt.UTC).isoformat() if suspended else None
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE api_keys SET suspended_at=? WHERE id=? AND revoked_at IS NULL",
+                           (val, kid))
+        return cur.rowcount > 0
 
 
 def get_key_meta(name: str) -> dict | None:
@@ -98,9 +135,9 @@ def get_key_meta(name: str) -> dict | None:
     ensure_table()
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT name,team,role,subject_type,allowed_backends,allowed_models,"
-            "cost_cap_daily,cost_cap_monthly FROM api_keys "
-            "WHERE name=? AND revoked_at IS NULL", (name,)).fetchone()
+            "SELECT name,team,role,allowed_backends,allowed_models,"
+            "cost_cap_daily,cost_cap_monthly,token_cap_daily,token_cap_monthly "
+            "FROM api_keys WHERE name=? AND revoked_at IS NULL", (name,)).fetchone()
     return dict(row) if row else None
 
 
@@ -132,15 +169,18 @@ def list_keys() -> list[dict]:
     ensure_table()
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id,name,role,team,created_at,revoked_at,expires_at,subject_type,"
-            "allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly FROM api_keys "
+            "SELECT id,name,role,team,created_at,revoked_at,expires_at,suspended_at,"
+            "allowed_backends,allowed_models,cost_cap_daily,cost_cap_monthly,"
+            "token_cap_daily,token_cap_monthly FROM api_keys "
             "ORDER BY created_at DESC").fetchall()
     out = []
     for r in rows:
         expired = _is_expired(r["expires_at"])
+        suspended = r["suspended_at"] is not None
         out.append(dict(r) | {
             "expired": expired,
-            "active": r["revoked_at"] is None and not expired,
+            "suspended": suspended,
+            "active": r["revoked_at"] is None and not expired and not suspended,
             "backends_list": [x for x in (r["allowed_backends"] or "").split(",") if x],
             "models_list": [x for x in (r["allowed_models"] or "").split(",") if x],
         })
@@ -163,6 +203,8 @@ class ApiKeyIdentity:
         if row is None:
             return None
         if _is_expired(row["expires_at"]):          # expired key fails auth (FEAT-001)
+            return None
+        if row["suspended_at"] is not None:         # suspended key fails auth
             return None
         return Principal(subject=row["name"], role=row["role"],
                          display_name=row["name"], team=row["team"] or "")

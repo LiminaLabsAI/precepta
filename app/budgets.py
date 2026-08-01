@@ -60,38 +60,64 @@ def record_usage(key_name: str, team: str, billable_tokens: int, cost_usd: float
 
 
 def spend(key_name: str) -> dict:
-    """Cost spent by a key today and this month (org-timezone windows)."""
+    """Cost + tokens spent by a key today and this month (org-timezone windows)."""
     ensure_table()
     day0, mon0 = _window_starts()
     with get_conn() as conn:
-        d = conn.execute("SELECT COALESCE(SUM(cost_usd),0) c FROM key_usage "
-                         "WHERE key_name=? AND ts>=?", (key_name, day0)).fetchone()["c"]
-        m = conn.execute("SELECT COALESCE(SUM(cost_usd),0) c FROM key_usage "
-                         "WHERE key_name=? AND ts>=?", (key_name, mon0)).fetchone()["c"]
-    return {"day": round(d, 6), "month": round(m, 6)}
+        d = conn.execute("SELECT COALESCE(SUM(cost_usd),0) c, COALESCE(SUM(billable_tokens),0) t "
+                         "FROM key_usage WHERE key_name=? AND ts>=?", (key_name, day0)).fetchone()
+        m = conn.execute("SELECT COALESCE(SUM(cost_usd),0) c, COALESCE(SUM(billable_tokens),0) t "
+                         "FROM key_usage WHERE key_name=? AND ts>=?", (key_name, mon0)).fetchone()
+    return {"day": round(d["c"], 6), "month": round(m["c"], 6),
+            "tokens_day": int(d["t"]), "tokens_month": int(m["t"])}
 
 
-def check(key_name: str, projected_cost: float = 0.0,
+_ADJ = {"day": "daily", "month": "monthly"}
+
+
+def _fire(key_name: str, level: str, window: str, metric: str, capstr: str, usedstr: str) -> None:
+    from . import notifications
+    adj = _ADJ.get(window, window)
+    verb = "blocked at" if level == "block" else "nearing"
+    title = f"Key '{key_name}' {verb} its {adj} {metric} cap"
+    tail = ("requests are now blocked until reset." if level == "block"
+            else "warning threshold (80%) reached.")
+    notifications.notify(
+        f"budget_{level}", "critical" if level == "block" else "warning", title,
+        f"{adj.capitalize()} {metric} usage {usedstr} of {capstr} — {tail}")
+
+
+def check(key_name: str, projected_cost: float = 0.0, projected_tokens: int = 0,
           grace_pct: int = _DEFAULT_GRACE_PCT) -> dict:
-    """Most-restrictive daily/monthly cost-cap check. effect ∈ allow|warn|block."""
+    """Most-restrictive cost+token daily/monthly cap check. effect ∈ allow|warn|block.
+
+    Fires a (deduped) bell notification on warn/block.
+    """
     from .adapters.identity.keys import get_key_meta
     meta = get_key_meta(key_name)
     if not meta:
         return {"effect": "allow"}
-    caps = {"day": meta["cost_cap_daily"] or 0, "month": meta["cost_cap_monthly"] or 0}
     sp = spend(key_name)
-    result = {"effect": "allow", "spend": sp, "caps": caps}
-    for window in ("day", "month"):
-        cap = caps[window]
+    # (metric, window) → (cap, already-spent, projected, formatter)
+    def money(v): return f"${v:.2f}"
+    def toks(v): return f"{int(v):,} tokens"
+    checks = [
+        ("cost", "day", meta["cost_cap_daily"] or 0, sp["day"], projected_cost, money, lambda v: f"${v:.4f}"),
+        ("cost", "month", meta["cost_cap_monthly"] or 0, sp["month"], projected_cost, money, lambda v: f"${v:.4f}"),
+        ("token", "day", meta["token_cap_daily"] or 0, sp["tokens_day"], projected_tokens, toks, toks),
+        ("token", "month", meta["token_cap_monthly"] or 0, sp["tokens_month"], projected_tokens, toks, toks),
+    ]
+    result = {"effect": "allow", "spend": sp}
+    for metric, window, cap, used, proj, capfmt, usedfmt in checks:
         if not cap or cap <= 0:
             continue
-        after = sp[window] + max(projected_cost, 0)
+        after = used + max(proj, 0)
         if after >= cap:
-            return {"effect": "block", "window": window, "spend": sp, "caps": caps,
-                    "reason": f"{window}ly cost cap ${cap:.2f} reached "
-                              f"(spent ${sp[window]:.4f})"}
+            _fire(key_name, "block", window, metric, capfmt(cap), usedfmt(used))
+            return {"effect": "block", "metric": metric, "window": window, "spend": sp,
+                    "reason": f"{_ADJ[window]} {metric} cap {capfmt(cap)} reached (used {usedfmt(used)})"}
         if after >= cap * (grace_pct / 100.0) and result["effect"] == "allow":
-            result = {"effect": "warn", "window": window, "spend": sp, "caps": caps,
-                      "reason": f"{window}ly cost at {int(after / cap * 100)}% of "
-                                f"${cap:.2f} cap"}
+            _fire(key_name, "warn", window, metric, capfmt(cap), usedfmt(used))
+            result = {"effect": "warn", "metric": metric, "window": window, "spend": sp,
+                      "reason": f"{_ADJ[window]} {metric} at {int(after / cap * 100)}% of {capfmt(cap)}"}
     return result

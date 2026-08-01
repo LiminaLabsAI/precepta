@@ -21,12 +21,10 @@ def _cleanup(name: str) -> None:
 
 def test_provisioning_stores_scope_and_caps():
     try:
-        keys.issue_key("scoped-key", role="user", team="Payments",
-                       subject_type="agent", allowed_backends=["ollama"],
+        keys.issue_key("scoped-key", role="user", allowed_backends=["ollama"],
                        allowed_models=["ollama/llama3.2:3b"],
                        cost_cap_daily=2.0, cost_cap_monthly=40.0)
         m = keys.get_key_meta("scoped-key")
-        assert m["team"] == "Payments" and m["subject_type"] == "agent"
         assert m["allowed_backends"] == "ollama"
         assert m["cost_cap_daily"] == 2.0 and m["cost_cap_monthly"] == 40.0
         row = next(k for k in keys.list_keys() if k["name"] == "scoped-key")

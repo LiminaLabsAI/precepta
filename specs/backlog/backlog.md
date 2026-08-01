@@ -31,7 +31,7 @@ type: Backlog
 
 | ID | Title | Priority | Status | Phase | Detail |
 |----|-------|----------|--------|-------|--------|
-| FEAT-001 | Key expiration + token/cost budgets + per-key scope (team/role/agent/backend/model) | P1 | in-progress | 10 | **Key expiry + per-key COST caps (daily/monthly, warn-80/block-100, timezone) + scope (team/role/subject-type/backend/model) DONE + verified 2026-08-01** (`app/budgets.py`, `key_usage`, enforcement in gateway, `GET /v1/usage`, full Console create-form + live spend badges; 9 tests). Remaining: per-team cost budgets, token caps, warn/block bell notifications, dedicated Usage page. |
+| FEAT-001 | Key expiration + cost/token budgets + per-key scope (backend/model) | P1 | resolved | 10 | **DONE + verified 2026-08-01.** Expiry (90d/never/401), per-key **cost + token** caps (daily/monthly, timezone, warn-80/block-100 → 429 + **bell notification**), backend/model scope (block), **edit**, **suspend/reactivate**, `GET /v1/usage`. Dropped subject-type + team (user decision). 14 tests; browser-validated. |
 | FEAT-002 | Policy scope — apply to all vs selected (Team / Role / Subject-type / Backend / Model; agents governed like humans) | P1 | open | 10 (cand) | Fully scoped — `BRAINSTORM.md` §Item 2. Adds `scope_json` (default `{}` = all); one filter step, evaluation unchanged. |
 | FEAT-003 | Response cache — exact + semantic, per-team, governance-preserving, admin-only visibility | P2 | open | 10 (cand) | Fully scoped — `BRAINSTORM.md` §Item 3. Behind a `ResponseCachePort` (DIP); in-boundary embeddings; invisible to end user. |
 | FEAT-004 | OpenGuard authZ/delegation adapter behind `AuthorizationPort` (agent/user/bounded delegation) | P2 | open | 10 (cand) | De-risked spike ✅ — `BRAINSTORM.md` §Spike. Adopt in a dedicated phase; keep `RoleCheck`/`scopes` as default until parity. |
@@ -58,4 +58,8 @@ type: Backlog
 
 | ID | Title | Priority | Status | Phase | Detail |
 |----|-------|----------|--------|-------|--------|
-| _(none)_ | | | | | |
+| ENH-001 | Key rotation — regenerate a key's secret without losing its config | P2 | open | — | Security hygiene when a key leaks (rotate, not rebuild). |
+| ENH-002 | Key last-used + request count — spot dormant/misused keys | P2 | open | — | Show last-used timestamp + volume per key. |
+| ENH-003 | Per-key rate limiting (requests/min) | P2 | open | — | Stop a runaway loop burning budget in seconds. |
+| ENH-004 | Dedicated Usage page — per-key/per-team spend + tokens over time | P2 | open | — | Beyond the per-card badge; trends + export. |
+| ENH-005 | Per-key IP allowlist; admin-configurable alert thresholds | P3 | open | — | Enterprise hardening. |

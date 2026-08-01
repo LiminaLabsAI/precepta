@@ -27,7 +27,8 @@ from .router.brain import get_brain
 from .router import engine
 from .ports import Principal, PolicyCheckContext, Decision
 from .adapters.identity import get_identity
-from .adapters.identity.keys import get_api_identity, issue_key, revoke_key, list_keys
+from .adapters.identity.keys import (get_api_identity, issue_key, revoke_key,
+                                      list_keys, update_key, set_suspended)
 from .adapters.identity.session import get_session_identity, create_session, revoke_session
 from .adapters.authz import get_authz
 from .adapters.audit import get_audit
@@ -379,11 +380,12 @@ def create_app() -> FastAPI:
             expires_in_days = 90
         kid, token = issue_key(
             name, role, team, expires_in_days=expires_in_days,
-            subject_type=(b.get("subject_type") or "user"),
             allowed_backends=b.get("allowed_backends") or [],
             allowed_models=b.get("allowed_models") or [],
             cost_cap_daily=b.get("cost_cap_daily") or 0,
-            cost_cap_monthly=b.get("cost_cap_monthly") or 0)
+            cost_cap_monthly=b.get("cost_cap_monthly") or 0,
+            token_cap_daily=b.get("token_cap_daily") or 0,
+            token_cap_monthly=b.get("token_cap_monthly") or 0)
         # the plaintext key is returned exactly once
         return JSONResponse({"id": kid, "name": name, "role": role, "team": team,
                              "key": token, "expires_in_days": expires_in_days}, status_code=201)
@@ -400,6 +402,66 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": {"message": "not found", "type": "not_found"}}, status_code=404)
         return JSONResponse({"ok": True, "id": kid, "revoked": True})
+
+    @app.put("/v1/keys/{kid}")
+    async def edit_key(kid: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse(
+                {"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        fields = {k: b[k] for k in (
+            "role", "allowed_backends", "allowed_models", "cost_cap_daily",
+            "cost_cap_monthly", "token_cap_daily", "token_cap_monthly",
+            "expires_in_days") if k in b}
+        if not update_key(kid, **fields):
+            return JSONResponse(
+                {"error": {"message": "not found or nothing to update",
+                           "type": "not_found"}}, status_code=404)
+        return JSONResponse({"ok": True, "id": kid})
+
+    @app.post("/v1/keys/{kid}/suspend")
+    def suspend_key_ep(kid: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        ok = set_suspended(kid, True)
+        return JSONResponse({"ok": ok, "id": kid, "suspended": True},
+                            status_code=200 if ok else 404)
+
+    @app.post("/v1/keys/{kid}/reactivate")
+    def reactivate_key_ep(kid: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        ok = set_suspended(kid, False)
+        return JSONResponse({"ok": ok, "id": kid, "suspended": False},
+                            status_code=200 if ok else 404)
+
+    # ── Notifications (the bell) ───────────────────────────────────────
+    @app.get("/notifications")
+    def get_notifications(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from . import notifications as _n
+        return JSONResponse({"notifications": _n.list_recent(),
+                             "unread": _n.unread_count()})
+
+    @app.post("/notifications/read")
+    def read_notifications(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from . import notifications as _n
+        _n.mark_all_read()
+        return JSONResponse({"ok": True})
 
     # ── Organization settings (real, persisted) ────────────────────────
     @app.get("/v1/settings")
