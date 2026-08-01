@@ -20,6 +20,7 @@ from ..governance.policy import load_enabled, evaluate, scope_matches, DbUsage
 from ..governance import sensitive as _sensitive
 from ..adapters.audit import get_audit
 from .. import cache as _cache
+from .. import compression as _compress
 
 RunInference = Callable[..., Awaitable[tuple[dict, dict]]]
 
@@ -124,10 +125,20 @@ async def governed_chat(
             }
             return 200, result
 
+    # ── prompt compression (FEAT-005): shorten before inference; billing follows ──
+    infer_msgs = scrubbed
+    comp_stats = None
+    if _compress.enabled():
+        infer_msgs, comp_stats = _compress.compress(
+            scrubbed, aggressive=_compress.aggressive_on())
+        _compress.record(comp_stats)
+        if comp_stats["mode"] == "aggressive" and comp_stats["saved_tokens"] > 0:
+            _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
+
     # ── inference (injected router/engine) — failures are audited too ──
     try:
         result, route_meta = await run_inference(
-            scrubbed, {"allowed_backends": allowed_backends})
+            infer_msgs, {"allowed_backends": allowed_backends})
     except httpx.HTTPError as exc:
         dec = Decision("block", f"backend unavailable / inference failed: {exc}")
         aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
@@ -173,4 +184,6 @@ async def governed_chat(
         "principal": principal.subject,
         "role": principal.role,
     }
+    if comp_stats and comp_stats["saved_tokens"] > 0:      # transparent — never hidden
+        result["precepta"]["compression"] = comp_stats
     return 200, result

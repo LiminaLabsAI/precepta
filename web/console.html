@@ -642,10 +642,25 @@ function savingsView(){
       ${semOn?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><span style="font-size:12.5px;font-weight:500">Similarity threshold <span style="font-size:11px;color:#9CA3AF">(1.0 = exact only; lower = looser)</span></span><input type="number" min="0.8" max="1" step="0.01" value="${o.cache_threshold||'1.0'}" onchange="app.saveOrgSetting('cache_threshold',this.value)" style="width:90px;padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;text-align:right"></div>`:''}
       <div style="margin-top:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear cache</button></div>
     </div>`;
-  const compression=`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px;opacity:.75">
-    <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:600;font-size:14px">Prompt compression</div><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#FFFBEB;color:#92400E">Building next</span></div>
-    <div style="font-size:12.5px;color:#6B7280;margin-top:8px;line-height:1.6;max-width:560px">Baseline trimming plus an opt-in cost-saving mode shorten prompts before they reach a model; you're notified whenever aggressive compression is applied. FEAT-005 — landing in this phase.</div>
-  </div>`;
+  const cm = window.__compression;
+  const cmpOn = o.compression_enabled==='true';
+  const aggOn = o.compression_aggressive==='true';
+  const compression = !cm ? `<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading compression…</div>` : `
+    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><div style="font-weight:600;font-size:14px">Prompt compression</div><div style="font-size:12.5px;color:#6B7280;margin-top:6px;line-height:1.6;max-width:600px">Shorten prompts before they reach a model. <strong>Baseline</strong> is quality-safe (whitespace/formatting only). Off by default. Billing follows the compressed prompt.</div></div>
+        ${toggleHtml(cmpOn,'app.saveOrgSetting(\'compression_enabled\',\''+(cmpOn?'false':'true')+'\')')}
+      </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid #F3F4F6;display:flex;gap:32px;flex-wrap:wrap">
+        ${stat('Requests compressed', cm.requests_compressed)}
+        ${stat('Tokens saved', cm.tokens_saved)}
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12.5px;font-weight:500">Aggressive cost-saving mode <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E">opt-in</span></span><span style="font-size:11px;color:#9CA3AF">also trims filler — lossy; you're notified when it applies</span></div>
+        ${toggleHtml(aggOn,'app.saveOrgSetting(\'compression_aggressive\',\''+(aggOn?'false':'true')+'\')')}
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:10px">Real semantic compression (LLMLingua) is deferred until it can be gated by the eval harness. This is the safe baseline.</div>
+    </div>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Both cut cost inside the same governed loop — every cache hit and every compressed prompt stays policy-checked and audited.</div>
     ${cacheCard}
@@ -1289,9 +1304,10 @@ render();
     if(sc==="audit"){ loadAuditLog(); }
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); }
-    if(sc==="savings"){ loadCache(); }
+    if(sc==="savings"){ loadCache(); loadCompression(); }
   };
   async function loadCache(){ const d=await getJSON("/v1/cache/stats"); if(d && !d.error){ window.__cache=d; render(); } }
+  async function loadCompression(){ const d=await getJSON("/v1/compression/stats"); if(d && !d.error){ window.__compression=d; render(); } }
   app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadCache()); };
 
   function loadAll(){

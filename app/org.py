@@ -20,6 +20,8 @@ _DEFAULTS = {
     "cache_enabled": "false",            # response cache (FEAT-003) — off by default (safe)
     "cache_semantic": "false",           # semantic cache — opt-in risk
     "cache_threshold": "1.0",            # semantic similarity threshold (1.0 = exact only)
+    "compression_enabled": "false",      # prompt compression (FEAT-005) — off by default (safe)
+    "compression_aggressive": "false",   # aggressive "cost-saving mode" — opt-in, notifies
 }
 
 _ALLOWED = set(_DEFAULTS)

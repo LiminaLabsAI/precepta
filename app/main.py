@@ -389,6 +389,17 @@ def create_app() -> FastAPI:
         from . import cache as _c
         return JSONResponse({"ok": True, "cleared": _c.clear()})
 
+    @app.get("/v1/compression/stats")
+    def compression_stats(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from . import compression as _comp
+        return JSONResponse(_comp.stats())
+
     @app.get("/v1/usage")
     def get_usage(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
