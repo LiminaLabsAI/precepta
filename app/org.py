@@ -17,6 +17,9 @@ _DEFAULTS = {
     "audit_retention_years": "7",
     "timezone": "Asia/Kolkata",          # budget windows + time displays honor this
     "optimize_auto": "false",            # "Optimize automatically" → LLM router (off = rules)
+    "cache_enabled": "false",            # response cache (FEAT-003) — off by default (safe)
+    "cache_semantic": "false",           # semantic cache — opt-in risk
+    "cache_threshold": "1.0",            # semantic similarity threshold (1.0 = exact only)
 }
 
 _ALLOWED = set(_DEFAULTS)

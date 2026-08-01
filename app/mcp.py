@@ -89,7 +89,8 @@ async def _call_tool(name: str, args: dict, principal) -> dict:
         messages = [{"role": "user", "content": prompt}]
         run_inf = _make_run_inference(model, kw, reg, settings)
         try:
-            status, payload = await governed_chat(messages, kw, principal, False, run_inf)
+            status, payload = await governed_chat(messages, kw, principal, False, run_inf,
+                                                  model_str=model)
         except (RouteError, LookupError, httpx.HTTPError) as exc:
             return _text(f"error: {exc}", is_error=True)
         if status != 200:

@@ -19,6 +19,7 @@ from ..governance.firewall import scrub_input, scan_output
 from ..governance.policy import load_enabled, evaluate, scope_matches, DbUsage
 from ..governance import sensitive as _sensitive
 from ..adapters.audit import get_audit
+from .. import cache as _cache
 
 RunInference = Callable[..., Awaitable[tuple[dict, dict]]]
 
@@ -50,7 +51,7 @@ def _blocked_payload(decision: Decision, audit_id: str, pii: int, injection: boo
 async def governed_chat(
     messages: list[dict], kw: dict, principal: Principal, data_tag: bool,
     run_inference: RunInference, req_backend: str | None = None,
-    req_model: str | None = None,
+    req_model: str | None = None, model_str: str = "",
 ) -> tuple[int, dict]:
     audit = get_audit()
     usage = DbUsage()
@@ -103,6 +104,26 @@ async def governed_chat(
         aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=True)
         return 403, _blocked_payload(decision, aid, pii, injection=False)
 
+    # ── response cache (FEAT-003): deterministic + non-sensitive only, still audited ──
+    team = getattr(principal, "team", "") or ""
+    cacheable = _cache.is_cacheable(kw, sensitive)   # False on temp>0, sensitive, or cache off
+    if cacheable:
+        entry = _cache.lookup(model_str, scrubbed, kw, team)
+        if entry is not None:                        # HIT — reuse the prior answer
+            saved = _cache.record_hit(entry, team)
+            aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=False)
+            result = dict(entry["response"])
+            result["precepta"] = {
+                "backend_used": entry.get("backend"), "in_boundary": True,
+                "cache": "hit", "cache_exact": entry.get("exact"),
+                "cache_similarity": entry.get("similarity"),
+                "tokens_saved": saved["tokens_saved"], "cost_saved_usd": saved["cost_saved_usd"],
+                "policy_decision": decision.effect, "policy_reason": decision.reason,
+                "audit_id": aid, "pii_redacted": pii, "injection_detected": False,
+                "principal": principal.subject, "role": principal.role,
+            }
+            return 200, result
+
     # ── inference (injected router/engine) — failures are audited too ──
     try:
         result, route_meta = await run_inference(
@@ -131,6 +152,14 @@ async def governed_chat(
         dec = Decision("block", "output leak (secret/private-key/db-url) detected")
         aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
         return 403, _blocked_payload(dec, aid, pii, injection=False)
+
+    # ── store the fresh answer for reuse (deterministic + non-sensitive only) ──
+    if cacheable:
+        u = result.get("usage") or {}
+        _cache.store(model_str, scrubbed, kw, team, result,
+                     u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0,
+                     route_meta.get("backend_used") or "",
+                     route_meta.get("model") or req_model or "")
 
     # ── allow / warn → audit + response ──
     aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=False)

@@ -366,6 +366,29 @@ def create_app() -> FastAPI:
                       "hf_key_set": cfg["hf_key_set"]})
         return JSONResponse(cfg)
 
+    # ── Response cache savings (admin-only — invisible to end users) ──
+    @app.get("/v1/cache/stats")
+    def cache_stats(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from . import cache as _c
+        return JSONResponse(_c.stats())
+
+    @app.post("/v1/cache/clear")
+    def cache_clear(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from . import cache as _c
+        return JSONResponse({"ok": True, "cleared": _c.clear()})
+
     @app.get("/v1/usage")
     def get_usage(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -839,7 +862,7 @@ def create_app() -> FastAPI:
         try:
             status, payload = await governed_chat(
                 messages, kw, principal, bool(body.get("data_tag")), run_inference,
-                req_backend=req_backend, req_model=req_model)
+                req_backend=req_backend, req_model=req_model, model_str=model_str)
         except LookupError as exc:
             return JSONResponse(
                 {"error": {"message": str(exc), "type": "no_backend"}}, status_code=503)
@@ -858,11 +881,14 @@ def create_app() -> FastAPI:
                 tokens_out=usage.get("completion_tokens"),
                 backend=payload["precepta"].get("backend_used"),
             )
-            # record real cost against the key's budget (FEAT-001)
+            # record real cost against the key's budget (FEAT-001).
+            # cache hit → usage counted but budget charged $0 (no inference ran, TD-002).
             if _key_meta:
                 _bk = payload["precepta"].get("backend_used") or ""
+                _cache_hit = payload["precepta"].get("cache") == "hit"
                 _mm = _metering.meter(_bk, "", usage.get("prompt_tokens") or 0,
-                                      usage.get("completion_tokens") or 0)
+                                      usage.get("completion_tokens") or 0,
+                                      cache_hit=_cache_hit)
                 _budgets.record_usage(principal.subject, principal.team,
                                       _mm["billable_tokens"], _mm["budget_charge_usd"])
                 payload["precepta"]["budget"] = _budgets.spend(principal.subject)
