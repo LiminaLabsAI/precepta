@@ -58,7 +58,7 @@ const state = {
   backends: [],                   // ← /infra
   addBackendOpen: false,
   newBackendName:'', newBackendModel:'', newBackendLocation:'', newBackendInBoundary:true,
-  newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:'', newBackendRegion:'mumbai',
+  newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:'', newBackendRegion:'mumbai', newBackendTier:'2',
 
   // Phase-10 (not yet persisted) — local intent only, clearly labelled in UI
   approvedBackends: [], approvingBackend:null, approvingLocation:'',
@@ -189,7 +189,7 @@ const app = {
   dismissSetupToast(){ state.showSetupToast=false; render(); },
   toggleControl(key){ state.securityControls[key]=!state.securityControls[key]; render(); },
   runEgressProbe(){ state.egressProbeStatus='running'; render(); setTimeout(()=>{ state.egressProbeStatus='done'; render(); },900); },
-  openAddBackend(){ Object.assign(state,{addBackendOpen:true,newBackendName:'',newBackendModel:'',newBackendLocation:'',newBackendInBoundary:true,newBackendType:'onprem',newBackendEndpoint:'',newBackendKey:'',newBackendRegion:'mumbai'}); render(); },
+  openAddBackend(){ Object.assign(state,{addBackendOpen:true,newBackendName:'',newBackendModel:'',newBackendLocation:'',newBackendInBoundary:true,newBackendType:'onprem',newBackendEndpoint:'',newBackendKey:'',newBackendRegion:'mumbai',newBackendTier:'2'}); render(); },
   closeAddBackend(){ state.addBackendOpen=false; render(); },
   setNewBackendType(t){ state.newBackendType=t; state.newBackendInBoundary=true; render(); },
   toggleNewBackendBoundary(){ state.newBackendInBoundary=!state.newBackendInBoundary; render(); },
@@ -498,10 +498,11 @@ function addBackendModal(btMeta){
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Backend type</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(backendTypeMeta).map(k=>{const sel=k===s.newBackendType;return `<div onclick="app.setNewBackendType('${k}')" style="padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${sel?'#93C5FD':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};color:${sel?'#1D4ED8':'#374151'}">${backendTypeMeta[k].label}</div>`;}).join('')}</div>
       </div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. vLLM cluster 2"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. HF Gemma 31B">${s.newBackendName.trim()?`<div style="font-size:11px;color:#9CA3AF;margin-top:4px">Identifier: <code>${esc((s.newBackendName||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''))}</code> — give each backend a distinct name to run several of the same type.</div>`:''}</div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model string</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendModel)}" oninput="app.set('newBackendModel',this.value)" placeholder="${esc(btMeta.modelPh)}"></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.endpointLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendEndpoint)}" oninput="app.set('newBackendEndpoint',this.value)" placeholder="${esc(btMeta.endpointPh)}"></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.keyLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendKey)}" oninput="app.set('newBackendKey',this.value)" placeholder="${esc(btMeta.keyPh)}"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model strength</label><select onchange="app.set('newBackendTier',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#fff"><option value="1" ${s.newBackendTier==='1'?'selected':''}>Light — small/fast/cheap</option><option value="2" ${s.newBackendTier==='2'?'selected':''}>Balanced</option><option value="3" ${s.newBackendTier==='3'?'selected':''}>Strong — best quality</option></select><div style="font-size:11px;color:#9CA3AF;margin-top:4px">Auto-routing sends hard requests to the strongest backend.</div></div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px"><input type="checkbox" ${s.newBackendInBoundary?'checked':''} onchange="app.toggleNewBackendBoundary()"><span style="font-size:13px;color:#374151">This endpoint is inside my network boundary</span></label>
       <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
     </div></div>`;
@@ -1246,10 +1247,14 @@ render();
 
   app.addBackend = function(){
     const s=state; if(!s.newBackendName.trim() && !s.newBackendEndpoint.trim()){ s.addBackendOpen=false; render(); return; }
-    const provider = PROVIDER_OF[s.newBackendType] || s.newBackendType;
+    const type = PROVIDER_OF[s.newBackendType] || s.newBackendType;
+    // Identity = a slug of the Name (BUG-001) so multiple backends of the same
+    // provider type coexist; falls back to the type when no name is given.
+    const slug = (s.newBackendName||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    const provider = slug || type;
     fetch("/v1/backends",{method:"POST",headers:hdr,body:JSON.stringify({
       provider, name:s.newBackendName, base_url:s.newBackendEndpoint, api_key:s.newBackendKey,
-      model:s.newBackendModel, in_boundary:s.newBackendInBoundary})})
+      model:s.newBackendModel, in_boundary:s.newBackendInBoundary, tier:Number(s.newBackendTier)||2})})
     .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Failed: "+((d.error&&d.error.message)||r.status)); } s.addBackendOpen=false; loadInfra(); });
   };
 

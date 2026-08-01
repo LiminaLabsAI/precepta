@@ -562,17 +562,25 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": {"message": "provider and base_url required",
                            "type": "invalid_request_error"}}, status_code=400)
+        # Identity is the caller-supplied `provider` (a name-slug from the
+        # Console — BUG-001), so multiple backends of the same TYPE coexist.
+        try:
+            tier = int(b.get("tier") or 1)
+        except (ValueError, TypeError):
+            tier = 1
+        tier = max(1, min(3, tier))
         backend = OpenAICompatBackend(
             provider, base_url,
             in_boundary=bool(b.get("in_boundary", True)),
             api_key=(b.get("api_key") or None),
             default_model=(b.get("model") or "").strip(),
+            tier=tier,
         )
         get_registry()[provider] = backend                       # live registry
         backend_store.save_backend(                               # + persist (survives restart)
             provider, base_url, b.get("api_key") or None,
-            (b.get("model") or "").strip(), bool(b.get("in_boundary", True)))
-        return JSONResponse({"ok": True, "provider": provider,
+            (b.get("model") or "").strip(), bool(b.get("in_boundary", True)), tier)
+        return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
 
     @app.delete("/v1/backends/{provider}")
