@@ -1,0 +1,90 @@
+{
+  "version": "v1",
+  "description": "Router quality eval set (FEAT-006). Frozen per Rule 11 — do NOT edit in place; bump to v2 to change. Each case pairs a prompt with a known-good reference answer and a rubric the in-boundary judge scores against. `category` records the routing intent the case is meant to exercise (easy→cheap/fast, hard→quality); scoring judges the ANSWER, not the label.",
+  "cases": [
+    {
+      "id": "easy-capital-01",
+      "category": "easy",
+      "prompt": "What is the capital of France?",
+      "reference": "The capital of France is Paris.",
+      "rubric": "States that Paris is the capital of France."
+    },
+    {
+      "id": "easy-arith-02",
+      "category": "easy",
+      "prompt": "What is 17 multiplied by 4?",
+      "reference": "17 x 4 = 68.",
+      "rubric": "Gives the answer 68."
+    },
+    {
+      "id": "easy-def-03",
+      "category": "easy",
+      "prompt": "In one sentence, what is a firewall in computer networking?",
+      "reference": "A firewall is a security system that monitors and controls incoming and outgoing network traffic based on predefined rules.",
+      "rubric": "Describes a firewall as something that filters/controls network traffic by rules."
+    },
+    {
+      "id": "easy-list-04",
+      "category": "easy",
+      "prompt": "Name the three primary colors.",
+      "reference": "The three primary colors are red, blue, and yellow.",
+      "rubric": "Lists red, blue, and yellow (additive RGB — red, green, blue — is also acceptable)."
+    },
+    {
+      "id": "hard-reason-05",
+      "category": "hard",
+      "prompt": "A train leaves City A at 60 km/h. Two hours later a second train leaves City A on the same track at 90 km/h. How many hours after the second train departs will it catch the first, and how far from City A? Show your reasoning.",
+      "reference": "When the second train leaves, the first is 120 km ahead. The gap closes at 90-60 = 30 km/h, so it takes 120/30 = 4 hours. Distance from City A = 90 x 4 = 360 km.",
+      "rubric": "Concludes 4 hours after the second train departs, 360 km from City A, with correct relative-speed reasoning."
+    },
+    {
+      "id": "hard-analysis-06",
+      "category": "hard",
+      "prompt": "Explain why a database index can make reads faster but writes slower. Cover the mechanism on both sides.",
+      "reference": "An index is an auxiliary sorted structure (e.g. a B-tree) that lets reads locate rows in logarithmic time instead of scanning every row, so lookups and range queries are much faster. On writes, every insert/update/delete must also update the index structure (and keep it balanced/sorted), which adds I/O and CPU work, so writes get slower and the index consumes extra storage.",
+      "rubric": "Explains reads speed up because the index avoids full scans (sorted/B-tree lookup), AND writes slow down because the index must also be maintained on each write."
+    },
+    {
+      "id": "hard-code-07",
+      "category": "hard",
+      "prompt": "Write a Python function `is_palindrome(s)` that returns True if the string is a palindrome ignoring case and non-alphanumeric characters. Then explain your approach in one sentence.",
+      "reference": "def is_palindrome(s):\n    t = [c.lower() for c in s if c.isalnum()]\n    return t == t[::-1]\nApproach: normalize to lowercase alphanumerics, then compare the sequence to its reverse.",
+      "rubric": "Provides a correct function that lowercases, keeps only alphanumeric characters, and compares against the reverse; brief correct explanation."
+    },
+    {
+      "id": "hard-tradeoff-08",
+      "category": "hard",
+      "prompt": "Compare optimistic and pessimistic concurrency control. When is each preferable?",
+      "reference": "Pessimistic concurrency locks data when a transaction reads it so others must wait, preventing conflicts up front — good under high contention where conflicts are likely. Optimistic concurrency takes no locks, lets transactions proceed, and checks for conflicts at commit (via versions/timestamps), retrying on conflict — good under low contention where conflicts are rare and locking would waste throughput.",
+      "rubric": "Correctly contrasts locking-up-front (pessimistic) vs check-at-commit/retry (optimistic), AND ties pessimistic to high contention and optimistic to low contention."
+    },
+    {
+      "id": "hard-explain-09",
+      "category": "hard",
+      "prompt": "Derive why the sum of the first n positive integers equals n(n+1)/2.",
+      "reference": "Write S = 1 + 2 + ... + n and also S = n + (n-1) + ... + 1. Adding the two rows pairs each column to n+1, and there are n columns, so 2S = n(n+1), hence S = n(n+1)/2.",
+      "rubric": "Gives the pairing/reversal argument (or induction) that yields 2S = n(n+1), concluding S = n(n+1)/2."
+    },
+    {
+      "id": "latency-greet-10",
+      "category": "latency",
+      "prompt": "Reply with a short, friendly one-line greeting for a user opening a chat.",
+      "reference": "Hi there! How can I help you today?",
+      "rubric": "A short, polite, single-line greeting appropriate to open a chat."
+    },
+    {
+      "id": "latency-classify-11",
+      "category": "latency",
+      "prompt": "Classify the sentiment of this review as positive, negative, or neutral. Reply with one word only: 'The battery lasts all day and the screen is gorgeous.'",
+      "reference": "positive",
+      "rubric": "Answers 'positive' (case-insensitive), ideally as a single word."
+    },
+    {
+      "id": "latency-extract-12",
+      "category": "latency",
+      "prompt": "Extract the year from this sentence and reply with just the number: 'The company was founded in Pune in 2011 and grew quickly.'",
+      "reference": "2011",
+      "rubric": "Answers 2011."
+    }
+  ]
+}
