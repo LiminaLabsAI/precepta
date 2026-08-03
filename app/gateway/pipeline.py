@@ -19,6 +19,7 @@ from ..governance.firewall import scrub_input, scan_output
 from ..governance.policy import load_enabled, evaluate, scope_matches, DbUsage
 from ..governance import sensitive as _sensitive
 from ..adapters.audit import get_audit
+from ..adapters.audit.chain import get_chain
 from .. import cache as _cache
 from .. import compression as _compress
 
@@ -120,6 +121,14 @@ async def governed_chat(
         if entry is not None:                        # HIT — reuse the prior answer
             saved = _cache.record_hit(entry, team)
             aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=False)
+            # Anchor the cache serve as its own audit event so it's visible under
+            # the "Cache & compression" filter — "every cache hit is audited".
+            get_chain().append(
+                event_type="cache.hit", actor=getattr(principal, "subject", "") or "anonymous",
+                resource="cache.hit", action="served", outcome="allowed",
+                metadata={"backend": entry.get("backend"), "exact": entry.get("exact"),
+                          "tokens_saved": saved["tokens_saved"],
+                          "cost_saved_usd": saved["cost_saved_usd"], "audit_id": aid})
             result = dict(entry["response"])
             result["precepta"] = {
                 "backend_used": entry.get("backend"), "in_boundary": True,
@@ -139,8 +148,16 @@ async def governed_chat(
         infer_msgs, comp_stats = _compress.compress(
             scrubbed, aggressive=_compress.aggressive_on())
         _compress.record(comp_stats)
-        if comp_stats["mode"] == "aggressive" and comp_stats["saved_tokens"] > 0:
-            _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
+        if comp_stats["saved_tokens"] > 0:
+            # Anchor the compression as its own audit event (filterable, tamper-evident).
+            get_chain().append(
+                event_type="compression", actor=getattr(principal, "subject", "") or "anonymous",
+                resource="compression", action=comp_stats["mode"], outcome="applied",
+                metadata={"saved_tokens": comp_stats["saved_tokens"],
+                          "original_tokens": comp_stats["original_tokens"],
+                          "compressed_tokens": comp_stats["compressed_tokens"]})
+            if comp_stats["mode"] == "aggressive":
+                _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
 
     # ── inference (injected router/engine) — failures are audited too ──
     try:
