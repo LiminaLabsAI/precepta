@@ -938,7 +938,8 @@ function playgroundView(){
         ${s.messages.length?`<button onclick="app.newChat()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer"><i data-lucide="plus" style="width:14px;height:14px"></i>New chat</button>`:''}
       </div>
     </div>
-    <div class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
+    <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
+    ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
     <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
       <input id="chatInput" style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="${esc(s.chatInput)}" oninput="app.set('chatInput',this.value)" onkeydown="app.handleChatKey(event)">
       <button onclick="app.sendMessage()" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
@@ -1077,6 +1078,9 @@ function render(){
     ${copilotFab()}
   </div>`;
   if(window.lucide) lucide.createIcons();
+  // Playground: each render replaces the DOM (resetting scroll to top), so
+  // pin the chat to the bottom — the newest message stays in view.
+  if(state.screen==='playground'){ const pg=document.getElementById('pgScroll'); if(pg) pg.scrollTop=pg.scrollHeight; }
 }
 render();
 </script>
