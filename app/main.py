@@ -32,6 +32,7 @@ from .adapters.identity.keys import (get_api_identity, issue_key, revoke_key,
 from .adapters.identity.session import get_session_identity, create_session, revoke_session
 from .adapters.authz import get_authz, is_platform_owner
 from .router import config as router_config
+from . import controls as _controls
 from .adapters.audit import get_audit
 from .adapters.audit.chain import get_chain
 from .gateway.pipeline import governed_chat
@@ -121,7 +122,7 @@ def create_app() -> FastAPI:
         payload = {
             "status": "ok" if ok else "degraded",
             "version": __version__,
-            "sovereign_mode": settings.sovereign_mode,
+            "sovereign_mode": _controls.sovereign_enabled(),
             "db": db_health,
         }
         return JSONResponse(payload, status_code=200 if ok else 503)
@@ -136,7 +137,7 @@ def create_app() -> FastAPI:
         return {
             "name": "preceptaai",
             "version": __version__,
-            "sovereign_mode": settings.sovereign_mode,
+            "sovereign_mode": _controls.sovereign_enabled(),
             "console": "/console",
             "docs": "/docs",
             "health": "/health",
@@ -372,6 +373,38 @@ def create_app() -> FastAPI:
         from .governance import sensitive as _s
         _s.unapprove(backend)
         return JSONResponse({"ok": True, "backend": backend})
+
+    # ── Sovereignty controls: read state (admin) + owner-gated Sovereign Mode ──
+    @app.get("/v1/controls")
+    def get_controls(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        state = _controls.controls_state()
+        state["can_edit"] = is_platform_owner(principal)   # only the owner may flip it
+        return JSONResponse(state)
+
+    @app.post("/v1/controls/sovereign")
+    async def set_sovereign_control(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse(
+                {"error": {"message": "platform owner only — disabling Sovereign Mode "
+                           "removes the zero-egress guarantee", "type": "forbidden"}},
+                status_code=403)
+        b = await request.json()
+        enabled = bool(b.get("enabled"))
+        _controls.set_sovereign(enabled)
+        get_chain().append(                                # audit the guarantee change
+            event_type="controls.sovereign", actor=principal.subject,
+            resource="controls.sovereign",
+            action="in-boundary-only-on" if enabled else "in-boundary-only-OFF",
+            outcome="applied", metadata={"in_boundary_only": enabled})
+        state = _controls.controls_state()
+        state["can_edit"] = True
+        return JSONResponse(state)
 
     # ── Router config (platform-owner-only) — where the router's own model runs ──
     @app.get("/v1/router/config")

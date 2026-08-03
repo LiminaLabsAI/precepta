@@ -36,6 +36,8 @@ def _data_stores() -> list[dict]:
 
 
 def build_attestation(settings, registry) -> dict:
+    from ..controls import sovereign_enabled
+    sovereign = sovereign_enabled()          # effective (runtime-overridable) mode
     chain = get_chain()
     backends = [{"name": n, "in_boundary": bool(b.in_boundary)}
                 for n, b in sorted(registry.items())]
@@ -44,7 +46,7 @@ def build_attestation(settings, registry) -> dict:
 
     body = {
         "generated_at": _dt.datetime.now(_dt.UTC).isoformat(),
-        "sovereign_mode": settings.sovereign_mode,
+        "sovereign_mode": sovereign,
         "config": {
             "backends": backends,
             "all_in_boundary": all_in_boundary,
@@ -59,7 +61,7 @@ def build_attestation(settings, registry) -> dict:
             "chain_verified": verified,
         },
         "egress_test": {
-            "result": "blocked" if settings.sovereign_mode else "open",
+            "result": "blocked" if sovereign else "open",
         },
     }
     anchor = chain.head_hash()

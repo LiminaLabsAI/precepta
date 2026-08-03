@@ -53,7 +53,7 @@ const state = {
   showSetupToast: false,
 
   securityControls: { inBoundary:true, egressLock:true, auditOn:true, residency:true },
-  egressProbeStatus: 'idle',
+  egressProbeStatus: 'idle', sovereignConfirm:false,
 
   backends: [],                   // ← /infra
   addBackendOpen: false,
@@ -692,6 +692,14 @@ function savingsView(){
 }
 
 /* ---------- Policies ---------- */
+function sovereignConfirmModal(){
+  return `<div onclick="app.cancelSovereignOff()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:24px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><i data-lucide="shield-alert" style="width:19px;height:19px;color:#DC2626"></i><div style="font-size:16px;font-weight:700">Turn off Sovereign Mode?</div></div>
+      <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:18px">This removes your <strong>zero-egress guarantee</strong>. Requests may be routed to backends <strong>outside your network</strong> (anything marked “Leaves your network”). The change is written to the tamper-evident audit log. You can turn it back on anytime.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.cancelSovereignOff()" style="padding:8px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Keep it on</button><button onclick="app.confirmSovereignOff()" style="padding:8px 14px;border-radius:6px;font-size:13.5px;font-weight:600;background:#DC2626;color:#fff;border:none;cursor:pointer">Turn off Sovereign Mode</button></div>
+    </div></div>`;
+}
 function approveModal(){
   const s=state;
   const b=(s.backends||[]).find(x=>x.name===s.approvingBackend)||{};
@@ -713,14 +721,33 @@ function policiesView(){
   const s=state, sc=s.securityControls;
   const probeText={idle:'Egress probe: not run this session',running:'Probing…',done:'Just now — blocked / none ✓'}[s.egressProbeStatus];
   const probeBtn=s.egressProbeStatus==='running'?'Running…':'Run probe';
-  const controls=controlDefs.map(c=>{
-    const on=sc[c.key];
+  const cs = window.__controls || {};
+  const realOn = {inBoundary:!!cs.in_boundary, egressLock:!!cs.egress_lock, auditOn:cs.audit!==false, residency:!!cs.residency};
+  const canEdit = !!cs.can_edit;
+  const statusPill=(on)=>`<span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;background:${on?'#ECFDF5':'#FEF2F2'};color:${on?'#065F46':'#991B1B'}">${on?'Enforced':'Off'}</span>`;
+  const sovWarn = !realOn.inBoundary ? `<div style="padding:11px 14px;border:1px solid #FCA5A5;background:#FEF2F2;border-radius:8px;margin-bottom:14px;font-size:12.5px;color:#991B1B"><strong>Sovereign Mode is OFF.</strong> Requests may be routed to backends outside your network — the zero-egress guarantee is not in effect. Turn it back on to restore it.</div>`:'';
+  const controls=sovWarn+controlDefs.map(c=>{
+    const on=realOn[c.key];
+    let right;
+    if(c.key==='inBoundary'){
+      right = canEdit
+        ? toggleHtml(on, `app.toggleSovereign(${on?1:0})`)
+        : `<span title="Only the platform owner can change this" style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;background:${on?'#ECFDF5':'#FEF2F2'};color:${on?'#065F46':'#991B1B'}">${on?'Enforced':'Off'} · locked</span>`;
+    } else if(c.key==='residency'){
+      right = `<span style="font-size:11.5px;color:#374151;font-weight:500">${esc(cs.residency||'—')}</span>`;
+    } else {
+      right = statusPill(on);   // egress + audit → honest read-only status
+    }
+    const sub = c.key==='egressLock' ? 'Mirrors in-boundary routing (app-layer egress control).'
+      : c.key==='auditOn' ? 'Always on — the tamper-evident log can’t be disabled here.'
+      : c.key==='residency' ? 'Declared label — change it under Settings → Data controls.'
+      : c.desc;
     return `<div style="padding:16px;border:1px solid #E5E7EB;border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:8px"><i data-lucide="${c.icon}" style="width:15px;height:15px;color:${on?'#3B82F6':'#9CA3AF'}"></i><span style="font-weight:600;font-size:13px">${c.label}</span></div>
-        ${toggleHtml(on, `app.toggleControl('${c.key}')`)}
+        ${right}
       </div>
-      <div style="font-size:12px;color:#6B7280;line-height:1.5">${c.desc}</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">${sub}</div>
       ${c.hasProbe?`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6"><span style="font-size:11px;color:#9CA3AF">${probeText}</span><button onclick="app.runEgressProbe()" style="padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${probeBtn}</button></div>`:''}
     </div>`;}).join('');
 
@@ -765,7 +792,7 @@ function policiesView(){
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:600;font-size:14px">Custom policies</div><button onclick="app.openNewPolicy()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">New policy</button></div>
     <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Evaluated on every request, most-restrictive wins: block &gt; warn &gt; audit-only.</div>
     ${policyRows}
-    ${s.newPolicyOpen?newPolicyModal():''}`;
+    ${s.newPolicyOpen?newPolicyModal():''}${s.sovereignConfirm?sovereignConfirmModal():''}`;
 }
 
 function scopeChipRow(label, dim, options){
@@ -1155,6 +1182,18 @@ render();
   app.cancelApprove = function(){ state.approvingBackend=null; render(); };
   app.confirmApprove = function(){ const name=state.approvingBackend; fetch("/v1/routing/approved",{method:"POST",headers:hdr,body:JSON.stringify({backend:name,location:state.approvingLocation})}).then(()=>{ state.approvingBackend=null; loadApproved(); }); };
   app.unapproveBackend = function(name){ fetch("/v1/routing/approved/"+encodeURIComponent(name),{method:"DELETE",headers:hdr}).then(()=>loadApproved()); };
+  // Sovereignty controls — real, owner-gated Sovereign Mode toggle
+  async function loadControls(){ const d=await getJSON("/v1/controls"); if(d && !d.error){ window.__controls=d; render(); } }
+  function _setSovereign(enabled){
+    fetch("/v1/controls/sovereign",{method:"POST",headers:hdr,body:JSON.stringify({enabled})})
+      .then(async r=>{ const d=await r.json(); if(r.ok){ window.__controls=d; loadInfra(); render(); } else alert("Failed: "+((d.error&&d.error.message)||r.status)); });
+  }
+  app.toggleSovereign = function(currentlyOn){
+    if(currentlyOn){ state.sovereignConfirm=true; render(); }   // turning OFF → confirm
+    else { _setSovereign(true); }                               // turning ON → safe, no confirm
+  };
+  app.cancelSovereignOff = function(){ state.sovereignConfirm=false; render(); };
+  app.confirmSovereignOff = function(){ state.sovereignConfirm=false; _setSovereign(false); };
   app.markNotifsRead = function(){ fetch("/notifications/read",{method:"POST",headers:hdr}).then(()=>loadNotifs()); };
   app.onNotifClick = function(type){
     state.notifOpen=false;
@@ -1378,7 +1417,7 @@ render();
     if(sc==="modelplane"){ loadInfra(); }
     if(sc==="audit"){ loadAuditLog(); }
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
-    if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); }
+    if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadCache(); loadCompression(); }
   };
   async function loadAuthz(){
@@ -1397,7 +1436,7 @@ render();
   app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadCache()); };
 
   function loadAll(){
-    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved();
+    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved(); loadControls();
   }
   loadAll();
 })();

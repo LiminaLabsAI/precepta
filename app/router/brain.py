@@ -65,9 +65,9 @@ class RulesBrain:
         self._settings_getter = settings_getter
 
     def _candidates(self, allowed: set[str] | None):
+        from .. import controls
         reg = self._registry_getter()
-        sovereign = self._settings_getter().sovereign_mode
-        cands = candidates(reg, sovereign, allowed)
+        cands = candidates(reg, controls.sovereign_enabled(), allowed)
         if not cands:
             raise LookupError("no eligible in-boundary backend")
         return cands
@@ -188,8 +188,8 @@ class LearnedBrain:
         pref = learning.preference(diff, allowed)
         if not pref or pref == plan.backend:
             return plan
-        cands = candidates(self._registry_getter(),
-                           self._settings_getter().sovereign_mode, allowed)
+        from .. import controls
+        cands = candidates(self._registry_getter(), controls.sovereign_enabled(), allowed)
         match = next(((be, m) for be, m in cands if be.name == pref), None)
         if match is None:                      # learned pick not eligible → keep base
             return plan

@@ -56,13 +56,19 @@ def test_real_chain_append_and_verify():
 
 # ── sovereign enforcement ──────────────────────────────────────────────
 def test_enforce_backend():
-    sov = types.SimpleNamespace(sovereign_mode=True)
-    non = types.SimpleNamespace(sovereign_mode=False)
+    # Sovereign Mode is now the EFFECTIVE runtime value (controls), not a passed
+    # settings object — so the owner's Console toggle actually takes effect.
+    from app import controls
     foreign = types.SimpleNamespace(name="x", in_boundary=False)
     local = types.SimpleNamespace(name="ollama", in_boundary=True)
-    assert enforce_backend(foreign, sov) is not None
-    assert enforce_backend(local, sov) is None
-    assert enforce_backend(foreign, non) is None   # off → allowed
+    controls.clear_sovereign()
+    try:
+        assert enforce_backend(foreign) is not None   # deploy default (on) → blocked
+        assert enforce_backend(local) is None
+        controls.set_sovereign(False)                 # runtime off → foreign allowed
+        assert enforce_backend(foreign) is None
+    finally:
+        controls.clear_sovereign()
 
 
 def test_sovereign_blocks_foreign_route_e2e():

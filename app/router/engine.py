@@ -21,7 +21,8 @@ async def execute(plan: RoutePlan, messages: list[dict], registry: dict,
                   allowed: set[str] | None = None, **kw) -> tuple[dict, dict]:
     # `allowed` (governance filter for a sensitive auto request) also bounds
     # failover — a sensitive request can never fail over to an un-approved backend.
-    cands = candidates(registry, settings.sovereign_mode, allowed)
+    from ..controls import sovereign_enabled
+    cands = candidates(registry, sovereign_enabled(), allowed)
     if not cands:
         raise LookupError("no eligible in-boundary backend")
     # primary (plan.backend) first, then the rest as failover targets.
