@@ -4,10 +4,12 @@ type: Status
 
 # Project Status
 
-> **Last Updated**: 2026-08-01
-> **Current Phase**: **Phase 10 — building.** Sub-phases 1–3 (money foundations · access & keys · policy
-> governance) ✅ done; sub-phase 4 (smart routing) 🔵 in progress. Full details: **read `HANDOFF.md` first.**
-> **Main @ `77774cd` · 124 tests passing.**
+> **Last Updated**: 2026-08-03
+> **Current Phase**: **Phase 10 — building.** Sub-phases 1–7 (money foundations · access & keys · policy
+> governance · smart routing · cost optimization · learning loop · enterprise hardening) ✅ done + LANDED on
+> `main`. Sub-phase 8 (deploy) needs a brainstorm; sub-phase 9 (validation) is business. Full details:
+> **read `HANDOFF.md` first.**
+> **Main @ `53a160d` (pushed to GitHub) · 205 tests passing.**
 
 > 📌 **NEXT-SESSION START HERE:** read `HANDOFF.md` (repo root) — it has full context, what's built, what's
 > next (router config → eval harness → LLM router → cache → compression), the locked decisions, and how to run/verify.

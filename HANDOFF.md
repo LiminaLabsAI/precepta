@@ -1,8 +1,9 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Written:** 2026-08-01. **Main @ `e2ef309`; Phases 4–7 COMPLETE, all committed
-UNLANDED on a 9-branch stack** · **198 tests passing.** See §10 for the branch order + landing.
+> without re-discovery. **Written:** 2026-08-01 (landed 2026-08-03). **Main @ `53a160d` — Phases 4–7 COMPLETE
+> + Model-Plane/notification fixes, all LANDED on `main` + pushed to GitHub. Branch stack merged & deleted.**
+> · **205 tests passing.**
 >
 > **Read order for a fresh session:** this file → `specs/status.md` → `IMPLEMENTATION_PLAN.md`
 > (§Phase 10 = the phase-wise plan) → `specs/backlog/backlog.md` → `BRAINSTORM.md` (full scoping).
@@ -131,31 +132,11 @@ Then Phases 6–9 per `IMPLEMENTATION_PLAN.md` §Phase 10.
   switches on `state.screen`; per-view functions; live handlers appended near the bottom; `loadAll()` fans
   out the initial fetches. `app.*` methods are global (used in `onclick`).
 
-## 10. Landing state (IMPORTANT — Phases 4–7 are committed but NOT on `main`)
-Everything is on a **5-branch stack** off `main` (`e2ef309`), each branch built on the previous. Land **in this
-order** (suite is 181-green on the tip). Landing on `main` is gated by the Claude Code auto-mode classifier —
-the agent cannot `git push origin main` nor grant itself that permission (both correctly blocked), so the user
-lands:
-1. `feat/router-config` — Phase 4·1 (router config + secret store)
-2. `feat/eval-harness` — Phase 4·2 + 4·3 (eval harness + LLM router)
-3. `feat/phase5-cache` — Phase 5 (response cache + prompt compression)
-4. `feat/phase6-learning` — Phase 6 (learning loop)
-5. `feat/phase7-hardening` — Phase 7 (TD-004 PII + TD-007 attestation scope)
-6. `feat/streaming` — Phase 7 TD-003 (SSE streaming, govern-then-stream)
-7. `feat/agent-attribution` — Phase 7 TD-005 (agent attribution in audit chain)
-8. `feat/alerts-config` — Phase 7 TD-008 (configurable alerts)
-9. `feat/openguard-authz` — Phase 7 FEAT-004 (RBAC/ABAC + agent budgets)
-
-```
-git checkout main
-for b in feat/router-config feat/eval-harness feat/phase5-cache feat/phase6-learning feat/phase7-hardening feat/streaming feat/agent-attribution feat/alerts-config feat/openguard-authz; do
-  git merge --ff-only "$b" && touch .momentum/merge-approved && git push origin main || break
-done
-```
-(Or add a `git push origin main` Bash permission rule so the agent can land verified features itself, per §7.)
-Because the branches are a clean stack, one ff-merge chain lands them all. After landing, delete the merged
-branches and bump the `Main @` SHA above. **A full cross-feature integration test (cache+compress+router+
-learning+governance together, with the toggles on) is still owed — do it after landing, or with the user.**
+## 10. Landing state — ✅ LANDED (2026-08-03)
+All Phase 4–7 work + the Model-Plane and notification fixes are **merged to `main` (`53a160d`) and pushed to
+GitHub** (`origin/main` = `53a160d`). The whole session was one linear branch stack; `main` was fast-forwarded
+to the tip in a single ff-merge and pushed, then all 12 feature branches were deleted. **Working tree clean;
+no unlanded work.** The cross-feature integration test was run green before landing (`scripts/integrated_smoke.py`).
 
 ## 11. Phase status (this session, 2026-08-01)
 - **Phase 4 (smart routing) — ✅ complete:** router config · eval harness (baseline 0.854) · LLM intent-router.
