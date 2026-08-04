@@ -140,7 +140,7 @@ let modelOptions = [];   // populated from real /infra backends
 const nav = [
   {key:'onboarding',label:'Setup',icon:'rocket'},
   {key:'overview',label:'Overview',icon:'layout-dashboard'},
-  {key:'modelplane',label:'Model plane',icon:'server'},
+  {key:'modelplane',label:'Inference plane',icon:'server'},
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
   {key:'savings',label:'Cache & compression',icon:'zap'},
@@ -155,7 +155,7 @@ function toggleHtml(on, handler){
   return `<div onclick="${handler}" style="width:36px;height:20px;border-radius:10px;background:${on?'#3B82F6':'#E5E7EB'};position:relative;cursor:pointer;flex:none"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${on?'18px':'2px'};box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></div>`;
 }
 function boundaryPill(b){
-  return { bg:b.inBoundary?'#F3F4F6':'#FEF2F2', col:b.inBoundary?'#374151':'#991B1B', label:b.inBoundary?'In your network':'Leaves your network' };
+  return { bg:b.inBoundary?'#F3F4F6':'#FEF2F2', col:b.inBoundary?'#374151':'#991B1B', label:b.inBoundary?'Intent within boundary':'Intent crosses boundary' };
 }
 function conditionChips(c){
   const chips=[]; c=c||{};
@@ -390,12 +390,12 @@ function onboardingView(){
     body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
       <div style="font-size:11px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Step 2 of 3</div>
       <div style="font-size:16px;font-weight:600;margin-bottom:6px">Which backends stay in your network?</div>
-      <div style="font-size:13px;color:#6B7280;line-height:1.5">These are your registered backends. "In your network" means requests never leave your infrastructure; boundary is set when you register a backend.</div>
+      <div style="font-size:13px;color:#6B7280;line-height:1.5">These are your registered inference endpoints. "Intent within boundary" means the request never leaves your infrastructure; boundary is set when you register one.</div>
     </div>
     ${s.backends.length? `<div style="margin-top:16px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#F9FAFB">${th('Backend')}${th('Model')}${th('In boundary')}</tr></thead>
       <tbody>${s.backends.map((b,i)=>{const p=boundaryPill(b);return `<tr style="border-top:1px solid #E5E7EB"><td style="padding:10px 16px">${esc(b.name)}</td><td style="padding:10px 16px;color:#6B7280;font-family:'JetBrains Mono',monospace;font-size:12px">${esc(b.model)}</td><td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${p.bg};color:${p.col}">${p.label}</span></td></tr>`;}).join('')}</tbody>
-    </table></div>` : `<div style="margin-top:16px;padding:24px;border:1px dashed #E5E7EB;border-radius:8px;text-align:center;color:#9CA3AF;font-size:13px">No backends registered yet — go back to step 1 and connect one.</div>`}`;
+    </table></div>` : `<div style="margin-top:16px;padding:24px;border:1px dashed #E5E7EB;border-radius:8px;text-align:center;color:#9CA3AF;font-size:13px">No inference endpoints yet — go back to step 1 and connect one.</div>`}`;
   } else {
     const inB=s.backends.filter(b=>b.inBoundary).length;
     body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
@@ -443,7 +443,7 @@ function overviewView(){
       <td style="padding:10px 16px;color:${b.latency&&b.latency!=='—'?'#111827':'#9CA3AF'}">${esc(b.latency||'—')}</td>
       <td style="padding:10px 16px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Down'}</span></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="5" style="padding:20px 16px;color:#9CA3AF;font-size:13px">No backends registered yet — add one from the Model plane.</td></tr>`;
+  }).join('') : `<tr><td colspan="5" style="padding:20px 16px;color:#9CA3AF;font-size:13px">No inference endpoints yet — add one from the Inference plane.</td></tr>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em">Overview</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px">Everything routed, governed and audited inside your boundary — last 24 hours.</div>
     ${s.showSetupToast?`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;margin-bottom:24px">
@@ -454,7 +454,7 @@ function overviewView(){
     </div>
     <div style="font-weight:600;font-size:14px;margin-bottom:12px">Backend health</div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:28px"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:13px">
-      <thead><tr style="background:#F9FAFB">${['Backend','Boundary','GPU / VRAM','p50 latency','Status'].map(t=>th(t)).join('')}</tr></thead>
+      <thead><tr style="background:#F9FAFB">${['Endpoint','Boundary','GPU / VRAM','p50 latency','Status'].map(t=>th(t)).join('')}</tr></thead>
       <tbody>${healthRows}</tbody>
     </table></div>
     <div style="font-weight:600;font-size:14px;margin-bottom:8px">Requests, last 12 hours</div>
@@ -499,16 +499,16 @@ function modelPlaneView(){
       <td style="padding:10px 14px">${priceCell(b)}</td>
       <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Down'}</span></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="7" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No backends yet — click "Add backend" to register your first one.</td></tr>`;
-  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Model plane</h1>
+  }).join('') : `<tr><td colspan="7" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No inference endpoints yet — click "Add backend" to register your first one.</td></tr>`;
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Inference plane</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:640px;line-height:1.6">Every place a model can run for you — a local Ollama box, your own GPU cluster, a sovereign cloud — and its live health. Register a new one below.</div>
-    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"In your network" = runs on your own infrastructure, request never touches the public internet. "Leaves your network" = a third-party API call.</div>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="app.openAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
+    <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"Intent within boundary" = inference runs on your own infrastructure; the request never touches the public internet. "Intent crosses boundary" = a third-party API call.</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="app.openAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add inference endpoint</button></div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:12px"><table style="width:100%;min-width:940px;border-collapse:collapse;font-size:13px">
-      <thead><tr style="background:#F9FAFB">${['Backend','Model','Boundary','GPU / VRAM','p50 latency','Cost / 1M tok (in / out)','Status'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
+      <thead><tr style="background:#F9FAFB">${['Endpoint','Model','Boundary','GPU / VRAM','p50 latency','Cost / 1M tok (in / out)','Status'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div style="font-size:11px;color:#9CA3AF;margin-bottom:24px;max-width:680px;line-height:1.6">Live health (latency, status) and VRAM come from the infra snapshot. Per-token cost comes from the pricing source of truth (TD-001): local backends are <b>Free</b>; a metered backend with no price set shows <b>Set price</b> — click it to enter the price. Click the <b>Boundary</b> tag to change whether an endpoint is inside your network.</div>
+    <div style="font-size:11px;color:#9CA3AF;margin-bottom:24px;max-width:680px;line-height:1.6">Live health (latency, status) and VRAM come from the infra snapshot. Per-token cost comes from the pricing source of truth (TD-001): local endpoints are <b>Free</b>; a metered endpoint with no price set shows <b>Set price</b> — click it to enter the price. Click the <b>Boundary</b> tag to change whether an endpoint is inside your network.</div>
     ${s.addBackendOpen?addBackendModal(btMeta):''}${priceModal()}`;
 }
 
@@ -516,9 +516,9 @@ function addBackendModal(btMeta){
   const s=state;
   return `<div onclick="app.closeAddBackend()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:440px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <div style="font-size:16px;font-weight:600;margin-bottom:4px">Add a backend</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:4px">Add an inference endpoint</div>
       <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Same infra types as setup — pick one and reuse the same connection info.</div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Backend type</label>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Endpoint type</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(backendTypeMeta).map(k=>{const sel=k===s.newBackendType;return `<div onclick="app.setNewBackendType('${k}')" style="padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${sel?'#93C5FD':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};color:${sel?'#1D4ED8':'#374151'}">${backendTypeMeta[k].label}</div>`;}).join('')}</div>
       </div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. HF Gemma 31B">${s.newBackendName.trim()?`<div style="font-size:11px;color:#9CA3AF;margin-top:4px">Identifier: <code>${esc((s.newBackendName||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''))}</code> — give each backend a distinct name to run several of the same type.</div>`:''}</div>
@@ -527,7 +527,7 @@ function addBackendModal(btMeta){
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.keyLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendKey)}" oninput="app.set('newBackendKey',this.value)" placeholder="${esc(btMeta.keyPh)}"></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model strength</label><select onchange="app.set('newBackendTier',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#fff"><option value="1" ${s.newBackendTier==='1'?'selected':''}>Light — small/fast/cheap</option><option value="2" ${s.newBackendTier==='2'?'selected':''}>Balanced</option><option value="3" ${s.newBackendTier==='3'?'selected':''}>Strong — best quality</option></select><div style="font-size:11px;color:#9CA3AF;margin-top:4px">Auto-routing sends hard requests to the strongest backend.</div></div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px"><input type="checkbox" ${s.newBackendInBoundary?'checked':''} onchange="app.toggleNewBackendBoundary()"><span style="font-size:13px;color:#374151">This endpoint is inside my network boundary</span></label>
-      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add backend</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add inference endpoint</button></div>
     </div></div>`;
 }
 
@@ -600,7 +600,7 @@ function newKeyModal(){
           <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Monthly</label><input type="number" min="0" step="1000" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newKeyTokenMonthly)}" oninput="app.set('newKeyTokenMonthly',this.value)" placeholder="e.g. 2000000"></div>
         </div>
         <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed backends <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${(s.backends||[]).map(b=>{const on=s.newKeyBackends.includes(b.name);return `<div onclick="app.toggleKeyBackend('${esc(b.name)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No backends yet</span>'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${(s.backends||[]).map(b=>{const on=s.newKeyBackends.includes(b.name);return `<div onclick="app.toggleKeyBackend('${esc(b.name)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No inference endpoints yet</span>'}</div>
         </div>
         <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed models <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
@@ -696,7 +696,7 @@ function sovereignConfirmModal(){
   return `<div onclick="app.cancelSovereignOff()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:24px">
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><i data-lucide="shield-alert" style="width:19px;height:19px;color:#DC2626"></i><div style="font-size:16px;font-weight:700">Turn off Sovereign Mode?</div></div>
-      <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:18px">This removes your <strong>zero-egress guarantee</strong>. Requests may be routed to backends <strong>outside your network</strong> (anything marked “Leaves your network”). The change is written to the tamper-evident audit log. You can turn it back on anytime.</div>
+      <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:18px">This removes your <strong>zero-egress guarantee</strong>. Requests may be routed to inference endpoints <strong>outside your boundary</strong> (anything marked “Intent crosses boundary”). The change is written to the tamper-evident audit log. You can turn it back on anytime.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.cancelSovereignOff()" style="padding:8px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Keep it on</button><button onclick="app.confirmSovereignOff()" style="padding:8px 14px;border-radius:6px;font-size:13.5px;font-weight:600;background:#DC2626;color:#fff;border:none;cursor:pointer">Turn off Sovereign Mode</button></div>
     </div></div>`;
 }
@@ -709,7 +709,7 @@ function approveModal(){
       <div style="font-size:12.5px;color:#6B7280;line-height:1.55;margin-bottom:14px">Sensitive requests (PII/PHI) will be allowed to reach this backend. Confirm where it is hosted — recorded for the audit.</div>
       <div style="background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:#374151">
         <div><strong>Backend:</strong> ${esc(s.approvingBackend)}</div>
-        <div style="margin-top:4px"><strong>Boundary:</strong> ${b.inBoundary?'In your network':'External'}</div>
+        <div style="margin-top:4px"><strong>Boundary:</strong> ${b.inBoundary?'Intent within boundary':'Intent crosses boundary'}</div>
         <div style="margin-top:4px"><strong>Model:</strong> <span style="font-family:'JetBrains Mono',monospace">${esc(b.model||'—')}</span></div>
       </div>
       <label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Hosting location (recorded)</label>
@@ -956,7 +956,7 @@ function playgroundView(){
     <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${esc(m.text)}</div>
     ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span>${m.traceId?`<span style="display:inline-flex;gap:2px;margin-left:2px">${m.feedback==='up'?'<span title="marked helpful" style="font-size:12px">👍</span>':`<button title="helpful — teach the router" onclick="app.rateMessage(${mi},1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👍</button>`}${m.feedback==='down'?'<span title="marked unhelpful" style="font-size:12px">👎</span>':`<button title="unhelpful — teach the router" onclick="app.rateMessage(${mi},-1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👎</button>`}</span>`:''}</div>`:''}
   </div>`).join('');
-  const modelSel = modelOptions.length ? modelOptions.map(mo=>`<option value="${esc(mo.value)}" ${mo.value===s.chatModel?'selected':''}>${esc(mo.label)}</option>`).join('') : `<option value="">No backends — add one first</option>`;
+  const modelSel = modelOptions.length ? modelOptions.map(mo=>`<option value="${esc(mo.value)}" ${mo.value===s.chatModel?'selected':''}>${esc(mo.label)}</option>`).join('') : `<option value="">No inference endpoints — add one first</option>`;
   return `<div style="display:flex;flex-direction:column;height:calc(100vh - 168px);max-width:720px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid #E5E7EB;margin-bottom:4px">
       <div><div style="font-weight:700;font-size:17px">Playground</div><div style="font-size:12px;color:#6B7280;margin-top:2px">Try a request the way your app would send it — see the same routing, policy check and audit metadata back.</div></div>
@@ -1073,7 +1073,7 @@ function copilotFab(){
     </div>
     <div style="padding:20px 16px;text-align:center">
       <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#FFFBEB;color:#92400E">Coming soon</span>
-      <div style="font-size:12.5px;color:#6B7280;margin-top:12px;line-height:1.6">An in-console assistant that answers questions about your backends, keys and policies. It isn't wired to a backend yet — so it stays quiet rather than making up answers.</div>
+      <div style="font-size:12.5px;color:#6B7280;margin-top:12px;line-height:1.6">An in-console assistant that answers questions about your inference endpoints, keys and policies. It isn't wired to a model yet — so it stays quiet rather than making up answers.</div>
     </div>
   </div>`:''}`;
 }
@@ -1145,7 +1145,7 @@ render();
     const d = await getJSON("/infra");
     if(d && d.backends){
       state.backends = d.backends.map(b=>({
-        name:b.backend, model:b.model, location:b.in_boundary?"In your network":"External",
+        name:b.backend, model:b.model, location:b.in_boundary?"Intent within boundary":"Intent crosses boundary",
         inBoundary:b.in_boundary,
         gpu:(b.vram && b.vram!=="—")?b.vram:"—",
         latency:(b.latency_ms!=null)?b.latency_ms+"ms":"—",
