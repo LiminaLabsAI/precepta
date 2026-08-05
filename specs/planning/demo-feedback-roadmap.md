@@ -29,34 +29,26 @@ AI product). A guardrail's value *is* showing what it guarded and why — so
 - **`backend` → `inference endpoint`** in the UI; **`Model plane` → `Inference plane`**.
 - **BYO cache/compression = design-for-now, build-later.**
 
-## Phases
+## Phases (reordered 2026-08-03 per user: cache/compression UI → traces → rest)
 
-### Phase 1 — Reframe (quick win) — ⏳ in progress
-- ✅ **Naming pass** (A partial + C): Inference plane · inference endpoint · Endpoint column · Add inference endpoint · intent-boundary pills. *Done + landed 2026-08-03 (ENH-007).*
-- ⚪ **Positioning & messaging** (A: items 5/6) — taglines, screen intros, "runtime guardrail platform for AI companies" voice. *(ENH-006)*
-- **Why first:** fast, improves every demo, low risk.
+### Phase 1 — Reframe (quick win) — ⏳
+- ✅ **Naming pass** (A partial + C): Inference plane · inference endpoint · intent-boundary pills. *Done + landed 2026-08-03 (ENH-007).*
+- ⚪ **Positioning & messaging** (A: items 5/6). *(ENH-006 — deferred to after Phase 3.)*
 
-### Phase 2 — Traces (design) — ⚪ next
-- Brainstorm + design the trace/workflow model + UI. *(FEAT-010, design)*
-- **Open questions to settle:**
-  1. Is a "trace" a **single request's journey**, an **agent run across many requests**, or **both**? (leaning: both — request trace nested inside an agent-run timeline.)
-  2. **Who sees it** — every caller their own, or admin-only? (guardrail transparency argues for broad visibility, tenant-isolated.)
-  3. Live vs. historical; how much per-step detail; retention.
-- **What already exists to build on:** tamper-evident audit chain (every firewall/policy/routing decision), `route_traces`, agent attribution (workflow/run/agent id, TD-005), `precepta.*` per-response metadata. Mostly a **presentation** layer — additive, no core rewrite.
-- **Why here:** investor-critical hero; needs design before code.
+### Phase 2 — Cache & compression v2, UI-first — ⚪ **NEXT (user reordered up)**
+- **Two tabs on one page** (Cache | Compression), each configured **per inference endpoint** (+ an "Auto (router)" row for `auto` requests) — replacing today's single global toggle.
+- **Pluggable strategy selection, real for built-ins:** cache = exact / semantic (+ threshold); compression = baseline / aggressive. Shown as per-endpoint dropdowns.
+- **BYO** (bring-your-own cache algo / compression method): surfaced in the UI as an honest "coming" option; **the real BYO engine → backlog** (FEAT-011 v2).
+- Design decision: config key = the endpoint that serves the request (`req_backend`, or `auto`) — known pre-inference, so no pipeline reorder.
+- **Why first now:** the user wants the UI/UX in front of demo audiences; it's contained; built-ins are already real.
 
-### Phase 3 — Traces (build) — ⚪
-- Per-request **journey view** (firewall → policy → route decision + why → cache/compress → endpoint → output check → result, each with timing + pass/block).
-- Agent-run **timeline** grouped by workflow/run/agent id; expandable into per-request traces.
-- Simple, visual, "investor-clear." *(FEAT-010, build)*
+### Phase 3 — Traces (design → build) — ⚪ after Phase 2
+- The hero (FEAT-010). Brainstorm the trace/workflow model + UI, then build: per-request **journey view** + agent-run **timeline** (grouped by workflow/run/agent id).
+- Open questions: single-request vs agent-run vs both · who sees it (caller-own vs admin) · live vs historical.
+- Mostly a **presentation** layer over existing audit + attribution data — additive.
 
-### Phase 4 — Cache & compression v2 — ⚪
-- Two tabs on one page; **per-endpoint** config; pluggable strategy registry; design toward **BYO**. *(FEAT-011)*
-- **Why last:** deepest refactor; renames backend→endpoint (do after Phase 1); changes the metering/savings model.
+### Phase 4 — the rest (as recommended)
+- Positioning/messaging finish (ENH-006) · First-run setup copilot (FEAT-012) · real pluggable/BYO engine (FEAT-011 v2).
 
-### Parallel backlog
-- **First-run setup copilot** — agent-assisted vs manual onboarding. *(FEAT-012)*
-
-## Recommended immediate move
-Kick off the **Phase 2 traces brainstorm** (the hero, needs design) while Phase 1
-naming is already done and the messaging pass is a quick follow-up.
+## Immediate move
+Build **Phase 2** (cache/compression v2 UI, per-endpoint) now; BYO engine to backlog; then Phase 3 traces.
