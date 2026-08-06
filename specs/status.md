@@ -44,7 +44,7 @@ predates momentum founding; foundation docs were authored from the existing root
 
 | Phase | Branch | Status | Progress |
 |-------|--------|--------|----------|
-| _(none — Phase 10 to be planned)_ | | | |
+| 11 — Traces (request-lifecycle observability) | `phase-11-traces` | Planned (brainstormed 2026-08-06) | 0% — run `/start-phase` |
 
 ## Upcoming Phases
 
@@ -63,9 +63,9 @@ predates momentum founding; foundation docs were authored from the existing root
 | _(none)_ | | |
 
 ## Next Actions
-1. **Enter the design phase** for Phase 10 using the scoped brainstorm (`BRAINSTORM.md`) + build order.
-2. Brainstorm the one remaining item — Item 6 self-hosting/deploy (FEAT-009) — when ready.
-3. Design foundations first (pricing, counting rules, eval harness, sensitivity), then the features.
+1. **`/start-phase`** for **Phase 11 — Traces** (planned 2026-08-06; spec in `specs/phases/phase-11-traces/`, implementation roadmap M1–M5 in its `plan.md`).
+2. Then per the demo-feedback roadmap: positioning/messaging (ENH-006) · first-run setup copilot (FEAT-012) · cache/compression BYO engine (FEAT-011b).
+3. Owner/deploy track: self-hosting/deploy (FEAT-009) + in-boundary router model (TD-009) — needs its own brainstorm; carries the sovereignty guarantee.
 
 ## Key Decisions Made
 - Product = self-hosted governed control plane (router is a feature). Self-hosted first, both doors (API + Console).

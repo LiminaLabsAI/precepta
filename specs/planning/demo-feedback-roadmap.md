@@ -42,10 +42,13 @@ AI product). A guardrail's value *is* showing what it guarded and why — so
 - Design decision: config key = the endpoint that serves the request (`req_backend`, or `auto`) — known pre-inference, so no pipeline reorder.
 - **Why first now:** the user wants the UI/UX in front of demo audiences; it's contained; built-ins are already real.
 
-### Phase 3 — Traces (design → build) — ⚪ after Phase 2
-- The hero (FEAT-010). Brainstorm the trace/workflow model + UI, then build: per-request **journey view** + agent-run **timeline** (grouped by workflow/run/agent id).
-- Open questions: single-request vs agent-run vs both · who sees it (caller-own vs admin) · live vs historical.
-- Mostly a **presentation** layer over existing audit + attribution data — additive.
+### Phase 3 — Traces (design → build) — 🔵 **planned as `phase-11-traces`** (2026-08-06)
+- The hero (FEAT-010). **Brainstormed + planned** — full spec in `specs/phases/phase-11-traces/`
+  (overview · plan w/ M1–M5 implementation roadmap · tasks · history).
+- **Locked scope:** trace = Precepta **ingress→egress** workflow with per-step reasoning;
+  **L1** per-request journey (base) **+ L2** agent-run timeline (hero, stitched by run_id).
+  Honest router labeling ("inferred"); dedicated in-boundary, team-scoped trace store.
+- Mostly a **presentation** layer over existing audit + attribution data — additive. Run `/start-phase`.
 
 ### Phase 4 — the rest (as recommended)
 - Positioning/messaging finish (ENH-006) · First-run setup copilot (FEAT-012) · real pluggable/BYO engine (FEAT-011 v2).
