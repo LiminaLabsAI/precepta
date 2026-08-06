@@ -1,12 +1,18 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Written:** 2026-08-01 (landed 2026-08-03). **Main @ `53a160d` — Phases 4–7 COMPLETE
-> + Model-Plane/notification fixes, all LANDED on `main` + pushed to GitHub. Branch stack merged & deleted.**
-> · **205 tests passing.**
+> without re-discovery. **Updated:** 2026-08-06. **Main @ `04f9bd0` — Phases 4–7 COMPLETE **plus** the demo-feedback
+> work, all LANDED on `main` + pushed to GitHub; working tree clean · 211 tests passing.**
+> Since 2026-08-03: gen-AI **naming** (Inference plane / inference endpoint / intent-boundary), Model-Plane UX
+> (multi-backend, editable boundary, real Set-price), **runtime-toggleable Sovereign Mode** (owner-gated),
+> notification fixes (+ `tests/conftest.py` stops test pollution), Playground scroll/suggestions, and
+> **FEAT-011 v1 — per-endpoint cache & compression, two-tab UI** (`app/features.py`; the router row is
+> **"Smart router"**, config key stays `"auto"`; BYO = disabled "coming" → FEAT-011b). Backlog reconciled.
+> **➡ NEXT: FEAT-010 — Traces & agent-execution visibility (investor-facing hero; user reordered it next; needs a
+> brainstorm — see `specs/planning/demo-feedback-roadmap.md`).**
 >
-> **Read order for a fresh session:** this file → `specs/status.md` → `IMPLEMENTATION_PLAN.md`
-> (§Phase 10 = the phase-wise plan) → `specs/backlog/backlog.md` → `BRAINSTORM.md` (full scoping).
+> **Read order for a fresh session:** this file → `specs/status.md` → `specs/backlog/backlog.md` →
+> `specs/planning/demo-feedback-roadmap.md` → `IMPLEMENTATION_PLAN.md` (§Phase 10).
 
 ---
 
