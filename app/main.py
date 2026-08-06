@@ -453,7 +453,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
                                 status_code=403)
         from . import features as _f, cache as _c, compression as _cp
-        rows = [{"endpoint": _f.AUTO, "label": "Auto (router)"}]
+        rows = [{"endpoint": _f.AUTO, "label": "Smart router"}]
         for name in sorted(get_registry()):
             rows.append({"endpoint": name, "label": name})
         out = []
