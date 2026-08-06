@@ -6,9 +6,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app import compression as comp, org
+from app import compression as comp, features
 from app.main import app
-from app.db import get_conn
 
 client = TestClient(app)
 ADMIN = {"Authorization": "Bearer dev-admin"}
@@ -16,7 +15,7 @@ ADMIN = {"Authorization": "Bearer dev-admin"}
 
 def _reset():
     comp.clear()
-    org.update({"compression_enabled": "false", "compression_aggressive": "false"})
+    features.clear()
 
 
 # ── baseline is quality-safe ─────────────────────────────────────────────
@@ -56,7 +55,7 @@ def test_compress_fail_soft(monkeypatch):
 # ── governed pipeline: compressed prompt reaches the model, shown transparently ──
 def test_pipeline_compresses_and_reports(monkeypatch):
     _reset()
-    org.update({"compression_enabled": "true"})
+    features.set_config("auto", {"compression_enabled": True})   # auto row (req_backend None)
     seen = {}
 
     async def fake_infer(msgs, route_ctx=None):

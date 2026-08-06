@@ -22,6 +22,7 @@ from ..adapters.audit import get_audit
 from ..adapters.audit.chain import get_chain
 from .. import cache as _cache
 from .. import compression as _compress
+from .. import features as _features
 
 RunInference = Callable[..., Awaitable[tuple[dict, dict]]]
 
@@ -113,11 +114,14 @@ async def governed_chat(
         aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=True)
         return 403, _blocked_payload(decision, aid, pii, injection=False)
 
-    # ── response cache (FEAT-003): deterministic + non-sensitive only, still audited ──
+    # ── response cache (FEAT-003, per-endpoint FEAT-011): deterministic + non-sensitive ──
+    # config key = the endpoint that serves this request: its name for a direct
+    # call, or "auto" for a router-decided request.
     team = getattr(principal, "team", "") or ""
-    cacheable = _cache.is_cacheable(kw, sensitive)   # False on temp>0, sensitive, or cache off
+    config_key = req_backend or _features.AUTO
+    cacheable = _cache.is_cacheable(kw, sensitive, config_key)   # False on temp>0, sensitive, or off
     if cacheable:
-        entry = _cache.lookup(model_str, scrubbed, kw, team)
+        entry = _cache.lookup(model_str, scrubbed, kw, team, config_key)
         if entry is not None:                        # HIT — reuse the prior answer
             saved = _cache.record_hit(entry, team)
             aid = audit.append_check(ctx, decision, tokens=tokens, pii_count=pii, blocked=False)
@@ -144,10 +148,10 @@ async def governed_chat(
     # ── prompt compression (FEAT-005): shorten before inference; billing follows ──
     infer_msgs = scrubbed
     comp_stats = None
-    if _compress.enabled():
+    if _compress.enabled(config_key):
         infer_msgs, comp_stats = _compress.compress(
-            scrubbed, aggressive=_compress.aggressive_on())
-        _compress.record(comp_stats)
+            scrubbed, aggressive=_compress.aggressive_on(config_key))
+        _compress.record(comp_stats, config_key)
         if comp_stats["saved_tokens"] > 0:
             # Anchor the compression as its own audit event (filterable, tamper-evident).
             get_chain().append(
@@ -191,7 +195,7 @@ async def governed_chat(
     # ── store the fresh answer for reuse (deterministic + non-sensitive only) ──
     if cacheable:
         u = result.get("usage") or {}
-        _cache.store(model_str, scrubbed, kw, team, result,
+        _cache.store(model_str, scrubbed, kw, team, config_key, result,
                      u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0,
                      route_meta.get("backend_used") or "",
                      route_meta.get("model") or req_model or "")

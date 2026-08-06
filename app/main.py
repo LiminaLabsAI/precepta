@@ -443,6 +443,41 @@ def create_app() -> FastAPI:
                       "hf_key_set": cfg["hf_key_set"]})
         return JSONResponse(cfg)
 
+    # ── Per-endpoint cache & compression config + stats (admin-only, FEAT-011) ──
+    @app.get("/v1/features")
+    def get_features(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from . import features as _f, cache as _c, compression as _cp
+        rows = [{"endpoint": _f.AUTO, "label": "Auto (router)"}]
+        for name in sorted(get_registry()):
+            rows.append({"endpoint": name, "label": name})
+        out = []
+        for r in rows:
+            cfg = _f.get_config(r["endpoint"])
+            out.append({**r, **{k: cfg[k] for k in
+                        ("cache_enabled", "cache_strategy", "cache_threshold",
+                         "compression_enabled", "compression_mode")},
+                        "cache_stats": _c.stats(r["endpoint"]),
+                        "compression_stats": _cp.stats(r["endpoint"])})
+        return JSONResponse({"endpoints": out})
+
+    @app.put("/v1/features/{endpoint}")
+    async def put_features(endpoint: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        b = await request.json()
+        from . import features as _f
+        return JSONResponse(_f.set_config(endpoint, b))
+
     # ── Response cache savings (admin-only — invisible to end users) ──
     @app.get("/v1/cache/stats")
     def cache_stats(request: Request) -> JSONResponse:

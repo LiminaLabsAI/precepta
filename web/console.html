@@ -53,7 +53,7 @@ const state = {
   showSetupToast: false,
 
   securityControls: { inBoundary:true, egressLock:true, auditOn:true, residency:true },
-  egressProbeStatus: 'idle', sovereignConfirm:false,
+  egressProbeStatus: 'idle', sovereignConfirm:false, savingsTab:'cache',
 
   backends: [],                   // ← /infra
   addBackendOpen: false,
@@ -640,55 +640,54 @@ function deleteConfirmModal(){
     </div></div>`;
 }
 
-/* ---------- Cache & compression (Savings) — response cache is real ---------- */
+/* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
 function savingsView(){
-  const c = window.__cache, o = window.__org || {};
-  const stat=(label,val)=>`<div><div style="font-size:11px;color:#9CA3AF">${label}</div><div style="font-size:18px;font-weight:700;margin-top:2px">${val}</div></div>`;
-  const on = o.cache_enabled==='true';
-  const semOn = o.cache_semantic==='true';
-  const cacheCard = !c ? `<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading cache…</div>` : `
-    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div><div style="font-weight:600;font-size:14px">Response cache</div><div style="font-size:12.5px;color:#6B7280;margin-top:6px;line-height:1.6;max-width:600px">Reuse a previous answer instead of re-calling a model. Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> requests never are; every hit is still policy-checked and audited. Off by default.</div></div>
-        ${toggleHtml(on,'app.saveOrgSetting(\'cache_enabled\',\''+(on?'false':'true')+'\')')}
-      </div>
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid #F3F4F6;display:flex;gap:32px;flex-wrap:wrap">
-        ${stat('Cached entries', c.entries)}
-        ${stat('Hits', c.hits)}
-        ${stat('Tokens saved', c.tokens_saved)}
-        ${stat('Cost saved', '$'+(c.cost_saved_usd||0).toFixed(4))}
-      </div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:10px">Savings are admin-only (invisible to end users). Cost reads $0 on free local models — real dollars accrue against a priced backend.</div>
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center">
-        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12.5px;font-weight:500">Semantic matching <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E">opt-in</span></span><span style="font-size:11px;color:#9CA3AF">reuse near-duplicate prompts (in-boundary embeddings)</span></div>
-        ${toggleHtml(semOn,'app.saveOrgSetting(\'cache_semantic\',\''+(semOn?'false':'true')+'\')')}
-      </div>
-      ${semOn?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><span style="font-size:12.5px;font-weight:500">Similarity threshold <span style="font-size:11px;color:#9CA3AF">(1.0 = exact only; lower = looser)</span></span><input type="number" min="0.8" max="1" step="0.01" value="${o.cache_threshold||'1.0'}" onchange="app.saveOrgSetting('cache_threshold',this.value)" style="width:90px;padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;text-align:right"></div>`:''}
-      <div style="margin-top:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear cache</button></div>
-    </div>`;
-  const cm = window.__compression;
-  const cmpOn = o.compression_enabled==='true';
-  const aggOn = o.compression_aggressive==='true';
-  const compression = !cm ? `<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading compression…</div>` : `
-    <div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div><div style="font-weight:600;font-size:14px">Prompt compression</div><div style="font-size:12.5px;color:#6B7280;margin-top:6px;line-height:1.6;max-width:600px">Shorten prompts before they reach a model. <strong>Baseline</strong> is quality-safe (whitespace/formatting only). Off by default. Billing follows the compressed prompt.</div></div>
-        ${toggleHtml(cmpOn,'app.saveOrgSetting(\'compression_enabled\',\''+(cmpOn?'false':'true')+'\')')}
-      </div>
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid #F3F4F6;display:flex;gap:32px;flex-wrap:wrap">
-        ${stat('Requests compressed', cm.requests_compressed)}
-        ${stat('Tokens saved', cm.tokens_saved)}
-      </div>
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center">
-        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12.5px;font-weight:500">Aggressive cost-saving mode <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;background:#FFFBEB;color:#92400E">opt-in</span></span><span style="font-size:11px;color:#9CA3AF">also trims filler — lossy; you're notified when it applies</span></div>
-        ${toggleHtml(aggOn,'app.saveOrgSetting(\'compression_aggressive\',\''+(aggOn?'false':'true')+'\')')}
-      </div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:10px">Real semantic compression (LLMLingua) is deferred until it can be gated by the eval harness. This is the safe baseline.</div>
-    </div>`;
-  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Both cut cost inside the same governed loop — every cache hit and every compressed prompt stays policy-checked and audited.</div>
-    ${cacheCard}
-    ${compression}`;
+  const s=state, tab=s.savingsTab||'cache', feats=window.__features;
+  const h1=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:18px;max-width:700px;line-height:1.6">Configured <strong>per inference endpoint</strong> (plus one <strong>Auto (router)</strong> row for <code>auto</code> requests). Both cut cost inside the same governed loop — every cache hit and every compressed prompt stays policy-checked and audited. Savings are admin-only.</div>`;
+  const tb=(k,l)=>`<button onclick="app.setSavingsTab('${k}')" style="padding:8px 16px;font-size:13.5px;font-weight:600;background:none;border:none;border-bottom:2px solid ${tab===k?'#2563EB':'transparent'};color:${tab===k?'#1D4ED8':'#6B7280'};cursor:pointer;margin-bottom:-1px">${l}</button>`;
+  const tabs=`<div style="display:flex;gap:4px;border-bottom:1px solid #E5E7EB;margin-bottom:18px">${tb('cache','Cache')}${tb('compression','Compression')}</div>`;
+  if(!feats) return h1+tabs+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading endpoints…</div>`;
+  const eps=feats.endpoints||[];
+  const stat=(v,l)=>`<span style="font-size:11px;color:#6B7280"><strong style="color:#111827">${v}</strong> ${l}</span>`;
+  const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''} ${o[2]?'disabled':''}>${o[1]}</option>`).join('')}</select>`;
+  const byo=['byo','Bring your own — coming',true];
+  let rows;
+  if(tab==='cache'){
+    rows=eps.map(e=>{
+      const on=e.cache_enabled, sem=e.cache_strategy==='semantic', cs=e.cache_stats||{};
+      const controls = on ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${sel(e.cache_strategy,[['exact','Exact match'],['semantic','Semantic'],byo],`app.setFeature('${esc(e.endpoint)}',{cache_strategy:this.value})`)}
+        ${sem?`<input type="number" min="0.8" max="1" step="0.01" title="Similarity threshold (1.0 = exact)" value="${e.cache_threshold}" onchange="app.setFeature('${esc(e.endpoint)}',{cache_threshold:parseFloat(this.value)})" style="width:78px;padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px">`:''}
+      </div>`:`<span style="font-size:11.5px;color:#9CA3AF">off</span>`;
+      return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div style="min-width:150px"><span style="font-weight:600;font-size:13.5px">${esc(e.label)}</span>${e.endpoint==='auto'?'<div style="font-size:10.5px;color:#9CA3AF">router-decided requests</div>':''}</div>
+          <div style="flex:1;display:flex;justify-content:flex-end">${controls}</div>
+          ${toggleHtml(on,`app.setFeature('${esc(e.endpoint)}',{cache_enabled:${on?'false':'true'}})`)}
+        </div>
+        ${(cs.entries||cs.hits)?`<div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">${stat(cs.entries||0,'entries')}${stat(cs.hits||0,'hits')}${stat(cs.tokens_saved||0,'tokens saved')}${stat('$'+(cs.cost_saved_usd||0).toFixed(4),'saved')}</div>`:''}
+      </div>`;
+    }).join('');
+    rows+=`<div style="margin-top:6px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button></div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Cost reads $0 on free local endpoints — real dollars accrue against a priced one.</div>`;
+  } else {
+    rows=eps.map(e=>{
+      const on=e.compression_enabled, ms=e.compression_stats||{};
+      const controls = on ? sel(e.compression_mode,[['baseline','Baseline (safe)'],['aggressive','Aggressive'],byo],`app.setFeature('${esc(e.endpoint)}',{compression_mode:this.value})`)
+        : `<span style="font-size:11.5px;color:#9CA3AF">off</span>`;
+      return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div style="min-width:150px"><span style="font-weight:600;font-size:13.5px">${esc(e.label)}</span>${e.endpoint==='auto'?'<div style="font-size:10.5px;color:#9CA3AF">router-decided requests</div>':''}</div>
+          <div style="flex:1;display:flex;justify-content:flex-end">${controls}</div>
+          ${toggleHtml(on,`app.setFeature('${esc(e.endpoint)}',{compression_enabled:${on?'false':'true'}})`)}
+        </div>
+        ${(ms.requests_compressed)?`<div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">${stat(ms.requests_compressed||0,'requests')}${stat(ms.tokens_saved||0,'tokens saved')}</div>`:''}
+      </div>`;
+    }).join('');
+    rows+=`<div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55"><strong>Baseline</strong> is quality-safe (whitespace only). <strong>Aggressive</strong> also trims filler (lossy) — the caller sees it and an admin is alerted, never a silent change. Billing follows the compressed prompt. Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
+  }
+  return h1+tabs+rows;
 }
 
 /* ---------- Policies ---------- */
@@ -1418,7 +1417,7 @@ render();
     if(sc==="audit"){ loadAuditLog(); }
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
-    if(sc==="savings"){ loadCache(); loadCompression(); }
+    if(sc==="savings"){ loadFeatures(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
@@ -1431,9 +1430,13 @@ render();
     fetch("/v1/authz/agent-budgets",{method:"POST",headers:hdr,body:JSON.stringify({agent_id:id,daily_request_cap:Number(cap)})})
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__agentBudgets=d.agents; render(); } else alert('Failed: '+((d.error&&d.error.message)||r.status)); });
   };
-  async function loadCache(){ const d=await getJSON("/v1/cache/stats"); if(d && !d.error){ window.__cache=d; render(); } }
-  async function loadCompression(){ const d=await getJSON("/v1/compression/stats"); if(d && !d.error){ window.__compression=d; render(); } }
-  app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadCache()); };
+  async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
+  app.setSavingsTab = function(t){ state.savingsTab=t; render(); };
+  app.setFeature = function(endpoint, patch){
+    fetch("/v1/features/"+encodeURIComponent(endpoint),{method:"PUT",headers:hdr,body:JSON.stringify(patch)})
+      .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Failed: "+((d.error&&d.error.message)||r.status)); } loadFeatures(); });
+  };
+  app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadFeatures()); };
 
   function loadAll(){
     loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved(); loadControls();

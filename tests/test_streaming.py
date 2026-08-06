@@ -6,7 +6,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from app import cache, org
+from app import cache, features
 from app.main import app
 
 client = TestClient(app)
@@ -15,14 +15,13 @@ ADMIN = {"Authorization": "Bearer dev-admin"}
 
 def test_streaming_serves_governed_result():
     cache.clear()
-    org.update({"cache_enabled": "true"})
+    features.set_config("auto", {"cache_enabled": True})
     try:
         kw = {"temperature": 0, "max_tokens": 50, "top_p": None}
         msgs = [{"role": "user", "content": "stream probe alpha"}]
         resp = {"choices": [{"message": {"role": "assistant", "content": "Hello streamed world"}}],
                 "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
-        cache.store("auto", msgs, kw, team="", response=resp,
-                    tokens_in=3, tokens_out=2, backend="ollama", model="m")  # pre-seed → no live backend
+        cache.store("auto", msgs, kw, "", "auto", resp, 3, 2, "ollama", "m")  # pre-seed → no live backend
         r = client.post("/v1/chat/completions", headers=ADMIN, json={
             "model": "auto", "messages": msgs, "temperature": 0, "max_tokens": 50, "stream": True})
         assert r.status_code == 200
@@ -41,7 +40,7 @@ def test_streaming_serves_governed_result():
         assert final is not None and final["precepta"]["cache"] == "hit"   # governed meta in stream
     finally:
         cache.clear()
-        org.update({"cache_enabled": "false"})
+        features.clear()
 
 
 def test_streaming_still_blocks_injection():
@@ -57,18 +56,17 @@ def test_streaming_still_blocks_injection():
 
 def test_nonstream_still_json():
     cache.clear()
-    org.update({"cache_enabled": "true"})
+    features.set_config("auto", {"cache_enabled": True})
     try:
         kw = {"temperature": 0, "max_tokens": 50, "top_p": None}
         msgs = [{"role": "user", "content": "json probe beta"}]
-        cache.store("auto", msgs, kw, team="",
-                    response={"choices": [{"message": {"role": "assistant", "content": "plain"}}],
-                              "usage": {"prompt_tokens": 1, "completion_tokens": 1}},
-                    tokens_in=1, tokens_out=1, backend="ollama", model="m")
+        cache.store("auto", msgs, kw, "", "auto",
+                    {"choices": [{"message": {"role": "assistant", "content": "plain"}}],
+                     "usage": {"prompt_tokens": 1, "completion_tokens": 1}}, 1, 1, "ollama", "m")
         r = client.post("/v1/chat/completions", headers=ADMIN, json={
             "model": "auto", "messages": msgs, "temperature": 0, "max_tokens": 50})
         assert r.headers["content-type"].startswith("application/json")
         assert r.json()["choices"][0]["message"]["content"] == "plain"
     finally:
         cache.clear()
-        org.update({"cache_enabled": "false"})
+        features.clear()

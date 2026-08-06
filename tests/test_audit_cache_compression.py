@@ -7,7 +7,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from app import cache, org
+from app import cache, features
 from app.gateway import pipeline
 from app.ports import Principal
 from app.adapters.audit.chain import get_chain
@@ -30,11 +30,11 @@ async def _fake_infer(msgs, route_ctx=None):
 
 def test_cache_hit_writes_a_cache_event():
     cache.clear()
-    org.update({"cache_enabled": "true"})
+    features.set_config("auto", {"cache_enabled": True})
     try:
         kw = {"temperature": 0, "max_tokens": 50, "top_p": None}
         msgs = [{"role": "user", "content": "audit cache probe"}]
-        cache.store("auto", msgs, kw, team="",
+        cache.store("auto", msgs, kw, team="", endpoint="auto",
                     response={"choices": [{"message": {"role": "assistant", "content": "x"}}],
                               "usage": {"prompt_tokens": 2, "completion_tokens": 1}},
                     tokens_in=2, tokens_out=1, backend="ollama", model="m")
@@ -44,11 +44,11 @@ def test_cache_hit_writes_a_cache_event():
         assert "cache.hit" in _resources()          # filterable as Cache & compression
     finally:
         cache.clear()
-        org.update({"cache_enabled": "false"})
+        features.clear()
 
 
 def test_compression_writes_a_compression_event():
-    org.update({"compression_enabled": "true", "compression_aggressive": "true"})
+    features.set_config("auto", {"compression_enabled": True, "compression_mode": "aggressive"})
     try:
         status, _ = asyncio.run(pipeline.governed_chat(
             [{"role": "user", "content": "please just really trim   this   very simply"}],
@@ -56,4 +56,4 @@ def test_compression_writes_a_compression_event():
         assert status == 200
         assert "compression" in _resources()        # filterable as Cache & compression
     finally:
-        org.update({"compression_enabled": "false", "compression_aggressive": "false"})
+        features.clear()

@@ -1,21 +1,13 @@
-"""Response cache (FEAT-003) — reuse a prior answer instead of re-calling a model.
+"""Response cache (FEAT-003, per-endpoint in FEAT-011) — reuse a prior answer.
 
-Governing stance (safe by default, risk only by opt-in):
-  - OFF until an admin enables it.
-  - Only DETERMINISTIC requests are cached (temperature 0) — a temp>0 request is
-    meant to vary, so caching it would be a surprise.
-  - SENSITIVE requests (PII/PHI or data-tagged) are NEVER cached or served from
-    cache — the same fence the router uses.
-  - Cache hits are still governed: the input firewall + policy run BEFORE the
-    cache is consulted, and every hit is audited as a cache hit.
-  - Metering counts the request (usage) but charges the budget $0 — no inference
-    ran (the one meter() definition, TD-002).
-  - Scope is per-team; savings visibility is ADMIN-ONLY (invisible to end users).
+Configured PER inference endpoint (see app/features.py): each endpoint (or the
+"auto" router row) has its own on/off, strategy (exact | semantic) and threshold.
 
-Exact-match by default; semantic (opt-in) matches a near-duplicate via
-**in-boundary** embeddings (Ollama nomic-embed-text) above a similarity
-threshold (default 1.0 = exact). Every cache path is FAIL-SOFT (TD-006): any
-error degrades to a cache miss / skipped store and never breaks inference.
+Governing stance (unchanged): only DETERMINISTIC requests are cached
+(temperature 0); SENSITIVE requests (PII/PHI or data-tagged) are never cached or
+served; hits stay governed (firewall + policy run first, hit is audited) and are
+metered as usage with $0 budget charge (TD-002). Per-team scope; savings are
+admin-only. Every path is FAIL-SOFT (TD-006).
 """
 from __future__ import annotations
 
@@ -27,13 +19,14 @@ import math
 import httpx
 
 from .db import get_conn
-from . import org, pricing
+from . import pricing, features
 from .settings import get_settings
 
 _DDL_CACHE = """
 CREATE TABLE IF NOT EXISTS response_cache (
     cache_key   TEXT NOT NULL,
     team        TEXT NOT NULL DEFAULT '',
+    endpoint    TEXT DEFAULT '',
     model       TEXT DEFAULT '',
     backend     TEXT DEFAULT '',
     response_json TEXT NOT NULL,
@@ -50,12 +43,12 @@ _DDL_SAVINGS = """
 CREATE TABLE IF NOT EXISTS cache_savings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     team TEXT DEFAULT '',
+    endpoint TEXT DEFAULT '',
     tokens_saved INTEGER DEFAULT 0,
     cost_saved_usd REAL DEFAULT 0,
     at TEXT NOT NULL
 )
 """
-
 _EMBED_MODEL = "nomic-embed-text"
 
 
@@ -67,25 +60,23 @@ def ensure_tables() -> None:
     with get_conn() as conn:
         conn.execute(_DDL_CACHE)
         conn.execute(_DDL_SAVINGS)
+        for tbl in ("response_cache", "cache_savings"):   # migrate older DBs
+            try:
+                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN endpoint TEXT DEFAULT ''")
+            except Exception:
+                pass
 
 
-# ── config (admin-set org settings) ──────────────────────────────────────
-def enabled() -> bool:
-    return org.get("cache_enabled", "false") == "true"
+# ── per-endpoint gating ───────────────────────────────────────────────────
+def is_cacheable(kw: dict, sensitive: bool, endpoint: str) -> bool:
+    """Deterministic + non-sensitive + this endpoint has caching on."""
+    if sensitive or not features.cache_on(endpoint):
+        return False
+    temp = kw.get("temperature")
+    return temp == 0 or temp == 0.0
 
 
-def semantic_enabled() -> bool:
-    return org.get("cache_semantic", "false") == "true"
-
-
-def threshold() -> float:
-    try:
-        return float(org.get("cache_threshold", "1.0"))
-    except (ValueError, TypeError):
-        return 1.0
-
-
-# ── keying ───────────────────────────────────────────────────────────────
+# ── keying ────────────────────────────────────────────────────────────────
 def _norm(model_str: str, messages: list[dict], kw: dict) -> str:
     payload = {
         "model": model_str or "",
@@ -101,17 +92,8 @@ def cache_key(model_str: str, messages: list[dict], kw: dict) -> str:
     return hashlib.sha256(_norm(model_str, messages, kw).encode()).hexdigest()
 
 
-def is_cacheable(kw: dict, sensitive: bool) -> bool:
-    """Deterministic + non-sensitive + cache enabled. Anything else → don't cache."""
-    if not enabled() or sensitive:
-        return False
-    temp = kw.get("temperature")
-    return temp == 0 or temp == 0.0
-
-
-# ── embeddings (semantic, in-boundary) ───────────────────────────────────
+# ── embeddings (semantic, in-boundary) ────────────────────────────────────
 def embed(text: str) -> list[float] | None:
-    """In-boundary embedding via Ollama. Fail-soft → None."""
     try:
         port = get_settings().ollama_port
         r = httpx.post(f"http://127.0.0.1:{port}/api/embeddings", timeout=10.0,
@@ -137,31 +119,30 @@ def _query_text(messages: list[dict]) -> str:
                  if m.get("role") == "user"), "")
 
 
-# ── lookup / store ───────────────────────────────────────────────────────
-def lookup(model_str: str, messages: list[dict], kw: dict, team: str) -> dict | None:
-    """Return the cached entry (dict incl. `response`) for a hit, else None. Fail-soft."""
+# ── lookup / store ────────────────────────────────────────────────────────
+def lookup(model_str: str, messages: list[dict], kw: dict, team: str, endpoint: str) -> dict | None:
+    """Return the cached entry for a hit, else None. Strategy is per endpoint. Fail-soft."""
     try:
         ensure_tables()
         key = cache_key(model_str, messages, kw)
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM response_cache WHERE cache_key=? AND team=?",
-                (key, team)).fetchone()
+            row = conn.execute("SELECT * FROM response_cache WHERE cache_key=? AND team=?",
+                               (key, team)).fetchone()
         if row is not None:
             return _entry(row, exact=True)
 
-        if not semantic_enabled():
+        if not features.cache_semantic(endpoint):
             return None
-        thr = threshold()
-        if thr >= 1.0:                       # threshold 1.0 = exact only
+        thr = features.cache_threshold(endpoint)
+        if thr >= 1.0:
             return None
         qvec = embed(_query_text(messages))
         if qvec is None:
             return None
         with get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM response_cache WHERE team=? AND embedding IS NOT NULL",
-                (team,)).fetchall()
+                "SELECT * FROM response_cache WHERE team=? AND endpoint=? AND embedding IS NOT NULL",
+                (team, endpoint)).fetchall()
         best, best_sim = None, 0.0
         for r in rows:
             try:
@@ -174,13 +155,14 @@ def lookup(model_str: str, messages: list[dict], kw: dict, team: str) -> dict | 
         if best is not None and best_sim >= thr:
             return _entry(best, exact=False, similarity=round(best_sim, 4))
         return None
-    except Exception:                        # fail-soft: any error → cache miss
+    except Exception:
         return None
 
 
 def _entry(row, *, exact: bool, similarity: float = 1.0) -> dict:
     return {
         "cache_key": row["cache_key"], "team": row["team"],
+        "endpoint": (row["endpoint"] if "endpoint" in row.keys() else "") or "",
         "backend": row["backend"], "model": row["model"],
         "response": json.loads(row["response_json"]),
         "prompt_tokens": row["prompt_tokens"], "completion_tokens": row["completion_tokens"],
@@ -188,33 +170,31 @@ def _entry(row, *, exact: bool, similarity: float = 1.0) -> dict:
     }
 
 
-def store(model_str: str, messages: list[dict], kw: dict, team: str,
-          response: dict, tokens_in: int, tokens_out: int,
-          backend: str, model: str) -> None:
-    """Persist a fresh answer for reuse. Fail-soft (a store failure never surfaces)."""
+def store(model_str: str, messages: list[dict], kw: dict, team: str, endpoint: str,
+          response: dict, tokens_in: int, tokens_out: int, backend: str, model: str) -> None:
+    """Persist a fresh answer for reuse under this endpoint's config. Fail-soft."""
     try:
         ensure_tables()
         key = cache_key(model_str, messages, kw)
         emb = None
-        if semantic_enabled():
+        if features.cache_semantic(endpoint):
             vec = embed(_query_text(messages))
             emb = json.dumps(vec) if vec is not None else None
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO response_cache (cache_key,team,model,backend,response_json,"
+                "INSERT INTO response_cache (cache_key,team,endpoint,model,backend,response_json,"
                 "prompt_tokens,completion_tokens,embedding,created_at,hit_count) "
-                "VALUES (?,?,?,?,?,?,?,?,?,0) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,0) "
                 "ON CONFLICT(cache_key,team) DO UPDATE SET response_json=excluded.response_json, "
-                "prompt_tokens=excluded.prompt_tokens, completion_tokens=excluded.completion_tokens, "
-                "embedding=excluded.embedding",
-                (key, team, model or "", backend or "", json.dumps(response),
+                "endpoint=excluded.endpoint, prompt_tokens=excluded.prompt_tokens, "
+                "completion_tokens=excluded.completion_tokens, embedding=excluded.embedding",
+                (key, team, endpoint, model or "", backend or "", json.dumps(response),
                  int(tokens_in or 0), int(tokens_out or 0), emb, _now()))
     except Exception:
         pass
 
 
 def record_hit(entry: dict, team: str) -> dict:
-    """Count the hit + log the savings (tokens + cost avoided). Returns the meter fields."""
     tokens_in = int(entry.get("prompt_tokens") or 0)
     tokens_out = int(entry.get("completion_tokens") or 0)
     saved_tokens = tokens_in + tokens_out
@@ -230,23 +210,26 @@ def record_hit(entry: dict, team: str) -> dict:
                 "UPDATE response_cache SET hit_count=hit_count+1, last_hit_at=? "
                 "WHERE cache_key=? AND team=?", (_now(), entry["cache_key"], team))
             conn.execute(
-                "INSERT INTO cache_savings (team,tokens_saved,cost_saved_usd,at) VALUES (?,?,?,?)",
-                (team, saved_tokens, round(cost, 6), _now()))
+                "INSERT INTO cache_savings (team,endpoint,tokens_saved,cost_saved_usd,at) "
+                "VALUES (?,?,?,?,?)",
+                (team, entry.get("endpoint") or "", saved_tokens, round(cost, 6), _now()))
     except Exception:
         pass
     return {"tokens_saved": saved_tokens, "cost_saved_usd": round(cost, 6)}
 
 
-# ── stats (admin-only surface) ───────────────────────────────────────────
-def stats() -> dict:
+# ── stats (admin-only) — overall or per endpoint ──────────────────────────
+def stats(endpoint: str | None = None) -> dict:
     ensure_tables()
+    where = "WHERE endpoint=?" if endpoint is not None else ""
+    args = (endpoint,) if endpoint is not None else ()
     with get_conn() as conn:
-        entries = conn.execute("SELECT COUNT(*) c, COALESCE(SUM(hit_count),0) h "
-                               "FROM response_cache").fetchone()
-        sv = conn.execute("SELECT COUNT(*) hits, COALESCE(SUM(tokens_saved),0) t, "
-                          "COALESCE(SUM(cost_saved_usd),0) c FROM cache_savings").fetchone()
+        entries = conn.execute(f"SELECT COUNT(*) c, COALESCE(SUM(hit_count),0) h "
+                               f"FROM response_cache {where}", args).fetchone()
+        sv = conn.execute(f"SELECT COUNT(*) hits, COALESCE(SUM(tokens_saved),0) t, "
+                          f"COALESCE(SUM(cost_saved_usd),0) c FROM cache_savings {where}",
+                          args).fetchone()
     return {
-        "enabled": enabled(), "semantic": semantic_enabled(), "threshold": threshold(),
         "entries": entries["c"], "hits": sv["hits"],
         "tokens_saved": sv["t"], "cost_saved_usd": round(sv["c"] or 0.0, 6),
     }

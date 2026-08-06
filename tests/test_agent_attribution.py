@@ -11,7 +11,7 @@ from app.gateway import pipeline
 from app.ports import Principal
 from app.adapters.audit.chain import get_chain
 from app.main import app
-from app import cache, org
+from app import cache, features
 
 client = TestClient(app)
 ADMIN = {"Authorization": "Bearer dev-admin"}
@@ -55,14 +55,13 @@ def test_human_request_stays_clean():
 def test_endpoint_accepts_attribution():
     # cache-hit path → no live backend; attribution still flows to the audit chain
     cache.clear()
-    org.update({"cache_enabled": "true"})
+    features.set_config("auto", {"cache_enabled": True})
     try:
         kw = {"temperature": 0, "max_tokens": 50, "top_p": None}
         msgs = [{"role": "user", "content": "attrib probe"}]
-        cache.store("auto", msgs, kw, team="",
-                    response={"choices": [{"message": {"role": "assistant", "content": "x"}}],
-                              "usage": {"prompt_tokens": 1, "completion_tokens": 1}},
-                    tokens_in=1, tokens_out=1, backend="ollama", model="m")
+        cache.store("auto", msgs, kw, "", "auto",
+                    {"choices": [{"message": {"role": "assistant", "content": "x"}}],
+                     "usage": {"prompt_tokens": 1, "completion_tokens": 1}}, 1, 1, "ollama", "m")
         r = client.post("/v1/chat/completions", headers=ADMIN, json={
             "model": "auto", "messages": msgs, "temperature": 0, "max_tokens": 50,
             "agent_id": "billing-bot", "user": "customer-42"})
@@ -70,4 +69,4 @@ def test_endpoint_accepts_attribution():
         assert _latest_governance_meta().get("agent_id") == "billing-bot"
     finally:
         cache.clear()
-        org.update({"cache_enabled": "false"})
+        features.clear()
