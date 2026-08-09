@@ -4,7 +4,7 @@ type: Backlog
 
 # Backlog
 
-> **Last Updated**: 2026-08-06 (reconciled — Phase 4–7 items marked resolved)
+> **Last Updated**: 2026-08-09 (Smart-Router initiative — FEAT-013..021, ENH-008 added; mapped to phases 12/11/13/deploy)
 
 ---
 
@@ -44,6 +44,15 @@ type: Backlog
 | FEAT-011 | **Cache & compression v2** — two tabs on one page; **per-endpoint** (not global) config; pluggable strategy registry (multiple cache algos / compression methods) + **bring-your-own** | P2 | **v1 done 2026-08-06** | (demo feedback) | Demo feedback #2/#3/#4. **v1 DONE:** `app/features.py` (per-endpoint `endpoint_features` config, key = endpoint or `auto`), cache/compression refactored per-endpoint + enforced in the pipeline (config key = served endpoint), `GET/PUT /v1/features`, per-endpoint stats. Console: two-tab page (Cache | Compression), per-endpoint rows + Auto (router) row, real strategy dropdowns (exact/semantic, baseline/aggressive) + honest disabled "Bring your own — coming". Browser + live validated. **v2 (backlog): the real pluggable/BYO engine (custom algorithms).** |
 | FEAT-011b | **Cache/compression v2 — pluggable/BYO engine** — run custom cache algorithms / compression methods behind the per-endpoint config | P3 | open | (demo feedback #4) | The real BYO engine behind the v1 UI's "Bring your own — coming" option. A registry + safe execution model for customer-supplied strategies. |
 | FEAT-012 | **First-run setup copilot** — on first setup, the copilot asks "want an agent to set this up for you, or do it manually?" (agent-assisted vs manual onboarding) | P2 | open | (demo feedback) | Demo feedback (Sarang) — lower onboarding friction; ties to the copilot FAB (currently unwired). |
+| FEAT-019 | **Smart Router (two-stage)** — model brain (intent) + config resolver (intent→target); unified `RouteTarget` for models **and** in-premise agents; agent trace contract + governed egress; confidence floor; scoring `quality−cost−latency+warm` | **P1** | **planned** | 12 | The router phase. Brainstormed 2026-08-09 — spec in `specs/phases/phase-12-smart-router/`. Open-core (Apache-2.0). Positioning: sovereignty + reasoning-traces, not routing (LiteLLM already routes). |
+| FEAT-013 | **LiteLLM InferenceTarget adapter** — many providers + load balancing behind `InferenceTarget`, MIT core only, **in-boundary allowlist** (explicit `api_base`, no cloud fallthrough) | P1 | planned | 12 | Competitor parity (works with 100+ providers out of the box). SDK only, never the `enterprise/` folder or its proxy. |
+| FEAT-014 | **Toxicity output filter** — block abusive/toxic model output in the output firewall | P2 | planned | 12 | Competitor parity (LiteLLM has toxicity filtering). In-boundary. |
+| FEAT-015 | **Enforcement-timing modes** — each safety check declares pre-call / during-call / post-call | P2 | planned | 12 | Adopt LiteLLM's clean guardrail-timing model in policy config. |
+| FEAT-020 | **Read-only workflow view** — Console screen auto-generated from live config (show the governed path + routing rules; projection, not a 2nd source) | P1 | planned | 12 | "Show, don't configure." Pairs with run-time traces into one picture. Editable builder = FEAT-021. |
+| FEAT-017 | **Usage by tool + agent** — capture attribution at tool/agent granularity | P2 | planned | 12 (capture) / 11 (show) | Competitor parity (LiteLLM tracks per tool/agent/MCP). Capture in router, render in Traces. |
+| FEAT-016 | **Bill-back** — show each team/app exactly what it cost (internal chargeback view) | P2 | planned | 11 | Competitor parity (LiteLLM chargeback). Lives in the Traces/observability surface. |
+| FEAT-018 | **Auto-provision users** from the company directory (SCIM) | P2 | open | deploy | Competitor parity. Enterprise access; scope at deploy. |
+| FEAT-021 | **Workflow builder** — editable canvas → writes resolver config, validation-gated; governance rails fixed | P2 | planned (outline) | 13 | Compose/edit routing. Validation: no orphan intents; every intent reaches an allowed target; no rule fights a sovereignty policy. Full brainstorm when its turn comes. |
 
 ## Tech Debt
 
@@ -70,3 +79,4 @@ type: Backlog
 | ENH-005 | Per-key IP allowlist; admin-configurable alert thresholds | P3 | open | — | Enterprise hardening. |
 | ENH-006 | **Positioning & messaging pass** — reframe copy as a "runtime guardrail platform for AI companies" (not "an AI company"); taglines, screen intros, empty states beyond the naming | P2 | open | (demo feedback) | Demo feedback #5/#6. The user-facing NAMING (Inference plane, inference endpoint, intent-boundary) is DONE 2026-08-03; this is the deeper messaging layer. Informs how traces (FEAT-010) are framed. |
 | ENH-007 | User-facing gen-AI naming (Inference plane · inference endpoint · intent-boundary) | P2 | **resolved 2026-08-03** | — | Demo feedback #1/#7/#8. Front-end copy only; code/API unchanged. Browser-validated. |
+| ENH-008 | **Gateway performance** — reduce request-path overhead (competitor LiteLLM runs a Rust gateway at sub-ms overhead; ours is Python/FastAPI) | P3 | open | — | Not urgent for pilots; a future consideration for scale. |

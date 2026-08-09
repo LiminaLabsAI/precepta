@@ -24,6 +24,14 @@ open-source AI model it runs — routed, governed, attributed, and provably in-b
 | 8 | Reach & identity | ✅ Done (v0.2.0) | MCP server; SSO/OIDC + Google login + sessions |
 | 9 | Hardening & tenancy | ✅ Done | Team-scoped authZ, compliance evidence, audit export |
 | 10 | Cost / quality / governance controls | Scoped (design next) | Foundations (pricing TD-001, counting TD-002, eval harness FEAT-006, sensitivity TD-004) → budgets+key-expiry (FEAT-001), policy scope (FEAT-002), cache (FEAT-003), compression (FEAT-005), advanced routing (FEAT-007), traces→learning (FEAT-008); refreshed Precepta Console; OpenGuard authZ (FEAT-004). Pending brainstorm: deploy (FEAT-009). See `BRAINSTORM.md`. |
+| 12 | **Smart Router (+ workflow view)** | Planned (brainstormed 2026-08-09) | Two-stage intent router (model brain + config resolver); unified `RouteTarget` for models **and** in-premise agents; LiteLLM inference adapter (in-boundary allowlist); BUG-001 fix; governance-first wiring; read-only workflow view; open-core (Apache-2.0); locked router eval. Competitor parity: many providers + load balancing, usage-by-tool/agent, enforcement-timing, toxicity filter. |
+| 11 | Traces (request-lifecycle observability) | Planned; **to be extended** | Every-step traces + **agent sub-trace** + learning-loop reward capture. Competitor parity: live request log, bill-back (cost by team/app). Runs **after** Phase 12. |
+| 13 | Workflow builder | Planned (outline) | Editable canvas → writes resolver config, validation-gated (no orphan intents; every intent reaches an allowed target; no rule fights a sovereignty policy); versioning; trace-backed preview. Governance rails fixed. |
+
+## Smart-Router initiative — execution order (2026-08-09)
+`Phase 12 Smart Router + read-only view → Phase 11 Traces (extended) → Phase 13 Workflow builder`
+Foundations across all three: open-core (Apache-2.0) · in-boundary helper models (TD-009, at deploy) · locked eval set (Rule 11).
+> Numbers are IDs, not execution order — Phase 12 runs **before** Phase 11 (traces builds on the router).
 
 ## Guiding Principles
 1. Ship working software in every phase.
