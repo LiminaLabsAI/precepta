@@ -60,7 +60,9 @@ def _target() -> tuple[str, str, str | None]:
     if base and model:                                                  # (2) .env — Precepta's model
         return base.rstrip("/"), model, os.environ.get("HF_API_KEY")
     port = get_settings().ollama_port                                  # (3) local Ollama (in-boundary)
-    return (f"http://127.0.0.1:{port}/v1",
+    base = os.environ.get("PRECEPTA_OLLAMA_URL",
+                          f"http://127.0.0.1:{port}").rstrip("/")
+    return (f"{base}/v1",
             os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:3b"), None)
 
 

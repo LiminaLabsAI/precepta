@@ -87,8 +87,31 @@ def snapshot(registry: dict | None = None) -> list[dict]:
 
 
 # ── telemetry recording ─────────────────────────────────────────────────
+_DDL = """
+CREATE TABLE IF NOT EXISTS telemetry (
+    id            TEXT PRIMARY KEY,
+    captured_at   TEXT,
+    workflow_id   TEXT,
+    agent_id      TEXT,
+    cpu_pct       REAL,
+    memory_gb     REAL,
+    gpu_pct       REAL,
+    vram_gb       REAL,
+    tokens_input  INTEGER,
+    tokens_output INTEGER,
+    inference_ms  INTEGER
+)
+"""
+
+
+def ensure_table() -> None:
+    with get_conn() as conn:
+        conn.execute(_DDL)
+
+
 def record_telemetry(*, inference_ms: int | None, tokens_in: int | None,
                      tokens_out: int | None, backend: str | None = None) -> None:
+    ensure_table()
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO telemetry (id,captured_at,workflow_id,agent_id,cpu_pct,"

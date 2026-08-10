@@ -13,11 +13,30 @@ from ..db import get_conn
 from ..ports import Decision, PolicyCheckContext
 
 
-# ── policy scope (FEAT-002) ─────────────────────────────────────────────
+# ── policy table + scope (FEAT-002) ─────────────────────────────────────
+_DDL = """
+CREATE TABLE IF NOT EXISTS governance_policies (
+    id              TEXT PRIMARY KEY,
+    name            TEXT,
+    description     TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    action_type     TEXT,
+    effect          TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    scope_json      TEXT NOT NULL DEFAULT '{}',
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT,
+    updated_at      TEXT
+)
+"""
+
+
 def _ensure_scope_column() -> None:
+    """Ensure the policy table exists (fresh DB) and has scope_json (older DB)."""
     with get_conn() as conn:
+        conn.execute(_DDL)                       # fresh DB → full table incl. scope_json
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(governance_policies)")}
-        if "scope_json" not in cols:
+        if "scope_json" not in cols:             # pre-FEAT-002 DB → add the column
             conn.execute("ALTER TABLE governance_policies "
                          "ADD COLUMN scope_json TEXT NOT NULL DEFAULT '{}'")
 

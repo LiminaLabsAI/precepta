@@ -17,6 +17,26 @@ GENESIS = "0" * 64
 _FIELDS = ("event_id", "timestamp", "event_type", "actor", "resource",
            "action", "outcome", "metadata", "previous_hash")
 
+_DDL = """
+CREATE TABLE IF NOT EXISTS tamper_evident_audit_log (
+    event_id      TEXT,
+    timestamp     INTEGER,
+    event_type    TEXT,
+    actor         TEXT,
+    resource      TEXT,
+    action        TEXT,
+    outcome       TEXT,
+    metadata      TEXT,
+    previous_hash TEXT,
+    event_hash    TEXT
+)
+"""
+
+
+def ensure_table() -> None:
+    with get_conn() as conn:
+        conn.execute(_DDL)
+
 
 def _hash(row: dict) -> str:
     payload = "|".join(str(row[f]) for f in _FIELDS)
@@ -41,6 +61,7 @@ class AuditChain:
         eid = uuid.uuid4().hex
         ts = time.time_ns()
         meta = json.dumps(metadata, sort_keys=True)
+        ensure_table()
         with get_conn() as conn:
             last = conn.execute(
                 "SELECT event_hash FROM tamper_evident_audit_log ORDER BY rowid DESC LIMIT 1"
@@ -59,17 +80,20 @@ class AuditChain:
         return eid
 
     def verify(self) -> bool:
+        ensure_table()
         with get_conn() as conn:
             rows = [dict(r) for r in conn.execute(
                 "SELECT * FROM tamper_evident_audit_log ORDER BY rowid ASC").fetchall()]
         return verify_rows(rows)
 
     def count(self) -> int:
+        ensure_table()
         with get_conn() as conn:
             return int(conn.execute(
                 "SELECT COUNT(*) c FROM tamper_evident_audit_log").fetchone()["c"])
 
     def recent(self, limit: int = 25) -> list[dict]:
+        ensure_table()
         with get_conn() as conn:
             rows = conn.execute(
                 "SELECT * FROM tamper_evident_audit_log ORDER BY rowid DESC LIMIT ?",
@@ -78,6 +102,7 @@ class AuditChain:
 
     def export(self) -> dict:
         """Full chain export (WORM-ready) — rows + head + verification."""
+        ensure_table()
         with get_conn() as conn:
             rows = [dict(r) for r in conn.execute(
                 "SELECT * FROM tamper_evident_audit_log ORDER BY rowid ASC").fetchall()]
@@ -85,6 +110,7 @@ class AuditChain:
                 "verified": verify_rows(rows), "head": self.head_hash(), "chain": rows}
 
     def head_hash(self) -> str:
+        ensure_table()
         with get_conn() as conn:
             last = conn.execute(
                 "SELECT event_hash FROM tamper_evident_audit_log ORDER BY rowid DESC LIMIT 1"

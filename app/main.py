@@ -109,6 +109,10 @@ def _resolve_principal(request: Request):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Fresh-DB bootstrap: ensure every table exists before serving, so a brand-new
+    # self-host database can't 500 on a read-before-write path.
+    from .schema import ensure_all
+    ensure_all()
     app = FastAPI(
         title="preceptaai control plane",
         version=__version__,
