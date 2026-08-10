@@ -256,10 +256,19 @@ async def governed_chat(
                 or "Selected an in-boundary endpoint for this request.",
                 inferred=(req_backend is None))
         _u0 = result.get("usage") or {}
-        tr.step("inference", "Model responded",
-                f"{_be} generated the answer"
-                + (f" ({_u0.get('completion_tokens')} output tokens)."
-                   if _u0.get("completion_tokens") else "."))
+        _agent_steps = route_meta.get("agent_steps")   # AgentTarget sub-trace (L2)
+        if _agent_steps:
+            tr.step("inference", "Agent responded",
+                    f"{_be} (agent) handled the request — its own reasoning is nested below.",
+                    substeps=_agent_steps)
+        elif route_meta.get("agent"):                   # an agent that reported no reasoning
+            tr.step("inference", "Agent responded",
+                    f"{_be} (agent) handled the request — agent reported no reasoning.")
+        else:
+            tr.step("inference", "Model responded",
+                    f"{_be} generated the answer"
+                    + (f" ({_u0.get('completion_tokens')} output tokens)."
+                       if _u0.get("completion_tokens") else "."))
 
     # ── Stage 3: output firewall (leak check) ──
     if scan_output(_content(result)):
