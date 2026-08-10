@@ -272,6 +272,21 @@ async def governed_chat(
         _traces.save(tr, "blocked", backend=route_meta.get("backend_used"), pii=pii)
         return 403, _blocked_payload(dec, aid, pii, injection=False)
 
+    # ── output toxicity filter (opt-in, in-boundary — never surprises) ──
+    from .. import org as _org
+    if _org.get("toxicity_filter", "false") == "true":
+        from ..governance import toxicity as _tox
+        toxic, phrase = _tox.scan_toxicity(_content(result))
+        if toxic:
+            dec = Decision("block", f"toxic/abusive content in output ({phrase})")
+            aid = audit.append_check(ctx, dec, tokens=tokens, pii_count=pii, blocked=True)
+            if tr is not None:
+                tr.step("output", "Blocked",
+                        f"Output blocked — abusive/toxic content detected ({phrase}).",
+                        status="blocked")
+            _traces.save(tr, "blocked", backend=route_meta.get("backend_used"), pii=pii)
+            return 403, _blocked_payload(dec, aid, pii, injection=False)
+
     # ── store the fresh answer for reuse (deterministic + non-sensitive only) ──
     if cacheable:
         u = result.get("usage") or {}
