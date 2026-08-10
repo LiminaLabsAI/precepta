@@ -644,50 +644,58 @@ function deleteConfirmModal(){
 function savingsView(){
   const s=state, tab=s.savingsTab||'cache', feats=window.__features;
   const h1=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:18px;max-width:700px;line-height:1.6">Configured <strong>per inference endpoint</strong> (plus one <strong>Smart router</strong> row for <code>auto</code> requests). Both cut cost inside the same governed loop — every cache hit and every compressed prompt stays policy-checked and audited. Savings are admin-only.</div>`;
-  const tb=(k,l)=>`<button onclick="app.setSavingsTab('${k}')" style="padding:8px 16px;font-size:13.5px;font-weight:600;background:none;border:none;border-bottom:2px solid ${tab===k?'#2563EB':'transparent'};color:${tab===k?'#1D4ED8':'#6B7280'};cursor:pointer;margin-bottom:-1px">${l}</button>`;
-  const tabs=`<div style="display:flex;gap:4px;border-bottom:1px solid #E5E7EB;margin-bottom:18px">${tb('cache','Cache')}${tb('compression','Compression')}</div>`;
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Both cut cost inside the same governed loop — every cache hit and every compressed prompt is still policy-checked and audited. The riskier option in each is opt-in, never automatic.</div>`;
+  const tb=(k,l)=>`<div onclick="app.setSavingsTab('${k}')" style="padding:8px 4px;margin-right:20px;font-size:13px;font-weight:600;cursor:pointer;color:${tab===k?'#111827':'#6B7280'};border-bottom:2px solid ${tab===k?'#2563EB':'transparent'}">${l}</div>`;
+  const tabs=`<div style="display:flex;gap:4px;border-bottom:1px solid #E5E7EB;margin-bottom:20px">${tb('cache','Cache')}${tb('compression','Compression')}</div>`;
   if(!feats) return h1+tabs+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading endpoints…</div>`;
   const eps=feats.endpoints||[];
-  const stat=(v,l)=>`<span style="font-size:11px;color:#6B7280"><strong style="color:#111827">${v}</strong> ${l}</span>`;
-  const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''} ${o[2]?'disabled':''}>${o[1]}</option>`).join('')}</select>`;
-  const byo=['byo','Bring your own — coming',true];
-  let rows;
+  const auto=eps.find(e=>e.endpoint==='auto')||{};
+  const models=eps.filter(e=>e.endpoint!=='auto');
+  const sw=(on,handler)=>`<div onclick="${handler}" style="width:36px;height:20px;border-radius:10px;background:${on?'#2563EB':'#D1D5DB'};position:relative;cursor:pointer;flex:none"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${on?'18px':'2px'};box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .12s"></div></div>`;
+  const rowline=(title,desc,right)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${title}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px;max-width:460px;line-height:1.5">${desc}</div></div>${right}</div>`;
+  const statBig=(v,l)=>`<div><div style="font-size:11px;color:#9CA3AF">${l}</div><div style="font-size:18px;font-weight:700;margin-top:2px">${v}</div></div>`;
+  const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''}>${o[1]}</option>`).join('')}</select>`;
+  const listCard=(header,sub,rowsHtml,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:14px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:14px">${header}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${sub}</div></div>${rowsHtml||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference endpoints registered yet.</div>`}<div style="padding:12px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo}</div></div>`;
+  const card=(inner)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">${inner}</div>`;
+  let body;
   if(tab==='cache'){
-    rows=eps.map(e=>{
-      const on=e.cache_enabled, sem=e.cache_strategy==='semantic', cs=e.cache_stats||{};
-      const controls = on ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        ${sel(e.cache_strategy,[['exact','Exact match'],['semantic','Semantic'],byo],`app.setFeature('${esc(e.endpoint)}',{cache_strategy:this.value})`)}
-        ${sem?`<input type="number" min="0.8" max="1" step="0.01" title="Similarity threshold (1.0 = exact)" value="${e.cache_threshold}" onchange="app.setFeature('${esc(e.endpoint)}',{cache_threshold:parseFloat(this.value)})" style="width:78px;padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px">`:''}
-      </div>`:`<span style="font-size:11.5px;color:#9CA3AF">off</span>`;
-      return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-          <div style="min-width:150px"><span style="font-weight:600;font-size:13.5px">${esc(e.label)}</span>${e.endpoint==='auto'?'<div style="font-size:10.5px;color:#9CA3AF">router-decided requests</div>':''}</div>
-          <div style="flex:1;display:flex;justify-content:flex-end">${controls}</div>
-          ${toggleHtml(on,`app.setFeature('${esc(e.endpoint)}',{cache_enabled:${on?'false':'true'}})`)}
-        </div>
-        ${(cs.entries||cs.hits)?`<div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">${stat(cs.entries||0,'entries')}${stat(cs.hits||0,'hits')}${stat(cs.tokens_saved||0,'tokens saved')}${stat('$'+(cs.cost_saved_usd||0).toFixed(4),'saved')}</div>`:''}
-      </div>`;
+    const cs=auto.cache_stats||{};
+    const exactOn=!!auto.cache_enabled, semOn=auto.cache_enabled&&auto.cache_strategy==='semantic';
+    const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
+    const defaults=card(
+      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Response cache — Smart router default</div>
+       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
+      rowline('Exact-match cache','Reuses a previous answer only when the request is identical. On by default.', sw(exactOn,`app.setFeature('auto',{cache_enabled:${exactOn?'false':'true'},cache_strategy:'exact'})`))+
+      rowline('Semantic cache','Reuses a similar (not identical) answer. Off by default — it can confidently serve a wrong match.', sw(semOn,`app.setFeature('auto',{cache_enabled:true,cache_strategy:'${semOn?'exact':'semantic'}'})`))+
+      statsRow+
+      `<div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Visible only to admins — the user just gets an answer.</div>
+       <a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;display:inline-block;margin-top:8px;color:#2563EB">View cache.hit events in Audit log →</a>`);
+    const rows=models.map(e=>{
+      const val=!e.cache_enabled?'off':(e.cache_strategy||'exact');
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['exact','Exact match'],['semantic','Semantic'],['off','Off']],`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`)}</div>`;
     }).join('');
-    rows+=`<div style="margin-top:6px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button></div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Cost reads $0 on free local endpoints — real dollars accrue against a priced one.</div>`;
+    body=defaults+listCard('Cache strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own cache algorithm — coming soon')+
+      `<div style="margin-top:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button></div>
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Cost reads $0 on free local endpoints — real dollars accrue against a priced one.</div>`;
   } else {
-    rows=eps.map(e=>{
-      const on=e.compression_enabled, ms=e.compression_stats||{};
-      const controls = on ? sel(e.compression_mode,[['baseline','Baseline (safe)'],['aggressive','Aggressive'],byo],`app.setFeature('${esc(e.endpoint)}',{compression_mode:this.value})`)
-        : `<span style="font-size:11.5px;color:#9CA3AF">off</span>`;
-      return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-          <div style="min-width:150px"><span style="font-weight:600;font-size:13.5px">${esc(e.label)}</span>${e.endpoint==='auto'?'<div style="font-size:10.5px;color:#9CA3AF">router-decided requests</div>':''}</div>
-          <div style="flex:1;display:flex;justify-content:flex-end">${controls}</div>
-          ${toggleHtml(on,`app.setFeature('${esc(e.endpoint)}',{compression_enabled:${on?'false':'true'}})`)}
-        </div>
-        ${(ms.requests_compressed)?`<div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">${stat(ms.requests_compressed||0,'requests')}${stat(ms.tokens_saved||0,'tokens saved')}</div>`:''}
-      </div>`;
+    const ms=auto.compression_stats||{};
+    const aggrOn=auto.compression_enabled&&auto.compression_mode==='aggressive';
+    const statsRow=(ms.requests_compressed)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
+    const defaults=card(
+      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Prompt compression — Smart router default</div>
+       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
+      rowline('Baseline trimming','Cuts filler without changing meaning — cannot make an answer worse. Always on.', `<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;flex:none">Always on</span>`)+
+      rowline('Cost-saving mode','Shortens more aggressively (lossy). Opt-in — the caller is notified whenever it is applied.', sw(aggrOn,`app.setFeature('auto',{compression_enabled:true,compression_mode:'${aggrOn?'baseline':'aggressive'}'})`))+
+      statsRow+
+      `<a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;display:inline-block;margin-top:12px;color:#2563EB">View compression events in Audit log →</a>`);
+    const rows=models.map(e=>{
+      const val=!e.compression_enabled?'off':(e.compression_mode||'baseline');
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']],`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)}</div>`;
     }).join('');
-    rows+=`<div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55"><strong>Baseline</strong> is quality-safe (whitespace only). <strong>Aggressive</strong> also trims filler (lossy) — the caller sees it and an admin is alerted, never a silent change. Billing follows the compressed prompt. Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
+    body=defaults+listCard('Compression strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own compression algorithm — coming soon')+
+      `<div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55"><strong>Baseline</strong> is quality-safe (whitespace only). <strong>Aggressive</strong> also trims filler (lossy) — the caller sees it and an admin is alerted, never a silent change. Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
   }
-  return h1+tabs+rows;
+  return h1+tabs+body;
 }
 
 /* ---------- Policies ---------- */
@@ -1436,6 +1444,8 @@ render();
     fetch("/v1/features/"+encodeURIComponent(endpoint),{method:"PUT",headers:hdr,body:JSON.stringify(patch)})
       .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Failed: "+((d.error&&d.error.message)||r.status)); } loadFeatures(); });
   };
+  app.setCacheStrategy = function(endpoint, val){ app.setFeature(endpoint, val==='off' ? {cache_enabled:false} : {cache_enabled:true, cache_strategy:val}); };
+  app.setCompressionMode = function(endpoint, val){ app.setFeature(endpoint, val==='off' ? {compression_enabled:false} : {compression_enabled:true, compression_mode:val}); };
   app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadFeatures()); };
 
   function loadAll(){
