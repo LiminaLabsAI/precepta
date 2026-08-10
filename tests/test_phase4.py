@@ -97,7 +97,11 @@ def test_build_attestation_shape():
     assert att["config"]["all_in_boundary"] is all(b.in_boundary for b in reg.values())
     assert att["audit"]["chain_verified"] is True
     assert att["audit"]["external_calls"] == 0
-    assert att["egress_test"]["result"] == "blocked"
+    # egress_test is now a REAL outbound probe, not the sovereign flag — its
+    # result is environment-dependent ("blocked" in the egress-locked deploy,
+    # "open" on a dev host with internet). Assert the shape + linkage instead.
+    assert att["egress_test"]["result"] in ("blocked", "open", "unknown")
+    assert att["egress_test"]["verified"] is (att["egress_test"]["result"] == "blocked")
     assert len(att["signature"]) == 64
     # TD-007: data stores are enumerated and all in-boundary
     assert att["data_stores"]["all_in_boundary"] is True

@@ -9,6 +9,26 @@ from __future__ import annotations
 from app.router import config as router_config
 
 
+# ── Phase 14 G3: real egress probe in the attestation ────────────────────────
+
+def test_egress_probe_shape():
+    from app.sovereign.probe import egress_probe
+    r = egress_probe(timeout=1.0)
+    assert r["result"] in ("blocked", "open", "unknown")
+    assert isinstance(r["targets"], list) and len(r["targets"]) >= 1
+    assert "reachable" in r
+
+
+def test_attestation_includes_real_egress_test():
+    from app.sovereign.attestation import build_attestation
+    from app.adapters.model.registry import get_registry
+    from app.settings import get_settings
+    att = build_attestation(get_settings(), get_registry())
+    et = att["egress_test"]
+    assert et["result"] in ("blocked", "open", "unknown")
+    assert "verified" in et and "targets" in et
+
+
 # ── concern #8: router settings — atomic switch to HF endpoint ───────────────
 
 def test_router_hf_atomic_switch():
