@@ -706,6 +706,21 @@ def create_app() -> FastAPI:
         sug = await suggest_followups(b.get("context", ""))
         return JSONResponse({"suggestions": sug})
 
+    @app.post("/v1/copilot")
+    async def copilot_ep(request: Request) -> JSONResponse:
+        """Grounded, in-boundary Console assistant. Answers about THIS deployment
+        from a live state snapshot; fail-soft to a deterministic summary."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        from .copilot import answer as copilot_answer
+        out = await copilot_answer(str(b.get("question", "")))
+        return JSONResponse(out)
+
     @app.get("/v1/deployment")
     def deployment_ep(request: Request) -> JSONResponse:
         """Live self-host status for the Deployment screen — all real signals."""
