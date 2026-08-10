@@ -251,10 +251,13 @@ async def governed_chat(
     ctx.backend = route_meta.get("backend_used")   # record backend on the audit row
     if tr is not None:
         _be = route_meta.get("backend_used") or route_meta.get("backend") or "—"
+        _cands = route_meta.get("candidates") or []
         tr.step("routing", f"Routed to {_be}",
                 route_meta.get("reason") or route_meta.get("plan")
                 or "Selected an in-boundary endpoint for this request.",
-                inferred=(req_backend is None))
+                inferred=bool(route_meta.get("inferred", req_backend is None)),
+                extra=({"candidates": _cands,
+                        "intent": route_meta.get("intent")} if _cands else None))
         _u0 = result.get("usage") or {}
         _agent_steps = route_meta.get("agent_steps")   # AgentTarget sub-trace (L2)
         if _agent_steps:

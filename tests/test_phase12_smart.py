@@ -130,3 +130,19 @@ def test_non_sovereign_includes_external():
 def test_decision_is_deterministic():
     a, b = _decide("balanced"), _decide("balanced")
     assert a.target == b.target
+
+
+def test_infinite_latency_is_sanitized_json_safe():
+    # state.latency() returns inf for unobserved backends — must become finite
+    import math
+    cands = smart.score_candidates(
+        {"a": FakeBackend("a", tier=1)}, sovereign=True,
+        price_fn=lambda be, m: FakePrice(0, 0),
+        latency_fn=lambda be: float("inf"))
+    assert cands[0]["latency"] == 0.0
+    assert math.isfinite(cands[0]["latency"])
+    # a decision over inf-latency candidates still resolves (no nan crash)
+    d = smart.decide("fastest", {"a": FakeBackend("a", 1), "b": FakeBackend("b", 2)},
+                     price_fn=lambda be, m: FakePrice(0, 0),
+                     latency_fn=lambda be: float("inf"))
+    assert d.target in ("a", "b")

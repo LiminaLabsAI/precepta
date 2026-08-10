@@ -104,12 +104,16 @@ class Trace:
         self._last = self._t0
 
     def step(self, name: str, decision: str, reason: str, *, status: str = "ok",
-             inferred: bool = False, substeps: list | None = None) -> None:
+             inferred: bool = False, substeps: list | None = None,
+             extra: dict | None = None) -> None:
         """Append one governed step. ``status`` ∈ ok|blocked|warn|hit|failed|skipped.
 
         ``substeps`` nests an agent's own reasoning sub-trace (L2) under this
         step — e.g. the steps an AgentTarget returned via the Agent Trace
         Contract. Absent for a plain model call.
+
+        ``extra`` carries step-specific structured data — e.g. the routing
+        step's scored candidate set for the Traces Route tab.
         """
         try:
             now = time.perf_counter()
@@ -121,6 +125,8 @@ class Trace:
                 s["inferred"] = True
             if substeps:
                 s["substeps"] = list(substeps)
+            if extra:
+                s["extra"] = extra
             self.steps.append(s)
         except Exception:
             pass

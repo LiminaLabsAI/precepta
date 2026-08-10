@@ -15,11 +15,23 @@ later group; this module is the decision, not the dispatch.
 """
 from __future__ import annotations
 
+import math
+
 from . import scoring
 from .scoring import RouteDecision
 
 # tier (1 small / 2 mid / 3 strong) → a quality prior in [0,1]
 _TIER_QUALITY = {1: 0.50, 2: 0.75, 3: 0.95}
+
+
+def _finite(v, default: float = 0.0) -> float:
+    """Coerce to a finite float — state.latency() returns inf for unobserved
+    backends, which breaks both normalisation (nan) and JSON (inf)."""
+    try:
+        v = float(v)
+        return v if math.isfinite(v) else default
+    except (TypeError, ValueError):
+        return default
 
 
 def quality_for_tier(tier: int | None) -> float:
@@ -45,16 +57,39 @@ def score_candidates(registry: dict, *, allowed=None, sovereign: bool = True,
     out: list[dict] = []
     for be, model in _eligible(registry, sovereign, allowed):
         p = price_fn(be.name, model)
-        cost = (getattr(p, "input_per_1m", 0.0) + getattr(p, "output_per_1m", 0.0)) / 2.0
+        cost = _finite((getattr(p, "input_per_1m", 0.0)
+                        + getattr(p, "output_per_1m", 0.0)) / 2.0)
         out.append({
             "target": be.name,
             "model": model,
             "quality": quality_for_tier(getattr(be, "tier", 1)),
             "cost": cost,
-            "latency": float(latency_fn(be.name) or 0.0),
+            "latency": _finite(latency_fn(be.name)),
             "warm": bool(warm_fn(be.name, model)),
         })
     return out
+
+
+# map the gateway's raw intent (parse_intent output) to a catalog intent.
+_DIRECT_INTENT = {
+    "cheapest": "cheapest", "fastest": "fastest", "smartest": "smartest",
+    "best-quality": "smartest", "quality": "smartest", "accuracy": "accuracy",
+    "balanced": "balanced",
+}
+
+
+def catalog_intent_for(intent_raw: str, difficulty: str = "easy") -> tuple[str, float | None, bool]:
+    """Map a raw request intent to a catalog intent.
+
+    Returns ``(intent_key, confidence, inferred)``. An explicit intent maps
+    directly (not inferred, no confidence → no floor). ``auto``/unknown is
+    *inferred* from the difficulty heuristic (hard → smartest, else cheapest).
+    """
+    key = (intent_raw or "").strip().lower()
+    if key in _DIRECT_INTENT:
+        return _DIRECT_INTENT[key], None, False
+    inferred = "smartest" if difficulty == "hard" else "cheapest"
+    return inferred, None, True
 
 
 def decide(intent: str, registry: dict, *, allowed=None, sovereign: bool = True,

@@ -1186,6 +1186,30 @@ def create_app() -> FastAPI:
                 query = next((m.get("content", "") for m in reversed(msgs)
                               if m.get("role") == "user"), "")
                 plan = brain.decide(query, intent, allowed=allowed)
+                # Two-stage smart router (Phase 12): pick the target + produce the
+                # scored candidate set. Fail-soft — any error keeps the brain's plan
+                # and the engine still handles dispatch/failover/cost-gating.
+                route_candidates: list = []
+                route_intent, route_inferred = intent, False
+                try:
+                    from .router import smart as _smart
+                    from .router.brain import _difficulty
+                    from .controls import sovereign_enabled as _sov
+                    from .ports import RoutePlan as _RoutePlan
+                    ci, conf, inf = _smart.catalog_intent_for(intent, _difficulty(query))
+                    rd = _smart.decide(ci, reg, allowed=allowed,
+                                       sovereign=_sov(), confidence=conf)
+                    route_intent, route_inferred = ci, inf
+                    if rd and rd.target and rd.target in reg:
+                        plan = _RoutePlan(rd.target,
+                                          reg[rd.target].default_model or plan.model,
+                                          plan.technique, rd.reason)
+                        route_candidates = [
+                            {"target": c.target, "quality": c.quality, "cost": c.cost,
+                             "latency": c.latency, "warm": c.warm, "chosen": c.chosen}
+                            for c in rd.considered]
+                except Exception:
+                    route_candidates = []          # fail-soft
                 result, meta = await engine.execute(
                     plan, msgs, reg, settings, budget_usd=body.get("budget_usd"),
                     allowed=allowed, **kw)
@@ -1197,6 +1221,8 @@ def create_app() -> FastAPI:
                     "technique": meta["technique"], "reason": meta["reason"],
                     "fell_over": meta["fell_over"], "calls": meta["calls"],
                     "cost_estimate_usd": meta["cost_estimate_usd"], "model": model_str,
+                    "candidates": route_candidates, "intent": route_intent,
+                    "inferred": route_inferred,
                 }
             backend, model = resolve(model_str, reg)
             result = await backend.complete(
