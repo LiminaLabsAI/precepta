@@ -144,6 +144,7 @@ const nav = [
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
   {key:'savings',label:'Cache & compression',icon:'zap'},
+  {key:'traces',label:'Traces',icon:'route'},
   {key:'audit',label:'Audit & Attestation',icon:'file-check'},
   {key:'playground',label:'Playground',icon:'message-square'},
 ];
@@ -641,6 +642,35 @@ function deleteConfirmModal(){
 }
 
 /* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
+/* ---------- Traces ---------- */
+function tracesView(){
+  const org=window.__org||{};
+  const learnOn = org.learning_enabled==='true';
+  const kpi=(label,sub)=>`<div style="padding:16px 18px;border-right:1px solid #E5E7EB"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${label}</div><div style="font-size:24px;font-weight:800;color:#D1D5DB">—</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">${sub}</div></div>`;
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:6px">
+    ${kpi('Cost per accepted task','the honest cost metric')}
+    ${kpi('Acceptance rate','not blocked before inference')}
+    ${kpi('Escalation rate','after a tool error')}
+    ${kpi('Route mix','cheap · mid · frontier')}
+    <div style="padding:16px 18px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Router overhead p99</div><div style="font-size:24px;font-weight:800;color:#D1D5DB">—</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">budget 80ms</div></div>
+  </div>
+  <div style="font-size:11px;color:#9CA3AF;margin-bottom:20px">Metrics populate once trace capture is enabled — no placeholder numbers.</div>`;
+  const empty=`<div style="border:1px dashed #D1D5DB;border-radius:10px;padding:44px 24px;text-align:center;background:#FAFAFA">
+    <div style="width:42px;height:42px;border-radius:50%;background:#EFF6FF;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px"><i data-lucide="route" style="width:20px;height:20px;color:#2563EB"></i></div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px">No traces captured yet</div>
+    <div style="font-size:13px;color:#6B7280;max-width:540px;margin:0 auto 6px;line-height:1.6">Once trace capture ships, every request's full journey — firewall → policy → routing (which model, and <strong>why</strong>) → cache / compression → inference → output check — appears here as a step-by-step timeline, with agent runs stitched into one view.</div>
+    <div style="font-size:12px;color:#9CA3AF;max-width:540px;margin:0 auto 20px;line-height:1.6">Nothing here is fabricated. Until capture is on, the tamper-evident record of every request lives in the Audit log.</div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button onclick="app.setScreen('audit')" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Open Audit log →</button><button onclick="app.openAttestation()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Generate attestation</button></div>
+  </div>`;
+  const learn=`<div style="display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:20px;padding-top:16px;border-top:1px solid #E5E7EB">
+    <div><div style="font-weight:600;font-size:13px">Learn from usage</div><div style="font-size:11px;color:#6B7280;margin-top:3px;max-width:560px;line-height:1.5">Uses thumbs-up/down from the Playground to route smarter over time. Runs only on your own traffic, inside your boundary. Off until you turn it on.</div></div>
+    ${toggleHtml(learnOn, "app.saveOrgSetting('learning_enabled','"+(learnOn?'false':'true')+"')")}
+  </div>`;
+  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Traces</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">The full journey of every request through the guardrail — each step, the decision, and <strong>why</strong> — so you can <em>see</em>, not just trust, what happened to your data. Cost is measured per accepted task, never per token.</div>
+    ${kpis}${empty}${learn}`;
+}
+
 function savingsView(){
   const s=state, tab=s.savingsTab||'cache', feats=window.__features;
   const h1=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Cache &amp; compression</h1>
@@ -1090,6 +1120,7 @@ function contentFor(){
   switch(state.screen){
     case 'onboarding': return onboardingView();
     case 'overview': return overviewView();
+    case 'traces': return tracesView();
     case 'modelplane': return modelPlaneView();
     case 'keys': return keysView();
     case 'savings': return savingsView();
@@ -1426,6 +1457,7 @@ render();
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadFeatures(); }
+    if(sc==="traces"){ loadOrg(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
