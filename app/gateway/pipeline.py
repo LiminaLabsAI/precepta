@@ -301,5 +301,6 @@ async def governed_chat(
                      backend=route_meta.get("backend_used"),
                      model=route_meta.get("model") or req_model, pii=pii,
                      cost_usd=_cost, tokens_in=_u.get("prompt_tokens") or 0,
-                     tokens_out=_u.get("completion_tokens") or 0)
+                     tokens_out=_u.get("completion_tokens") or 0,
+                     response_preview=_content(result))
     return 200, result

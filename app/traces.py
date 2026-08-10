@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS traces (
     tokens_in     INTEGER DEFAULT 0,
     tokens_out    INTEGER DEFAULT 0,
     request_preview TEXT,
+    response_preview TEXT,
     steps_json    TEXT NOT NULL
 )
 """
@@ -59,6 +60,11 @@ CREATE TABLE IF NOT EXISTS traces (
 def ensure_table() -> None:
     with get_conn() as conn:
         conn.execute(_DDL)
+        # migration-safe: add columns introduced after the first release
+        try:
+            conn.execute("ALTER TABLE traces ADD COLUMN response_preview TEXT")
+        except Exception:
+            pass
 
 
 def _now() -> str:
@@ -85,6 +91,7 @@ class Trace:
         self.agent_id = a.get("agent_id")
         self.end_user = a.get("end_user")
         self.request_preview = (request_preview or "")[:280]
+        self.response_preview = ""
         self.backend = None
         self.model = None
         self.outcome = "allowed"
@@ -123,7 +130,8 @@ def begin(team: str, principal: str, role: str, attribution: dict | None,
 
 def save(tr: Trace | None, outcome: str, *, backend: str | None = None,
          model: str | None = None, pii: int = 0, cost_usd: float = 0.0,
-         tokens_in: int = 0, tokens_out: int = 0) -> None:
+         tokens_in: int = 0, tokens_out: int = 0,
+         response_preview: str | None = None) -> None:
     """Persist the accumulated trace. Fail-soft — never raises."""
     if tr is None:
         return
@@ -135,6 +143,8 @@ def save(tr: Trace | None, outcome: str, *, backend: str | None = None,
         tr.cost_usd = float(cost_usd or 0)
         tr.tokens_in = int(tokens_in or 0)
         tr.tokens_out = int(tokens_out or 0)
+        if response_preview is not None:
+            tr.response_preview = (response_preview or "")[:600]
         total_ms = int((time.perf_counter() - tr._t0) * 1000)
         ensure_table()
         with get_conn() as conn:
@@ -142,12 +152,12 @@ def save(tr: Trace | None, outcome: str, *, backend: str | None = None,
                 "INSERT OR REPLACE INTO traces (request_id,ts,team,principal,role,"
                 "workflow_id,run_id,step_name,agent_id,end_user,backend,model,outcome,"
                 "total_ms,pii_redacted,cost_usd,tokens_in,tokens_out,request_preview,"
-                "steps_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "response_preview,steps_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (tr.request_id, _now(), tr.team, tr.principal, tr.role,
                  tr.workflow_id, tr.run_id, tr.step_name, tr.agent_id, tr.end_user,
                  tr.backend, tr.model, tr.outcome, total_ms, int(tr.pii_redacted or 0),
                  tr.cost_usd, tr.tokens_in, tr.tokens_out, tr.request_preview,
-                 json.dumps(tr.steps)))
+                 tr.response_preview, json.dumps(tr.steps)))
     except Exception:
         pass
 
@@ -155,15 +165,18 @@ def save(tr: Trace | None, outcome: str, *, backend: str | None = None,
 # ── reads (team-scoped) ──────────────────────────────────────────────────────
 
 def _row_summary(r) -> dict:
+    keys = r.keys()
     return {
         "request_id": r["request_id"], "ts": r["ts"],
         "principal": r["principal"], "role": r["role"],
-        "run_id": r["run_id"], "step_name": r["step_name"],
-        "agent_id": r["agent_id"], "end_user": r["end_user"],
+        "workflow_id": r["workflow_id"], "run_id": r["run_id"],
+        "step_name": r["step_name"], "agent_id": r["agent_id"],
+        "end_user": r["end_user"],
         "backend": r["backend"], "model": r["model"], "outcome": r["outcome"],
         "total_ms": r["total_ms"], "pii_redacted": r["pii_redacted"],
         "cost_usd": r["cost_usd"], "tokens_in": r["tokens_in"],
         "tokens_out": r["tokens_out"], "request_preview": r["request_preview"],
+        "response_preview": (r["response_preview"] if "response_preview" in keys else ""),
         "step_count": _count(r["steps_json"]),
     }
 

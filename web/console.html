@@ -682,35 +682,102 @@ function tracesView(){
   }
   const sel=state.selectedTrace||traces[0].request_id;
   const detail=window.__traceDetail;
+  const ready = detail && detail.request_id===sel;
+  const actorOf=r=> r.agent_id ? {name:r.agent_id, kind:'agent'} : {name:r.principal||'—', kind:(r.role||'user')};
   const outBadge=o=>{const c=traceColors((o==='allowed'||o==='warn')?'ok':o);return `<span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:10px;background:${c.bg};color:${c.fg}">${esc(o)}</span>`;};
-  const runList=traces.map(r=>{const active=r.request_id===sel;return `<div onclick="app.selectTrace('${r.request_id}')" style="padding:11px 14px;border-bottom:1px solid #F3F4F6;border-left:2px solid ${active?'#2563EB':'transparent'};background:${active?'#F8FAFF':'#fff'};cursor:pointer">
+  const runList=traces.map(r=>{const active=r.request_id===sel;const a=actorOf(r);return `<div onclick="app.selectTrace('${r.request_id}')" style="padding:11px 14px;border-bottom:1px solid #F3F4F6;border-left:2px solid ${active?'#2563EB':'transparent'};background:${active?'#F8FAFF':'#fff'};cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">${r.request_id.slice(0,8)}</span>${outBadge(r.outcome)}</div>
-    <div style="font-size:11.5px;color:#374151;margin-top:4px;line-height:1.4;max-height:32px;overflow:hidden">${esc(r.request_preview||'(no preview)')}</div>
-    <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">${esc(r.principal||'—')}${r.run_id?' · run '+esc(r.run_id):''} · ${r.total_ms}ms · ${r.step_count} steps</div>
+    <div style="font-size:12px;font-weight:600;color:#111827;margin-top:5px">${esc(a.name)} <span style="font-size:10px;font-weight:500;color:#9CA3AF">(${esc(a.kind)})</span></div>
+    <div style="font-size:11.5px;color:#374151;margin-top:3px;line-height:1.4;max-height:32px;overflow:hidden">${esc(r.request_preview||'(no preview)')}</div>
+    <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">${r.run_id?'run '+esc(r.run_id)+' · ':''}${r.total_ms}ms · ${r.step_count} steps</div>
   </div>`;}).join('');
-  let detailPane;
-  if(!detail || detail.request_id!==sel){ detailPane=`<div style="padding:20px;font-size:12px;color:#9CA3AF">Loading trace…</div>`; }
+
+  // ── middle: checkpoint waterfall (click a step to expand its details) ──
+  let checkPane;
+  if(!ready){ checkPane=`<div style="padding:20px;font-size:12px;color:#9CA3AF">Loading trace…</div>`; }
   else {
     const steps=detail.steps||[];
     const maxms=Math.max(1,...steps.map(s=>s.ms||0));
-    const rows=steps.map(s=>{const c=traceColors(s.status);const w=Math.max(3,Math.round(100*(s.ms||0)/maxms));return `<div style="padding:11px 16px;border-bottom:1px solid #F3F4F6">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="width:92px;flex:none;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#111827">${esc(s.name)}</span>
-        <div style="flex:1;height:16px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${c.bar};border-radius:3px"></div></div>
-        <span style="width:54px;flex:none;text-align:right;font-size:10.5px;color:#6B7280;font-family:'JetBrains Mono',monospace">${s.ms}ms</span>
-      </div>
-      <div style="margin-left:102px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9.5px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}<div style="font-size:11.5px;color:#6B7280;margin-top:2px;line-height:1.5;max-width:520px">${esc(s.reason)}</div></div>
-    </div>`;}).join('');
-    const m=detail;
-    const facts=[['Outcome',m.outcome],['Duration',m.total_ms+'ms'],['Steps',m.step_count],['Backend',m.backend||'—'],['PII redacted',m.pii_redacted],['Cost','$'+Number(m.cost_usd||0).toFixed(4)]];
-    const sum=`<div style="padding:14px 16px;border-bottom:1px solid #E5E7EB;display:flex;flex-wrap:wrap;gap:20px">${facts.map(f=>`<div><div style="font-size:10px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em">${f[0]}</div><div style="font-size:13px;font-weight:600;margin-top:2px">${esc(String(f[1]))}</div></div>`).join('')}</div>`;
-    detailPane=sum+`<div style="padding:12px 16px 4px;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Checkpoints — the request's journey (ingress → egress)</div>`+rows;
+    const exp=state.traceExpanded;
+    const rows=steps.map((s,i)=>{const c=traceColors(s.status);const w=Math.max(3,Math.round(100*(s.ms||0)/maxms));const open=(exp===i);
+      const kv=(k,v)=>`<div style="display:flex;gap:10px;font-size:11px;padding:3px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:78px;flex:none">${k}</span><span style="color:#111827">${esc(String(v))}</span></div>`;
+      const det=open?`<div style="padding:2px 14px 12px 106px">
+        <span style="font-size:12.5px;font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9.5px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}
+        <div style="font-size:12px;color:#6B7280;margin:4px 0 8px;line-height:1.55;max-width:540px">${esc(s.reason)}</div>
+        ${kv('Status',s.status)}${kv('Duration',s.ms+'ms')}${kv('Step',s.name)}${s.inferred?kv('Router intent','inferred (not a stated fact)'):''}
+      </div>`:'';
+      return `<div style="border-bottom:1px solid #F3F4F6">
+        <div onclick="app.toggleCheckpoint(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer">
+          <span style="width:88px;flex:none;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#111827">${esc(s.name)}</span>
+          <div style="flex:1;min-width:0;height:16px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${c.bar};border-radius:3px"></div></div>
+          <span style="width:50px;flex:none;text-align:right;font-size:10.5px;color:#6B7280;font-family:'JetBrains Mono',monospace">${s.ms}ms</span>
+          <span style="width:12px;flex:none;text-align:center;font-size:11px;color:#9CA3AF">${open?'▾':'▸'}</span>
+        </div>${det}
+      </div>`;}).join('');
+    checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Checkpoints</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
   }
-  const threePane=`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;display:flex;min-height:360px">
-    <div class="pc-scroll" style="width:240px;flex:none;border-right:1px solid #E5E7EB;overflow-y:auto;max-height:600px"><div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between"><span>Runs</span><span>${traces.length}</span></div>${runList}</div>
-    <div class="pc-scroll" style="flex:1;min-width:0;overflow-y:auto;max-height:600px">${detailPane}</div>
-  </div>`;
+
+  // ── right: detail tabs (summary / route / messages / attributes) ──
+  const tab=state.traceTab||'summary';
+  const tabBar=`<div style="display:flex;border-bottom:1px solid #E5E7EB">${[['summary','Summary'],['route','Route'],['messages','Messages'],['attributes','Attributes']].map(t=>`<div onclick="app.setTraceTab('${t[0]}')" style="flex:1;text-align:center;padding:10px 4px;font-size:10.5px;font-weight:700;letter-spacing:.03em;cursor:pointer;color:${tab===t[0]?'#111827':'#9CA3AF'};border-bottom:2px solid ${tab===t[0]?'#2563EB':'transparent'}">${t[1]}</div>`).join('')}</div>`;
+  let tabBody;
+  if(!ready){ tabBody=`<div style="padding:18px;font-size:12px;color:#9CA3AF">Loading…</div>`; }
+  else {
+    const m=detail, steps=m.steps||[];
+    const flagged=steps.filter(s=>s.status==='warn').length;
+    const failed=steps.filter(s=>s.status==='blocked'||s.status==='failed').length;
+    const row=(k,v,c)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0"><span style="color:#6B7280">${k}</span><strong style="color:${c||'#111827'}">${esc(String(v))}</strong></div>`;
+    if(tab==='summary'){
+      tabBody=`<div style="padding:16px 18px">
+        ${row('Outcome',m.outcome, m.outcome==='allowed'?'#065F46':(m.outcome==='warn'?'#92400E':'#991B1B'))}
+        ${row('Duration',m.total_ms+'ms')}${row('Checkpoints',m.step_count)}
+        ${row('Flagged',flagged,flagged?'#92400E':'#111827')}${row('Blocked/failed',failed,failed?'#991B1B':'#111827')}
+        ${row('PII redacted',m.pii_redacted)}${row('Cost','$'+Number(m.cost_usd||0).toFixed(4))}
+        ${row('Backend',m.backend||'—')}
+        <div style="font-size:11.5px;color:#6B7280;line-height:1.6;margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6">${esc(traceSummarySentence(m))}</div>
+      </div>`;
+    } else if(tab==='route'){
+      const rt=steps.find(s=>s.name==='routing');
+      tabBody=`<div style="padding:16px 18px">
+        <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Routing decision</div>
+        ${rt?`<div style="font-size:13px;font-weight:600">${esc(rt.decision)}${rt.inferred?' <span style="font-size:9.5px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}</div><div style="font-size:12px;color:#6B7280;margin-top:4px;line-height:1.55">${esc(rt.reason)}</div>`:`<div style="font-size:12px;color:#6B7280">This request was blocked before a target was chosen.</div>`}
+        ${row('Backend',m.backend||'—')}${row('Model',m.model||'—')}
+        <div style="margin-top:14px;padding:11px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:11.5px;color:#92400E;line-height:1.5">Candidates considered — the scored list of every model the router weighed — arrives with the Smart Router (Phase 12). Today's router picks a single in-boundary target.</div>
+      </div>`;
+    } else if(tab==='messages'){
+      tabBody=`<div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+        <div><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Request</div><div style="font-size:12.5px;color:#111827;line-height:1.55;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:6px;padding:10px">${esc(m.request_preview||'—')}</div></div>
+        <div><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Response</div><div style="font-size:12.5px;color:#111827;line-height:1.55;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:6px;padding:10px">${esc(m.response_preview|| (m.outcome==='allowed'?'—':'(no response — '+m.outcome+')'))}</div></div>
+        <div style="font-size:10.5px;color:#9CA3AF;line-height:1.5">Shown to admins only, in-boundary. PII in the request was redacted before any model saw it.</div>
+      </div>`;
+    } else {
+      const A=[['request_id',m.request_id],['ts',m.ts],['principal',m.principal],['role',m.role],['run_id',m.run_id||'—'],['workflow_id',m.workflow_id||'—'],['step_name',m.step_name||'—'],['agent_id',m.agent_id||'—'],['end_user',m.end_user||'—'],['backend',m.backend||'—'],['model',m.model||'—'],['outcome',m.outcome],['total_ms',m.total_ms],['pii_redacted',m.pii_redacted],['tokens_in',m.tokens_in],['tokens_out',m.tokens_out],['cost_usd',m.cost_usd]];
+      tabBody=`<div style="padding:14px 16px">${A.map(kv=>`<div style="display:flex;gap:10px;font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:104px;flex:none">${kv[0]}</span><span style="color:#111827;word-break:break-all">${esc(String(kv[1]))}</span></div>`).join('')}</div>`;
+    }
+  }
+
+  const rw=state.trRunsW||240, cw=state.trCheckW||360, dw=340;
+  const divider=which=>`<div onmousedown="app.trResize(${which},event)" title="Drag to resize" style="width:6px;flex:none;cursor:col-resize;background:#F3F4F6;border-left:1px solid #E5E7EB;border-right:1px solid #E5E7EB"></div>`;
+  const rowW=rw+cw+dw+12;
+  const threePane=`<div class="pc-scroll" style="width:100%;overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
+   <div style="display:flex;height:600px;min-width:${rowW}px">
+    <div id="trRuns" class="pc-scroll" style="width:${rw}px;flex:none;overflow-y:auto"><div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:1"><span>Runs</span><span>${traces.length}</span></div>${runList}</div>
+    ${divider(1)}
+    <div id="trCheck" class="pc-scroll" style="width:${cw}px;flex:none;overflow-y:auto">${checkPane}</div>
+    ${divider(2)}
+    <div id="trDetail" class="pc-scroll" style="width:${dw}px;flex:1;min-width:${dw}px;overflow-y:auto">${tabBar}${tabBody}</div>
+   </div>
+  </div>
+  <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a checkpoint to expand its details.</div>`;
   return head+kpis+threePane+learn;
+}
+function traceSummarySentence(d){
+  const s=d.steps||[]; const blk=s.find(x=>x.status==='blocked'||x.status==='failed');
+  if(blk) return 'Blocked at the '+blk.name+' step: '+blk.reason;
+  const parts=[]; const fw=s.find(x=>x.name==='firewall'); if(fw&&/Redacted/.test(fw.decision)) parts.push(fw.decision.toLowerCase());
+  const rt=s.find(x=>x.name==='routing'); if(rt) parts.push(rt.decision.toLowerCase()+(rt.inferred?' (intent inferred)':''));
+  const cache=s.find(x=>x.status==='hit'); if(cache) parts.push('served from cache');
+  return (parts.length?parts.join(', ')+'; ':'')+'completed in '+d.total_ms+'ms — '+d.outcome+'.';
 }
 
 function savingsView(){
@@ -1514,7 +1581,21 @@ render();
   };
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
-  app.selectTrace = function(rid){ state.selectedTrace=rid; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
+  app.selectTrace = function(rid){ state.selectedTrace=rid; state.traceExpanded=null; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
+  app.setTraceTab = function(t){ state.traceTab=t; render(); };
+  app.toggleCheckpoint = function(i){ state.traceExpanded=(state.traceExpanded===i?null:i); render(); };
+  app.trResize = function(which, ev){
+    ev.preventDefault();
+    const runs=document.getElementById('trRuns'), check=document.getElementById('trCheck');
+    if(!runs||!check) return;
+    const startX=ev.clientX, sR=runs.offsetWidth, sC=check.offsetWidth;
+    function mv(e){ const dx=e.clientX-startX;
+      if(which===1){ const w=Math.max(180,Math.min(440,sR+dx)); runs.style.width=w+'px'; state.trRunsW=w; }
+      else { const w=Math.max(240,Math.min(760,sC+dx)); check.style.width=w+'px'; state.trCheckW=w; } }
+    function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; }
+    document.body.style.userSelect='none';
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  };
   app.setSavingsTab = function(t){ state.savingsTab=t; render(); };
   app.setFeature = function(endpoint, patch){
     fetch("/v1/features/"+encodeURIComponent(endpoint),{method:"PUT",headers:hdr,body:JSON.stringify(patch)})
