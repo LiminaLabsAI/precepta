@@ -286,6 +286,35 @@ def stats(team: str) -> dict:
                 "cost_per_accepted": None, "route_mix": [], "escalation_rate": None}
 
 
+def billback(team: str) -> dict:
+    """Chargeback view (Phase 11) — real cost + request counts per app (principal)
+    and per agent, team-scoped. All figures come from captured traces."""
+    try:
+        ensure_table()
+        with get_conn() as conn:
+            byp = conn.execute(
+                "SELECT principal, COUNT(*) n, COALESCE(SUM(cost_usd),0) cost, "
+                "COALESCE(SUM(tokens_in+tokens_out),0) toks FROM traces WHERE team=? "
+                "GROUP BY principal ORDER BY cost DESC, n DESC", (team or "",)).fetchall()
+            bya = conn.execute(
+                "SELECT agent_id, COUNT(*) n, COALESCE(SUM(cost_usd),0) cost "
+                "FROM traces WHERE team=? AND agent_id IS NOT NULL AND agent_id<>'' "
+                "GROUP BY agent_id ORDER BY cost DESC, n DESC", (team or "",)).fetchall()
+            tot = conn.execute(
+                "SELECT COUNT(*) n, COALESCE(SUM(cost_usd),0) cost FROM traces WHERE team=?",
+                (team or "",)).fetchone()
+        return {
+            "by_app": [{"app": r["principal"] or "—", "requests": r["n"],
+                        "cost_usd": round(r["cost"], 6), "tokens": r["toks"]} for r in byp],
+            "by_agent": [{"agent": r["agent_id"], "requests": r["n"],
+                          "cost_usd": round(r["cost"], 6)} for r in bya],
+            "total_requests": tot["n"] or 0,
+            "total_cost_usd": round(tot["cost"] or 0, 6),
+        }
+    except Exception:
+        return {"by_app": [], "by_agent": [], "total_requests": 0, "total_cost_usd": 0}
+
+
 def clear(team: str | None = None) -> None:
     try:
         ensure_table()

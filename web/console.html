@@ -712,6 +712,12 @@ function tracesView(){
   </div>`;
   const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Traces</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">The full journey of every request through the guardrail — each step, the decision, and <strong>why</strong> — so you can <em>see</em>, not just trust, what happened to your data. Cost is measured per accepted task, never per token.</div>`;
+  const bb=window.__billback;
+  const bbCol=(title,rows,fmt)=>`<div style="flex:1;min-width:220px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${title}</div>${rows.length?rows.slice(0,6).map(fmt).join(''):'<div style="font-size:12px;color:#9CA3AF">No usage yet.</div>'}</div>`;
+  const bbRow=(name,r)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid #F3F4F6"><span style="font-weight:500">${esc(name)}</span><span style="color:#6B7280">${r.requests} req · $${Number(r.cost_usd||0).toFixed(4)}</span></div>`;
+  const bbPanel=bb?`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 18px;margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><div style="font-weight:600;font-size:14px">Bill-back</div><div style="font-size:11px;color:#9CA3AF">${bb.total_requests} requests · $${Number(bb.total_cost_usd||0).toFixed(4)} total · this team</div></div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap">${bbCol('Cost by app',bb.by_app||[],a=>bbRow(a.app,a))}${bbCol('Cost by agent',bb.by_agent||[],a=>bbRow(a.agent,a))}</div></div>`:'';
   if(!t) return head+kpis+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading traces…</div>`+learn;
   const traces=t.traces||[];
   if(!traces.length){
@@ -720,7 +726,7 @@ function tracesView(){
       <div style="font-size:13px;color:#6B7280;max-width:540px;margin:0 auto 20px;line-height:1.6">Send a request through the gateway and its full journey — firewall → policy → routing (which model, and <strong>why</strong>) → cache / compression → inference → output check — appears here as a step-by-step timeline. Try the Playground.</div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button onclick="app.setScreen('playground')" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Open Playground →</button><button onclick="app.openAttestation()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Generate attestation</button></div>
     </div>`;
-    return head+kpis+empty+learn;
+    return head+kpis+bbPanel+empty+learn;
   }
   const sel=state.selectedTrace||traces[0].request_id;
   const detail=window.__traceDetail;
@@ -819,7 +825,7 @@ function tracesView(){
    </div>
   </div>
   <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a checkpoint to expand its details.</div>`;
-  return head+kpis+threePane+learn;
+  return head+kpis+bbPanel+threePane+learn;
 }
 function traceSummarySentence(d){
   const s=d.steps||[]; const blk=s.find(x=>x.status==='blocked'||x.status==='failed');
@@ -1617,7 +1623,7 @@ render();
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadFeatures(); }
-    if(sc==="traces"){ loadOrg(); loadTraces(); }
+    if(sc==="traces"){ loadOrg(); loadTraces(); loadBillback(); }
     if(sc==="workflow"){ loadWorkflow(); }
   };
   async function loadAuthz(){
@@ -1634,6 +1640,7 @@ render();
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
   async function loadWorkflow(){ const d=await getJSON("/v1/workflow"); if(d && !d.error){ window.__workflow=d; render(); } }
+  async function loadBillback(){ const d=await getJSON("/v1/billback"); if(d && !d.error){ window.__billback=d; render(); } }
   app.selectTrace = function(rid){ state.selectedTrace=rid; state.traceExpanded=null; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
   app.setTraceTab = function(t){ state.traceTab=t; render(); };
   app.toggleCheckpoint = function(i){ state.traceExpanded=(state.traceExpanded===i?null:i); render(); };

@@ -617,6 +617,14 @@ def create_app() -> FastAPI:
         from . import traces as _tr
         return JSONResponse(_tr.stats(team))
 
+    @app.get("/v1/billback")
+    def billback_ep(request: Request) -> JSONResponse:
+        principal, team, err = _traces_guard(request)
+        if err is not None:
+            return err
+        from . import traces as _tr
+        return JSONResponse(_tr.billback(team))
+
     @app.get("/v1/traces/runs/{run_id}")
     def trace_run_ep(run_id: str, request: Request) -> JSONResponse:
         principal, team, err = _traces_guard(request)
