@@ -587,6 +587,56 @@ def create_app() -> FastAPI:
         from . import learning as _learn
         return JSONResponse(_learn.stats())
 
+    # ── Traces (FEAT-010): admin-only, team-scoped per-request journeys ──
+    def _traces_guard(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return None, None, err
+        if not get_authz().can(principal, "policy.update"):
+            return None, None, JSONResponse(
+                {"error": {"message": "forbidden", "type": "forbidden"}}, status_code=403)
+        return principal, (getattr(principal, "team", "") or ""), None
+
+    @app.get("/v1/traces")
+    def list_traces_ep(request: Request) -> JSONResponse:
+        principal, team, err = _traces_guard(request)
+        if err is not None:
+            return err
+        from . import traces as _tr
+        limit = int(request.query_params.get("limit", "50") or 50)
+        run_id = request.query_params.get("run_id") or None
+        outcome = request.query_params.get("outcome") or None
+        return JSONResponse({"traces": _tr.list_traces(team, limit, run_id, outcome),
+                             "stats": _tr.stats(team)})
+
+    @app.get("/v1/traces/stats")
+    def traces_stats_ep(request: Request) -> JSONResponse:
+        principal, team, err = _traces_guard(request)
+        if err is not None:
+            return err
+        from . import traces as _tr
+        return JSONResponse(_tr.stats(team))
+
+    @app.get("/v1/traces/runs/{run_id}")
+    def trace_run_ep(run_id: str, request: Request) -> JSONResponse:
+        principal, team, err = _traces_guard(request)
+        if err is not None:
+            return err
+        from . import traces as _tr
+        return JSONResponse(_tr.get_run(run_id, team))
+
+    @app.get("/v1/traces/{request_id}")
+    def trace_one_ep(request_id: str, request: Request) -> JSONResponse:
+        principal, team, err = _traces_guard(request)
+        if err is not None:
+            return err
+        from . import traces as _tr
+        t = _tr.get_trace(request_id, team)
+        if t is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        return JSONResponse(t)
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)

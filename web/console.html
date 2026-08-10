@@ -643,32 +643,74 @@ function deleteConfirmModal(){
 
 /* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
 /* ---------- Traces ---------- */
+function traceColors(st){
+  if(st==='blocked'||st==='failed') return {bg:'#FEF2F2',fg:'#991B1B',bar:'#DC2626'};
+  if(st==='warn') return {bg:'#FFFBEB',fg:'#92400E',bar:'#D97706'};
+  if(st==='hit') return {bg:'#EFF6FF',fg:'#1D4ED8',bar:'#2563EB'};
+  return {bg:'#F0FDF4',fg:'#065F46',bar:'#059669'};
+}
 function tracesView(){
-  const org=window.__org||{};
+  const t=window.__traces, org=window.__org||{};
   const learnOn = org.learning_enabled==='true';
-  const kpi=(label,sub)=>`<div style="padding:16px 18px;border-right:1px solid #E5E7EB"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${label}</div><div style="font-size:24px;font-weight:800;color:#D1D5DB">—</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">${sub}</div></div>`;
-  const kpis=`<div style="display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:6px">
-    ${kpi('Cost per accepted task','the honest cost metric')}
-    ${kpi('Acceptance rate','not blocked before inference')}
-    ${kpi('Escalation rate','after a tool error')}
-    ${kpi('Route mix','cheap · mid · frontier')}
-    <div style="padding:16px 18px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Router overhead p99</div><div style="font-size:24px;font-weight:800;color:#D1D5DB">—</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">budget 80ms</div></div>
-  </div>
-  <div style="font-size:11px;color:#9CA3AF;margin-bottom:20px">Metrics populate once trace capture is enabled — no placeholder numbers.</div>`;
-  const empty=`<div style="border:1px dashed #D1D5DB;border-radius:10px;padding:44px 24px;text-align:center;background:#FAFAFA">
-    <div style="width:42px;height:42px;border-radius:50%;background:#EFF6FF;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px"><i data-lucide="route" style="width:20px;height:20px;color:#2563EB"></i></div>
-    <div style="font-size:16px;font-weight:700;margin-bottom:6px">No traces captured yet</div>
-    <div style="font-size:13px;color:#6B7280;max-width:540px;margin:0 auto 6px;line-height:1.6">Once trace capture ships, every request's full journey — firewall → policy → routing (which model, and <strong>why</strong>) → cache / compression → inference → output check — appears here as a step-by-step timeline, with agent runs stitched into one view.</div>
-    <div style="font-size:12px;color:#9CA3AF;max-width:540px;margin:0 auto 20px;line-height:1.6">Nothing here is fabricated. Until capture is on, the tamper-evident record of every request lives in the Audit log.</div>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button onclick="app.setScreen('audit')" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Open Audit log →</button><button onclick="app.openAttestation()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Generate attestation</button></div>
+  const st=(t&&t.stats)||{};
+  const money=v=>v==null?'—':('$'+Number(v).toFixed(4));
+  const mixArr=st.route_mix||[];
+  const mixTxt=mixArr.map(m=>esc(m.backend)+' '+m.count).join(' · ')||'—';
+  const kpi=(label,val,sub)=>`<div style="padding:16px 18px;border-right:1px solid #E5E7EB"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${label}</div><div style="font-size:24px;font-weight:800;color:${(val==='—')?'#D1D5DB':'#111827'}">${val}</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">${sub}</div></div>`;
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:18px">
+    ${kpi('Cost per accepted task',money(st.cost_per_accepted),'the honest cost metric')}
+    ${kpi('Acceptance rate',st.acceptance_rate==null?'—':st.acceptance_rate+'%',(st.accepted||0)+' of '+(st.total||0)+' not blocked')}
+    ${kpi('Escalation rate','—','arrives with smart router')}
+    ${kpi('Route mix',mixArr.length?String(mixArr.reduce((a,m)=>a+m.count,0)):'—',mixTxt)}
+    <div style="padding:16px 18px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Router overhead p99</div><div style="font-size:24px;font-weight:800;color:#D1D5DB">—</div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">not measured yet</div></div>
   </div>`;
   const learn=`<div style="display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:20px;padding-top:16px;border-top:1px solid #E5E7EB">
     <div><div style="font-weight:600;font-size:13px">Learn from usage</div><div style="font-size:11px;color:#6B7280;margin-top:3px;max-width:560px;line-height:1.5">Uses thumbs-up/down from the Playground to route smarter over time. Runs only on your own traffic, inside your boundary. Off until you turn it on.</div></div>
     ${toggleHtml(learnOn, "app.saveOrgSetting('learning_enabled','"+(learnOn?'false':'true')+"')")}
   </div>`;
-  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Traces</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">The full journey of every request through the guardrail — each step, the decision, and <strong>why</strong> — so you can <em>see</em>, not just trust, what happened to your data. Cost is measured per accepted task, never per token.</div>
-    ${kpis}${empty}${learn}`;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Traces</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">The full journey of every request through the guardrail — each step, the decision, and <strong>why</strong> — so you can <em>see</em>, not just trust, what happened to your data. Cost is measured per accepted task, never per token.</div>`;
+  if(!t) return head+kpis+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading traces…</div>`+learn;
+  const traces=t.traces||[];
+  if(!traces.length){
+    const empty=`<div style="border:1px dashed #D1D5DB;border-radius:10px;padding:44px 24px;text-align:center;background:#FAFAFA">
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px">No traces captured yet</div>
+      <div style="font-size:13px;color:#6B7280;max-width:540px;margin:0 auto 20px;line-height:1.6">Send a request through the gateway and its full journey — firewall → policy → routing (which model, and <strong>why</strong>) → cache / compression → inference → output check — appears here as a step-by-step timeline. Try the Playground.</div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button onclick="app.setScreen('playground')" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Open Playground →</button><button onclick="app.openAttestation()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Generate attestation</button></div>
+    </div>`;
+    return head+kpis+empty+learn;
+  }
+  const sel=state.selectedTrace||traces[0].request_id;
+  const detail=window.__traceDetail;
+  const outBadge=o=>{const c=traceColors((o==='allowed'||o==='warn')?'ok':o);return `<span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:10px;background:${c.bg};color:${c.fg}">${esc(o)}</span>`;};
+  const runList=traces.map(r=>{const active=r.request_id===sel;return `<div onclick="app.selectTrace('${r.request_id}')" style="padding:11px 14px;border-bottom:1px solid #F3F4F6;border-left:2px solid ${active?'#2563EB':'transparent'};background:${active?'#F8FAFF':'#fff'};cursor:pointer">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">${r.request_id.slice(0,8)}</span>${outBadge(r.outcome)}</div>
+    <div style="font-size:11.5px;color:#374151;margin-top:4px;line-height:1.4;max-height:32px;overflow:hidden">${esc(r.request_preview||'(no preview)')}</div>
+    <div style="font-size:10.5px;color:#9CA3AF;margin-top:4px">${esc(r.principal||'—')}${r.run_id?' · run '+esc(r.run_id):''} · ${r.total_ms}ms · ${r.step_count} steps</div>
+  </div>`;}).join('');
+  let detailPane;
+  if(!detail || detail.request_id!==sel){ detailPane=`<div style="padding:20px;font-size:12px;color:#9CA3AF">Loading trace…</div>`; }
+  else {
+    const steps=detail.steps||[];
+    const maxms=Math.max(1,...steps.map(s=>s.ms||0));
+    const rows=steps.map(s=>{const c=traceColors(s.status);const w=Math.max(3,Math.round(100*(s.ms||0)/maxms));return `<div style="padding:11px 16px;border-bottom:1px solid #F3F4F6">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:92px;flex:none;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#111827">${esc(s.name)}</span>
+        <div style="flex:1;height:16px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${c.bar};border-radius:3px"></div></div>
+        <span style="width:54px;flex:none;text-align:right;font-size:10.5px;color:#6B7280;font-family:'JetBrains Mono',monospace">${s.ms}ms</span>
+      </div>
+      <div style="margin-left:102px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9.5px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}<div style="font-size:11.5px;color:#6B7280;margin-top:2px;line-height:1.5;max-width:520px">${esc(s.reason)}</div></div>
+    </div>`;}).join('');
+    const m=detail;
+    const facts=[['Outcome',m.outcome],['Duration',m.total_ms+'ms'],['Steps',m.step_count],['Backend',m.backend||'—'],['PII redacted',m.pii_redacted],['Cost','$'+Number(m.cost_usd||0).toFixed(4)]];
+    const sum=`<div style="padding:14px 16px;border-bottom:1px solid #E5E7EB;display:flex;flex-wrap:wrap;gap:20px">${facts.map(f=>`<div><div style="font-size:10px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.05em">${f[0]}</div><div style="font-size:13px;font-weight:600;margin-top:2px">${esc(String(f[1]))}</div></div>`).join('')}</div>`;
+    detailPane=sum+`<div style="padding:12px 16px 4px;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Checkpoints — the request's journey (ingress → egress)</div>`+rows;
+  }
+  const threePane=`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;display:flex;min-height:360px">
+    <div class="pc-scroll" style="width:240px;flex:none;border-right:1px solid #E5E7EB;overflow-y:auto;max-height:600px"><div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between"><span>Runs</span><span>${traces.length}</span></div>${runList}</div>
+    <div class="pc-scroll" style="flex:1;min-width:0;overflow-y:auto;max-height:600px">${detailPane}</div>
+  </div>`;
+  return head+kpis+threePane+learn;
 }
 
 function savingsView(){
@@ -1457,7 +1499,7 @@ render();
     if(sc==="keys"){ loadKeys(); loadUsage(); loadInfra(); }
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadFeatures(); }
-    if(sc==="traces"){ loadOrg(); }
+    if(sc==="traces"){ loadOrg(); loadTraces(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
@@ -1471,6 +1513,8 @@ render();
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__agentBudgets=d.agents; render(); } else alert('Failed: '+((d.error&&d.error.message)||r.status)); });
   };
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
+  async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
+  app.selectTrace = function(rid){ state.selectedTrace=rid; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
   app.setSavingsTab = function(t){ state.savingsTab=t; render(); };
   app.setFeature = function(endpoint, patch){
     fetch("/v1/features/"+encodeURIComponent(endpoint),{method:"PUT",headers:hdr,body:JSON.stringify(patch)})
