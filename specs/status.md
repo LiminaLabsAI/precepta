@@ -46,7 +46,7 @@ predates momentum founding; foundation docs were authored from the existing root
 |-------|--------|--------|----------|
 | 12 — Smart Router (+ workflow view) | `main` | ✅ Built + tested + **merged to `main`** 2026-08-10; **activated** in the live path (candidate set in traces) | Done |
 | 11 — Traces (request-lifecycle observability) | `main` | ✅ Built + tested + merged 2026-08-10 (L1 + L2 agent sub-trace + bill-back) | Done |
-| 14 — Deploy: Sovereign Pilot (self-host) | `phase-14-deploy-pilot` | Planned (brainstormed 2026-08-10) — run `/start-phase` | 0% |
+| 14 — Deploy: Sovereign Pilot (self-host) | `phase-14-deploy-pilot` | **Complete 2026-08-10** — SMOKE PASS (governed, in-boundary, provably zero-egress); + copilot + dummy-code audit; 327 tests green | 100% |
 
 ## Upcoming Phases
 
