@@ -13,6 +13,10 @@ def enforce_backend(backend, settings=None) -> str | None:
     default, so the Console's owner-gated toggle actually takes effect."""
     from ..controls import sovereign_enabled
     if sovereign_enabled() and not getattr(backend, "in_boundary", True):
-        return (f"out-of-boundary route to {getattr(backend, 'name', '?')!r} "
-                "blocked by Sovereign Mode (in-boundary-only routing)")
+        name = getattr(backend, "name", "?")
+        return (f"'{name}' is outside your network boundary, so Sovereign Mode "
+                f"blocked it (in-boundary-only routing is on). To use it: either "
+                f"mark '{name}' as in-boundary in the Inference plane — only if it "
+                f"truly runs inside your network — or an owner can turn off "
+                f"Sovereign Mode in Policies.")
     return None

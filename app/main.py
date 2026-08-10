@@ -1224,7 +1224,10 @@ def create_app() -> FastAPI:
                     "route_mode": intent, "brain": brain.name,
                     "technique": meta["technique"], "reason": meta["reason"],
                     "fell_over": meta["fell_over"], "calls": meta["calls"],
-                    "cost_estimate_usd": meta["cost_estimate_usd"], "model": model_str,
+                    "cost_estimate_usd": meta["cost_estimate_usd"],
+                    # the real model served, not the "auto" alias
+                    "model": (meta.get("model") or getattr(used, "default_model", "")
+                              or model_str),
                     "candidates": route_candidates, "intent": route_intent,
                     "inferred": route_inferred,
                 }

@@ -6,6 +6,8 @@ runtime by the top bar, the gateway (default model), and the compliance report.
 """
 from __future__ import annotations
 
+import os
+
 from .db import get_conn
 
 _DDL = "CREATE TABLE IF NOT EXISTS org_settings (key TEXT PRIMARY KEY, value TEXT)"
@@ -15,7 +17,7 @@ _DEFAULTS = {
     "default_model": "ollama/llama3.2:3b",
     "data_residency": "India (Mumbai)",
     "audit_retention_years": "7",
-    "timezone": "Asia/Kolkata",          # budget windows + time displays honor this
+    "timezone": os.environ.get("PRECEPTA_TIMEZONE", "Asia/Kolkata"),  # env-overridable; budget windows + time displays honor this
     "optimize_auto": "false",            # "Optimize automatically" → LLM router (off = rules)
     "cache_enabled": "false",            # response cache (FEAT-003) — off by default (safe)
     "cache_semantic": "false",           # semantic cache — opt-in risk

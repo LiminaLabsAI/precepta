@@ -683,6 +683,14 @@ function workflowView(){
 }
 
 /* ---------- Traces ---------- */
+function fmtTime(iso){
+  if(!iso) return '—';
+  try{
+    const tz=((window.__org||{}).timezone)||'Asia/Kolkata';
+    const s=new Intl.DateTimeFormat('en-GB',{timeZone:tz,year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(iso));
+    return s+' '+(tz.split('/').pop()||tz);
+  }catch(e){ return iso; }
+}
 function traceColors(st){
   if(st==='blocked'||st==='failed') return {bg:'#FEF2F2',fg:'#991B1B',bar:'#DC2626'};
   if(st==='warn') return {bg:'#FFFBEB',fg:'#92400E',bar:'#D97706'};
@@ -813,8 +821,14 @@ function tracesView(){
         <div style="font-size:10.5px;color:#9CA3AF;line-height:1.5">Shown to admins only, in-boundary. PII in the request was redacted before any model saw it.</div>
       </div>`;
     } else {
-      const A=[['request_id',m.request_id],['ts',m.ts],['principal',m.principal],['role',m.role],['run_id',m.run_id||'—'],['workflow_id',m.workflow_id||'—'],['step_name',m.step_name||'—'],['agent_id',m.agent_id||'—'],['end_user',m.end_user||'—'],['backend',m.backend||'—'],['model',m.model||'—'],['outcome',m.outcome],['total_ms',m.total_ms],['pii_redacted',m.pii_redacted],['tokens_in',m.tokens_in],['tokens_out',m.tokens_out],['cost_usd',m.cost_usd]];
-      tabBody=`<div style="padding:14px 16px">${A.map(kv=>`<div style="display:flex;gap:10px;font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:104px;flex:none">${kv[0]}</span><span style="color:#111827;word-break:break-all">${esc(String(kv[1]))}</span></div>`).join('')}</div>`;
+      // Request attributes (always populated) vs Attribution (only for agent/tagged calls).
+      const req=[['request_id',m.request_id],['time',fmtTime(m.ts)],['principal',m.principal||'—'],['role',m.role||'—'],['backend',m.backend||'—'],['model',m.model||'—'],['outcome',m.outcome],['total_ms',m.total_ms+'ms'],['pii_redacted',m.pii_redacted],['tokens_in',m.tokens_in],['tokens_out',m.tokens_out],['cost_usd','$'+Number(m.cost_usd||0).toFixed(4)]];
+      const attrib=[['run_id',m.run_id],['workflow_id',m.workflow_id],['step_name',m.step_name],['agent_id',m.agent_id],['end_user',m.end_user]].filter(kv=>kv[1]);
+      const kvrow=kv=>`<div style="display:flex;gap:10px;font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:104px;flex:none">${kv[0]}</span><span style="color:#111827;word-break:break-all">${esc(String(kv[1]))}</span></div>`;
+      const attribBlock = attrib.length
+        ? `<div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 2px">Attribution</div>${attrib.map(kvrow).join('')}`
+        : `<div style="font-size:11px;color:#9CA3AF;margin-top:14px;padding-top:10px;border-top:1px solid #F3F4F6;line-height:1.5">No agent attribution — this was a direct user request. Run/workflow/agent IDs appear here when an agent or tagged caller made the request.</div>`;
+      tabBody=`<div style="padding:14px 16px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Request</div>${req.map(kvrow).join('')}${attribBlock}</div>`;
     }
   }
 
