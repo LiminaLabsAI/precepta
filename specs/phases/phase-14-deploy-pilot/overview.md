@@ -63,6 +63,13 @@ Precepta from "impressive demo" into "a bank could run this in a pilot."
 - Egress lock (internal network) + a **startup egress probe** wired into the
   Sovereignty Attestation; the Console shows the result.
 - `deploy/README.md` — the customer runbook.
+- An in-product **Deployment** screen (new left-nav item), surfaced in first-run
+  Setup: **live sovereignty status** (running in-boundary · egress blocked ·
+  helper models in-boundary · attestation ready — all from real endpoints), a
+  **setup checklist** (deploy steps shown done; remaining steps are buttons that
+  jump to the right screen), and a **"copy the runbook"** action so an operator
+  can hand the exact steps to IT / a production environment. Backend-real: every
+  status tick comes from a live endpoint, never a fabricated ✓.
 
 **Out (deferred to a later phase):**
 - Helm/K8s charts, Postgres adapter, Vault/KMS secret backend.

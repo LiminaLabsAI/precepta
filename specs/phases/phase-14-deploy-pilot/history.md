@@ -69,6 +69,22 @@ persistent `/root/.ollama` volume + an init container that pre-pulls models once
 
 ---
 
+### [SCOPE_CHANGE] 2026-08-10 — In-product Deployment screen (left-nav) added
+Topics: deploy, console, onboarding, ux
+Affects-phases: phase-14-deploy-pilot
+Affects-specs: none
+Detail: Per user request, add a **Deployment** left-nav screen surfaced in
+first-run Setup: live sovereignty status (in-boundary · egress blocked · models
+in-boundary · attestation ready — all from real endpoints), a setup checklist
+(deploy steps shown done from real state, remaining steps are buttons to the
+right screens), and a copy-the-runbook action for handing steps to IT/prod.
+Resolves the "you're already deployed when you see the Console" circularity by
+framing it as live-status + onboarding checklist + shareable runbook. Kept in
+the deploy phase so the on-screen steps and the real up.sh/.env stay in sync.
+Backend-real: every status ✓ comes from a live endpoint.
+
+---
+
 ### [NOTE] 2026-08-10 — Why now / strategic framing
 Topics: strategy, pilot
 Affects-phases: phase-14-deploy-pilot

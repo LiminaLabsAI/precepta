@@ -75,7 +75,15 @@ GPU is the customer's, passed through).
   models pulled, disk/RAM sane — names the exact fix, not a stack trace.
 - `deploy/README.md`: prerequisites → one-command up → first login → add your
   models → generate the attestation → troubleshooting. Plain English.
-- Verify: a clean checkout + `up.sh` yields a working Console following only the README.
+- **In-product Deployment screen** (`web/console.html`): new left-nav item +
+  `deploymentView()` + `/v1/deployment` (or reuse `/health`+`/attestation`+
+  `/workflow`). Shows **live sovereignty status** (in-boundary · egress blocked ·
+  models loaded · attestation ready), a **setup checklist** (done steps ✓ from
+  real state; remaining steps = buttons to Inference/Members/Attestation), and a
+  **copy-runbook** action. Surfaced in first-run Setup. Every ✓ is live
+  (backend-real). Browser-validate.
+- Verify: a clean checkout + `up.sh` yields a working Console following only the
+  README; the Deployment screen's status ticks match the real stack state.
 
 ## Group 5 — Verification
 **Sequential.** Commit: `test(deploy): sovereign smoke test + docs`

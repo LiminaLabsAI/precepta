@@ -35,6 +35,7 @@ Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 - [ ] `deploy/up.sh` (build → up → wait → print Console URL) idempotent
 - [ ] `deploy/doctor.sh` (Docker? ports? models? disk/RAM?) with plain fixes
 - [ ] `deploy/README.md` runbook (prereqs → up → login → add models → attestation → troubleshoot)
+- [ ] In-product **Deployment** screen: new nav item + `deploymentView()` — live sovereignty status, setup checklist (done ✓ from real state; remaining = buttons), copy-runbook; surfaced in first-run Setup; browser-validated
 - [ ] A clean checkout + `up.sh` yields a working Console via the README only
 
 ## Group 5 — Verification
