@@ -44,8 +44,8 @@ predates momentum founding; foundation docs were authored from the existing root
 
 | Phase | Branch | Status | Progress |
 |-------|--------|--------|----------|
-| 12 — Smart Router (+ workflow view) | `phase-12-smart-router` | Planned (brainstormed 2026-08-09) | 0% — run `/start-phase` (runs **before** 11) |
-| 11 — Traces (request-lifecycle observability) | `phase-11-traces` | Planned (brainstormed 2026-08-06) — **to be extended** (agent sub-trace, live log, bill-back) | 0% — after Phase 12 |
+| 12 — Smart Router (+ workflow view) | `phase-12-smart-router` | ✅ Built + tested 2026-08-10 (Groups 0–5, +90 tests) — **not yet merged to `main`** | 100% built |
+| 11 — Traces (request-lifecycle observability) | `phase-12-smart-router` | ✅ Built + tested 2026-08-10 (L1 + L2 agent sub-trace + bill-back) — on the same branch | 100% built |
 
 ## Upcoming Phases
 
