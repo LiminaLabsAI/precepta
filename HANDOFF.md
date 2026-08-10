@@ -1,18 +1,29 @@
 # preceptaai — Session Handoff (read this first)
 
 > **Purpose:** everything the next session needs to continue executing the implementation plan
-> without re-discovery. **Updated:** 2026-08-06. **Main @ `04f9bd0` — Phases 4–7 COMPLETE **plus** the demo-feedback
-> work, all LANDED on `main` + pushed to GitHub; working tree clean · 211 tests passing.**
-> Since 2026-08-03: gen-AI **naming** (Inference plane / inference endpoint / intent-boundary), Model-Plane UX
-> (multi-backend, editable boundary, real Set-price), **runtime-toggleable Sovereign Mode** (owner-gated),
-> notification fixes (+ `tests/conftest.py` stops test pollution), Playground scroll/suggestions, and
-> **FEAT-011 v1 — per-endpoint cache & compression, two-tab UI** (`app/features.py`; the router row is
-> **"Smart router"**, config key stays `"auto"`; BYO = disabled "coming" → FEAT-011b). Backlog reconciled.
-> **➡ NEXT: FEAT-010 — Traces & agent-execution visibility (investor-facing hero; user reordered it next; needs a
-> brainstorm — see `specs/planning/demo-feedback-roadmap.md`).**
+> without re-discovery. **Updated:** 2026-08-10. **Main pushed to GitHub · 314 tests passing.**
+>
+> **State (2026-08-10):**
+> - **Console redesign** landed (Cache & compression two-tab; new **Traces** screen; **Workflow** screen).
+> - **Phase 11 — Traces COMPLETE + merged:** per-step trace store (`app/traces.py`), pipeline capture,
+>   `/v1/traces*` API, the 3-pane Traces screen (runs · checkpoint waterfall · Summary/Route/Messages/
+>   Attributes tabs), **agent sub-trace (L2)**, and **bill-back** (cost by team/app).
+> - **Phase 12 — Smart Router COMPLETE + merged + ACTIVATED:** intent catalog + scoring resolver
+>   (`app/router/scoring.py`, `intent_catalog.py`), two-stage `smart.decide`, `RouteTarget` +
+>   Agent-Trace-Contract (`targets.py`), LiteLLM/Agent adapters (`target_adapters.py`), toxicity filter +
+>   enforcement-timing, read-only **Workflow** view, locked router eval (Rule 11) + Apache-2.0 boundary
+>   (`app/router/OPEN_CORE.md`). **Live:** auto requests are routed by the two-stage router; the Traces
+>   **Route tab shows the real scored candidate set**. +90 tests.
+> - **BUG-001** (same-provider backends) fixed + guarded.
+> **➡ NEXT: Phase 14 — Deploy: Sovereign Pilot (self-host).** Brainstormed + planned →
+> `specs/phases/phase-14-deploy-pilot/`. Single-node **egress-locked docker-compose** + **in-boundary
+> helper models** (bundled Ollama serves router + embeddings — closes **TD-009**) + **egress probe in the
+> attestation** (provable zero-egress) + an in-product **Deployment** screen (live status + setup checklist
+> + copy-runbook). Pilot slice — defers Helm/Postgres/Vault/air-gap/HA/SCIM. Run `/start-phase`.
+> *(Verification needs Docker on the host to bring the stack up + smoke-test.)*
 >
 > **Read order for a fresh session:** this file → `specs/status.md` → `specs/backlog/backlog.md` →
-> `specs/planning/demo-feedback-roadmap.md` → `IMPLEMENTATION_PLAN.md` (§Phase 10).
+> `specs/phases/phase-14-deploy-pilot/` → `specs/planning/roadmap.md`.
 
 ---
 

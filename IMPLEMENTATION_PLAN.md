@@ -1,5 +1,13 @@
 # preceptaai — Implementation Plan & Roadmap (V1: closed sovereign loop)
 
+> **⚡ CURRENT STATE (2026-08-10) — canonical tracker is `specs/planning/roadmap.md` + `specs/status.md`.**
+> Phases 0–10 shipped. **Phase 11 (Traces)** and **Phase 12 (Smart Router)** are **built, tested (314
+> tests), merged to `main`, and the router is activated** in the live path (real candidate set in
+> Traces). **Phase 14 (Deploy: Sovereign Pilot)** is brainstormed + planned →
+> `specs/phases/phase-14-deploy-pilot/` (single-node egress-locked docker-compose + in-boundary helper
+> models closing TD-009 + egress-probe attestation + in-product Deployment screen). Phase 13 (Workflow
+> builder) remains outline-only. This root doc is legacy narrative; the phase specs are authoritative.
+>
 > **Status:** Draft v4 — V1 (Phases 0–9) shipped; **Phase 10** added below (cost / quality / governance
 > controls), scoped in `BRAINSTORM.md` and aligned to the refreshed **Precepta Console** design
 > (re-imported from Claude Design 2026-07-30 → `design/Precepta Console.dc.html`).
