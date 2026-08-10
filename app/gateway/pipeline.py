@@ -186,6 +186,13 @@ async def governed_chat(
                          tokens_out=saved.get("tokens_saved", 0))
             return 200, result
 
+    if tr is not None:
+        tr.step("cache",
+                "Miss — calling the model" if cacheable else "Skipped",
+                "No matching prior answer; the request goes to a model."
+                if cacheable else
+                "Cache doesn't apply here (non-deterministic, sensitive, or off for this endpoint).")
+
     # ── prompt compression (FEAT-005): shorten before inference; billing follows ──
     infer_msgs = scrubbed
     comp_stats = None
@@ -203,9 +210,13 @@ async def governed_chat(
                           "compressed_tokens": comp_stats["compressed_tokens"]})
             if comp_stats["mode"] == "aggressive":
                 _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
-    if tr is not None and comp_stats is not None and comp_stats.get("saved_tokens", 0) > 0:
-        tr.step("compression", f"{comp_stats['mode'].title()} trim",
-                f"Shortened the prompt by {comp_stats['saved_tokens']} tokens before inference.")
+    if tr is not None:
+        if comp_stats is not None and comp_stats.get("saved_tokens", 0) > 0:
+            tr.step("compression", f"{comp_stats['mode'].title()} trim",
+                    f"Shortened the prompt by {comp_stats['saved_tokens']} tokens before inference.")
+        else:
+            tr.step("compression", "None",
+                    "Prompt left unchanged (compression off, or nothing to trim).")
 
     # ── inference (injected router/engine) — failures are audited too ──
     try:

@@ -647,8 +647,10 @@ function traceColors(st){
   if(st==='blocked'||st==='failed') return {bg:'#FEF2F2',fg:'#991B1B',bar:'#DC2626'};
   if(st==='warn') return {bg:'#FFFBEB',fg:'#92400E',bar:'#D97706'};
   if(st==='hit') return {bg:'#EFF6FF',fg:'#1D4ED8',bar:'#2563EB'};
+  if(st==='skipped') return {bg:'#F3F4F6',fg:'#6B7280',bar:'#9CA3AF'};
   return {bg:'#F0FDF4',fg:'#065F46',bar:'#059669'};
 }
+function traceLabel(name){return {firewall:'PII & injection',sensitivity:'Sensitivity',policy:'Policy check',cache:'Cache',compression:'Compression',routing:'Smart routing',inference:'Inference',output:'Output scan'}[name]||name;}
 function tracesView(){
   const t=window.__traces, org=window.__org||{};
   const learnOn = org.learning_enabled==='true';
@@ -700,18 +702,21 @@ function tracesView(){
     const maxms=Math.max(1,...steps.map(s=>s.ms||0));
     const exp=state.traceExpanded;
     const rows=steps.map((s,i)=>{const c=traceColors(s.status);const w=Math.max(3,Math.round(100*(s.ms||0)/maxms));const open=(exp===i);
-      const kv=(k,v)=>`<div style="display:flex;gap:10px;font-size:11px;padding:3px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:78px;flex:none">${k}</span><span style="color:#111827">${esc(String(v))}</span></div>`;
-      const det=open?`<div style="padding:2px 14px 12px 106px">
-        <span style="font-size:12.5px;font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9.5px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}
-        <div style="font-size:12px;color:#6B7280;margin:4px 0 8px;line-height:1.55;max-width:540px">${esc(s.reason)}</div>
-        ${kv('Status',s.status)}${kv('Duration',s.ms+'ms')}${kv('Step',s.name)}${s.inferred?kv('Router intent','inferred (not a stated fact)'):''}
+      const kv=(k,v)=>`<div style="display:flex;gap:10px;font-size:11px;padding:3px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:88px;flex:none">${k}</span><span style="color:#111827">${esc(String(v))}</span></div>`;
+      const det=open?`<div style="padding:2px 14px 12px 126px">
+        <div style="font-size:12px;color:#6B7280;margin:0 0 8px;line-height:1.55;max-width:540px">${esc(s.reason)}</div>
+        ${kv('Status',s.status)}${kv('Duration',s.ms+'ms')}${kv('Stage',s.name)}${s.inferred?kv('Router intent','inferred (a guess from the request, not a stated fact)'):''}
       </div>`:'';
+      const dot=`<span style="width:7px;height:7px;flex:none;border-radius:50%;background:${c.bar};display:inline-block"></span>`;
       return `<div style="border-bottom:1px solid #F3F4F6">
-        <div onclick="app.toggleCheckpoint(${i})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer">
-          <span style="width:88px;flex:none;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#111827">${esc(s.name)}</span>
-          <div style="flex:1;min-width:0;height:16px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${c.bar};border-radius:3px"></div></div>
-          <span style="width:50px;flex:none;text-align:right;font-size:10.5px;color:#6B7280;font-family:'JetBrains Mono',monospace">${s.ms}ms</span>
-          <span style="width:12px;flex:none;text-align:center;font-size:11px;color:#9CA3AF">${open?'▾':'▸'}</span>
+        <div onclick="app.toggleCheckpoint(${i})" style="padding:10px 14px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:9px">
+            ${dot}<span style="width:104px;flex:none;font-size:11.5px;font-weight:600;color:#111827">${esc(traceLabel(s.name))}</span>
+            <div style="flex:1;min-width:0;height:14px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${c.bar};border-radius:3px"></div></div>
+            <span style="width:46px;flex:none;text-align:right;font-size:10.5px;color:#6B7280;font-family:'JetBrains Mono',monospace">${s.ms}ms</span>
+            <span style="width:12px;flex:none;text-align:center;font-size:11px;color:#9CA3AF">${open?'▾':'▸'}</span>
+          </div>
+          <div style="margin-left:126px;margin-top:4px;font-size:12px;line-height:1.4"><span style="font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}</div>
         </div>${det}
       </div>`;}).join('');
     checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Checkpoints</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
