@@ -691,6 +691,21 @@ def create_app() -> FastAPI:
         return JSONResponse({"stages": stages, "intents": intents,
                              "targets": targets, "controls": controls})
 
+    @app.post("/v1/suggest")
+    async def suggest_ep(request: Request) -> JSONResponse:
+        """Dynamic Playground follow-up suggestions from the last response
+        (in-boundary model; fail-soft to [])."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        from .suggest import suggest_followups
+        sug = await suggest_followups(b.get("context", ""))
+        return JSONResponse({"suggestions": sug})
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)

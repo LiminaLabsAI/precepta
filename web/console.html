@@ -146,7 +146,9 @@ const nav = [
   {key:'savings',label:'Cache & compression',icon:'zap'},
   {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
-  {key:'audit',label:'Audit & Attestation',icon:'file-check'},
+  // Audit & Attestation hidden from the menu per request — still reachable via the
+  // Traces "Generate attestation" button; uncomment to restore.
+  // {key:'audit',label:'Audit & Attestation',icon:'file-check'},
   {key:'playground',label:'Playground',icon:'message-square'},
 ];
 
@@ -245,7 +247,7 @@ const app = {
   // playground
   setChatModel(v){ state.chatModel=v; },
   handleChatKey(e){ if(e.key==='Enter') app.sendMessage(); },
-  newChat(){ state.messages=[]; state.chatInput=''; render(); },
+  newChat(){ state.messages=[]; state.chatInput=""; state.suggestions=null; render(); },
   sendMessage(){ render(); },                                   // overridden live
   sendSuggested(){}, sendPreset(){},
 
@@ -647,7 +649,8 @@ function deleteConfirmModal(){
 function workflowView(){
   const w=window.__workflow;
   const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Workflow</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:700px;line-height:1.6">How every request flows through the guardrail — the <strong>fixed governance rails</strong> plus your <strong>routing layer</strong>. Generated from your live config; read-only for now (editing arrives with the workflow builder).</div>`;
+    <div style="font-size:13px;color:#6B7280;margin-bottom:8px;max-width:700px;line-height:1.6">How every request flows through the guardrail — the <strong>fixed governance rails</strong> plus your <strong>routing layer</strong>. Generated from your live config; read-only for now (editing arrives with the workflow builder).</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:20px;max-width:700px;line-height:1.55"><strong>Workflow vs Traces:</strong> this is the <em>design-time</em> view — the configured rules and rails, the same for every request. <strong>Traces</strong> is the <em>run-time</em> view — what actually happened to each individual request (which model, why, timings, blocks).</div>`;
   if(!w) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading workflow…</div>`;
   const tBadge=t=>{const bg={'pre-call':'#EFF6FF','during-call':'#FFFBEB','post-call':'#F0FDF4'}[t]||'#F3F4F6';const fg={'pre-call':'#1D4ED8','during-call':'#92400E','post-call':'#065F46'}[t]||'#6B7280';return `<span style="font-size:9.5px;font-weight:600;padding:1px 8px;border-radius:8px;background:${bg};color:${fg}">${esc(t||'')}</span>`;};
   const stages=w.stages||[];
@@ -682,6 +685,20 @@ function workflowView(){
   return head+railCard+routeCard+ctlCard;
 }
 
+/* ---------- lightweight, safe markdown (escape first, then add only our tags) ---------- */
+function mdRender(t){
+  if(t==null) return '';
+  let h=esc(String(t));
+  h=h.replace(/```([\s\S]*?)```/g,(m,c)=>`<pre style="background:#0F172A;color:#E2E8F0;padding:10px 12px;border-radius:8px;overflow-x:auto;font-size:12px;font-family:'JetBrains Mono',monospace;margin:6px 0">${c.replace(/^\n/,'')}</pre>`);
+  h=h.replace(/`([^`\n]+)`/g,'<code style="background:#F3F4F6;padding:1px 5px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12.5px">$1</code>');
+  h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  h=h.replace(/^\s*#{1,6}\s+(.+)$/gm,'<div style="font-weight:700;margin:8px 0 2px">$1</div>');
+  h=h.replace(/(?:^|\n)((?:\s*[-*]\s+.+(?:\n|$))+)/g,(m,b)=>`<ul style="margin:4px 0 4px 18px;padding:0">${b.trim().split(/\n/).map(l=>'<li>'+l.replace(/^\s*[-*]\s+/,'')+'</li>').join('')}</ul>`);
+  h=h.replace(/(?:^|\n)((?:\s*\d+\.\s+.+(?:\n|$))+)/g,(m,b)=>`<ol style="margin:4px 0 4px 18px;padding:0">${b.trim().split(/\n/).map(l=>'<li>'+l.replace(/^\s*\d+\.\s+/,'')+'</li>').join('')}</ol>`);
+  h=h.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  return h;
+}
 /* ---------- Traces ---------- */
 function fmtTime(iso){
   if(!iso) return '—';
@@ -1166,16 +1183,17 @@ const SUGGESTED = [
 ];
 function playgroundView(){
   const s=state;
+  const SUGG=(s.suggestions&&s.suggestions.length)?s.suggestions:SUGGESTED;   // dynamic follow-ups when available
   const empty=`<div style="flex:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:16px">
     <div style="font-weight:700;font-size:24px">Ask preceptaai anything</div>
     <div style="font-size:13px;color:#6B7280;max-width:440px;line-height:1.5">Routed to an in-boundary backend, checked against policy, and written to the tamper-evident audit log — automatically.</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-      ${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
+      ${SUGG.map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
     </div>
   </div>`;
   const msgs=s.messages.map((m,mi)=>`<div style="align-self:${m.align};max-width:78%">
     <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px;text-align:${m.textAlign}">${m.who}</div>
-    <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${esc(m.text)}</div>
+    <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${m.hasMeta?mdRender(m.text):esc(m.text)}</div>
     ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span>${m.traceId?`<span style="display:inline-flex;gap:2px;margin-left:2px">${m.feedback==='up'?'<span title="marked helpful" style="font-size:12px">👍</span>':`<button title="helpful — teach the router" onclick="app.rateMessage(${mi},1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👍</button>`}${m.feedback==='down'?'<span title="marked unhelpful" style="font-size:12px">👎</span>':`<button title="unhelpful — teach the router" onclick="app.rateMessage(${mi},-1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👎</button>`}</span>`:''}</div>`:''}
   </div>`).join('');
   const modelSel = modelOptions.length ? modelOptions.map(mo=>`<option value="${esc(mo.value)}" ${mo.value===s.chatModel?'selected':''}>${esc(mo.label)}</option>`).join('') : `<option value="">No inference endpoints — add one first</option>`;
@@ -1188,7 +1206,7 @@ function playgroundView(){
       </div>
     </div>
     <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
-    ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
+    ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGG.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
     <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
       <input id="chatInput" style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="${esc(s.chatInput)}" oninput="app.set('chatInput',this.value)" onkeydown="app.handleChatKey(event)">
       <button onclick="app.sendMessage()" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
@@ -1474,11 +1492,15 @@ render();
           traceId:p.trace_id||null,feedback:null};
       }
       state.messages.push(reply); render(); loadAuditLog(); loadStats();
+      if(r.status===200 && reply.text){            // dynamic, relevant follow-ups (in-boundary, fail-soft)
+        fetch("/v1/suggest",{method:"POST",headers:hdr,body:JSON.stringify({context:reply.text})})
+          .then(x=>x.json()).then(sd=>{ if(sd && Array.isArray(sd.suggestions) && sd.suggestions.length){ state.suggestions=sd.suggestions; render(); } }).catch(()=>{});
+      }
     })
     .catch(e=>{ state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
   }
   app.sendMessage = function(){ const el=document.getElementById("chatInput"); sendText(el ? el.value : state.chatInput); };
-  app.sendSuggested = function(i){ sendText(SUGGESTED[i]); };
+  app.sendSuggested = function(i){ const L=(state.suggestions&&state.suggestions.length)?state.suggestions:SUGGESTED; sendText(L[i]); };
   app.rateMessage = function(mi,rating){
     const m=state.messages[mi]; if(!m||!m.traceId) return;
     m.feedback = rating>0?'up':'down'; render();      // optimistic
