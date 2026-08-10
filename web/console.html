@@ -144,6 +144,7 @@ const nav = [
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
   {key:'savings',label:'Cache & compression',icon:'zap'},
+  {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
   {key:'audit',label:'Audit & Attestation',icon:'file-check'},
   {key:'playground',label:'Playground',icon:'message-square'},
@@ -642,6 +643,45 @@ function deleteConfirmModal(){
 }
 
 /* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
+/* ---------- Workflow (read-only, from live config) ---------- */
+function workflowView(){
+  const w=window.__workflow;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Workflow</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:700px;line-height:1.6">How every request flows through the guardrail — the <strong>fixed governance rails</strong> plus your <strong>routing layer</strong>. Generated from your live config; read-only for now (editing arrives with the workflow builder).</div>`;
+  if(!w) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading workflow…</div>`;
+  const tBadge=t=>{const bg={'pre-call':'#EFF6FF','during-call':'#FFFBEB','post-call':'#F0FDF4'}[t]||'#F3F4F6';const fg={'pre-call':'#1D4ED8','during-call':'#92400E','post-call':'#065F46'}[t]||'#6B7280';return `<span style="font-size:9.5px;font-weight:600;padding:1px 8px;border-radius:8px;background:${bg};color:${fg}">${esc(t||'')}</span>`;};
+  const stages=w.stages||[];
+  const rail=stages.map((s,i)=>{const routing=s.name==='routing';return `
+    <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid ${routing?'#BFDBFE':'#E5E7EB'};border-radius:8px;background:${routing?'#F8FAFF':'#fff'}">
+      <span style="width:96px;flex:none;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${routing?'#1D4ED8':'#9CA3AF'}">${routing?'routing layer':'fixed rail'}</span>
+      <span style="flex:1;font-size:13px;font-weight:600;color:#111827">${esc(s.label)}</span>
+      ${tBadge(s.timing)}
+    </div>
+    ${i<stages.length-1?'<div style="width:1px;height:9px;background:#D1D5DB;margin:2px 0 2px 54px"></div>':''}`;}).join('');
+  const intents=(w.intents||[]).map(it=>`<span title="${esc(it.description)}" style="display:inline-block;font-size:12px;font-weight:500;padding:4px 11px;border-radius:12px;background:#EFF6FF;color:#1D4ED8;margin:0 6px 6px 0;cursor:default">${esc(it.label)}</span>`).join('');
+  const targets=(w.targets||[]).map(t=>{const inb=t.in_boundary;return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid #F3F4F6">
+      <div style="min-width:0"><span style="font-size:13px;font-weight:600">${esc(t.id)}</span> <span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(t.model||'')}</span></div>
+      <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${inb?'#ECFDF5':'#FEF2F2'};color:${inb?'#065F46':'#991B1B'};flex:none">${inb?'Intent within boundary':'Intent crosses boundary'}</span>
+    </div>`;}).join('') || '<div style="padding:12px;font-size:12px;color:#9CA3AF">No inference endpoints registered yet.</div>';
+  const c=w.controls||{};
+  const ctlBadge=(label,on)=>`<span style="font-size:11.5px;font-weight:500;padding:3px 10px;border-radius:12px;background:${on?'#ECFDF5':'#F3F4F6'};color:${on?'#065F46':'#6B7280'};margin:0 8px 8px 0;display:inline-block">${label}: <strong>${on?'on':'off'}</strong></span>`;
+  const railCard=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px;margin-bottom:20px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:2px">Governed path</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:14px">The rails run in this order on every request. Governance stages are fixed; only the routing layer is composable.</div>
+    ${rail}</div>`;
+  const routeCard=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px;margin-bottom:20px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:2px">Routing layer</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:14px">The smart router reads each request's <strong>intent</strong>, then maps it to the best eligible <strong>target</strong> (by quality vs cost vs latency, in-boundary only).</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Intents</div>${intents}</div>
+      <div style="flex:1;min-width:260px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Targets</div><div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">${targets}</div></div>
+    </div></div>`;
+  const ctlCard=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:12px">Controls</div>
+    ${ctlBadge('Sovereign / in-boundary', c.sovereign)}${ctlBadge('Smart router', c.smart_router)}${ctlBadge('Toxicity filter', c.toxicity_filter)}${ctlBadge('Learn from usage', c.learning)}</div>`;
+  return head+railCard+routeCard+ctlCard;
+}
+
 /* ---------- Traces ---------- */
 function traceColors(st){
   if(st==='blocked'||st==='failed') return {bg:'#FEF2F2',fg:'#991B1B',bar:'#DC2626'};
@@ -1234,6 +1274,7 @@ function contentFor(){
   switch(state.screen){
     case 'onboarding': return onboardingView();
     case 'overview': return overviewView();
+    case 'workflow': return workflowView();
     case 'traces': return tracesView();
     case 'modelplane': return modelPlaneView();
     case 'keys': return keysView();
@@ -1572,6 +1613,7 @@ render();
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadFeatures(); }
     if(sc==="traces"){ loadOrg(); loadTraces(); }
+    if(sc==="workflow"){ loadWorkflow(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
@@ -1586,6 +1628,7 @@ render();
   };
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
+  async function loadWorkflow(){ const d=await getJSON("/v1/workflow"); if(d && !d.error){ window.__workflow=d; render(); } }
   app.selectTrace = function(rid){ state.selectedTrace=rid; state.traceExpanded=null; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
   app.setTraceTab = function(t){ state.traceTab=t; render(); };
   app.toggleCheckpoint = function(i){ state.traceExpanded=(state.traceExpanded===i?null:i); render(); };

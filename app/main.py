@@ -637,6 +637,48 @@ def create_app() -> FastAPI:
                                 status_code=404)
         return JSONResponse(t)
 
+    # ── Workflow view (FEAT-020): read-only, auto-generated from live config ──
+    # A projection of the current config — the fixed governance rails + the
+    # routing layer (intents → targets). Never a second source of truth.
+    _WF_STAGES = [
+        ("firewall", "PII & injection scan"),
+        ("sensitivity", "Sensitivity check"),
+        ("policy", "Policy check"),
+        ("cache", "Cache"),
+        ("compression", "Compression"),
+        ("routing", "Smart routing"),
+        ("inference", "Inference"),
+        ("output", "Output scan"),
+    ]
+
+    @app.get("/v1/workflow")
+    def workflow_ep(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from .router import timing as _timing, intent_catalog as _cat
+        from . import controls as _controls, org as _org
+        stages = [{"name": n, "label": lbl, "timing": _timing.stage_of(n),
+                   "fixed": True} for n, lbl in _WF_STAGES]
+        intents = [{"key": it.key, "label": it.label, "description": it.description}
+                   for it in _cat.known()]
+        targets = []
+        for name, be in sorted(get_registry().items()):
+            targets.append({"id": name, "model": getattr(be, "default_model", "") or "",
+                            "in_boundary": bool(getattr(be, "in_boundary", True)),
+                            "tier": getattr(be, "tier", 1)})
+        controls = {
+            "sovereign": _controls.sovereign_enabled(),
+            "toxicity_filter": _org.get("toxicity_filter", "false") == "true",
+            "smart_router": _org.get("optimize_auto", "false") == "true",
+            "learning": _org.get("learning_enabled", "false") == "true",
+        }
+        return JSONResponse({"stages": stages, "intents": intents,
+                             "targets": targets, "controls": controls})
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
