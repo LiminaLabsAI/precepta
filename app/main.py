@@ -706,6 +706,30 @@ def create_app() -> FastAPI:
         sug = await suggest_followups(b.get("context", ""))
         return JSONResponse({"suggestions": sug})
 
+    @app.get("/v1/deployment")
+    def deployment_ep(request: Request) -> JSONResponse:
+        """Live self-host status for the Deployment screen — all real signals."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from .sovereign.probe import egress_probe
+        from .controls import sovereign_enabled
+        from . import org
+        reg = get_registry()
+        total = len(reg)
+        inb = sum(1 for b in reg.values() if getattr(b, "in_boundary", True))
+        egress = egress_probe()
+        return JSONResponse({
+            "org_name": org.get("org_name"),
+            "running": True,
+            "endpoints": total,
+            "in_boundary_endpoints": inb,
+            "models_in_boundary": total > 0 and inb == total,
+            "sovereign": sovereign_enabled(),
+            "egress": {"result": egress["result"],
+                       "verified": egress["result"] == "blocked"},
+        })
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)

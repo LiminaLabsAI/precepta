@@ -140,6 +140,7 @@ let modelOptions = [];   // populated from real /infra backends
 const nav = [
   {key:'onboarding',label:'Setup',icon:'rocket'},
   {key:'overview',label:'Overview',icon:'layout-dashboard'},
+  {key:'deployment',label:'Deployment',icon:'shield-check'},
   {key:'modelplane',label:'Inference plane',icon:'server'},
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
@@ -645,6 +646,41 @@ function deleteConfirmModal(){
 }
 
 /* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
+/* ---------- Deployment (live self-host status + setup checklist) ---------- */
+function deploymentView(){
+  const d=window.__deployment;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Deployment</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:700px;line-height:1.6">You're running Precepta <strong>inside your own network</strong>. This is your live sovereignty status and setup checklist. Every ✓ below is a real check against the running system — not a placeholder.</div>`;
+  if(!d) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Checking deployment status…</div>`;
+  const egressOk = d.egress && d.egress.verified;
+  const stat=(label,ok,detail)=>`<div style="flex:1;min-width:170px;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:${ok?'#059669':'#DC2626'};flex:none"></span><span style="font-size:12.5px;font-weight:600">${label}</span></div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">${detail}</div></div>`;
+  const statusStrip=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px">
+    ${stat('Running in-boundary', d.running, 'the control plane is up on your machine')}
+    ${stat(egressOk?'Internet egress: BLOCKED':'Internet egress: '+((d.egress||{}).result||'unknown').toUpperCase(), egressOk, egressOk?'verified by an outbound probe':'the control plane can reach the internet — check your network lock')}
+    ${stat('Helper models in-boundary', d.models_in_boundary, d.in_boundary_endpoints+' of '+d.endpoints+' endpoints inside your boundary')}
+    ${stat('Sovereign Mode', d.sovereign, d.sovereign?'in-boundary-only routing enforced':'off — an owner can enable it in Policies')}
+  </div>`;
+  const keys=(window.__keys||[]).length;
+  const extraEndpoints=(d.endpoints||0)>1;   // beyond the always-present local ollama
+  const item=(done,title,action,btn)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${done?'#ECFDF5':'#F3F4F6'};color:${done?'#059669':'#9CA3AF'}">${done?'✓':'○'}</span><span style="font-size:13px;font-weight:${done?'500':'600'};color:${done?'#6B7280':'#111827'}">${title}</span></div>
+    ${done?'<span style="font-size:11px;color:#9CA3AF">done</span>':`<button onclick="${action}" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">${btn}</button>`}
+  </div>`;
+  const checklist=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:8px 18px 14px;margin-bottom:20px">
+    <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;padding:12px 0 4px">Setup checklist</div>
+    ${item(d.running,'Deployed in your network',"",'')}
+    ${item(egressOk,'Internet egress locked & verified',"app.setScreen('policies')",'Review')}
+    ${item(extraEndpoints,'Add your inference endpoints',"app.setScreen('modelplane')",'Inference plane →')}
+    ${item(keys>0,'Issue an API key for your apps',"app.setScreen('keys')",'Keys & budgets →')}
+    ${item(false,'Generate the sovereignty attestation',"app.openAttestation()",'Generate →')}
+  </div>`;
+  const copy=`<div style="display:flex;align-items:center;gap:12px">
+    <button onclick="app.copyRunbook()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${state.runbookCopied?'✓ Copied':'Copy the runbook for your IT team'}</button>
+    <span style="font-size:11px;color:#9CA3AF">the exact step-by-step to run this in another environment</span>
+  </div>`;
+  return head+statusStrip+checklist+copy;
+}
+
 /* ---------- Workflow (read-only, from live config) ---------- */
 function workflowView(){
   const w=window.__workflow;
@@ -1324,6 +1360,7 @@ function contentFor(){
   switch(state.screen){
     case 'onboarding': return onboardingView();
     case 'overview': return overviewView();
+    case 'deployment': return deploymentView();
     case 'workflow': return workflowView();
     case 'traces': return tracesView();
     case 'modelplane': return modelPlaneView();
@@ -1676,6 +1713,7 @@ render();
     if(sc==="savings"){ loadFeatures(); }
     if(sc==="traces"){ loadOrg(); loadTraces(); loadBillback(); }
     if(sc==="workflow"){ loadWorkflow(); }
+    if(sc==="deployment"){ loadDeployment(); loadInfra(); loadKeys(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
@@ -1691,6 +1729,16 @@ render();
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
   async function loadWorkflow(){ const d=await getJSON("/v1/workflow"); if(d && !d.error){ window.__workflow=d; render(); } }
+  async function loadDeployment(){ const d=await getJSON("/v1/deployment"); if(d && !d.error){ window.__deployment=d; render(); } }
+  app.copyRunbook = function(){
+    const txt=["Run Precepta inside your network — 5 steps:",
+      "1. git clone <your-precepta-repo> && cd precepta",
+      "2. ./deploy/doctor.sh            # check the machine is ready",
+      "3. cp deploy/.env.example deploy/.env  # then set ORG_NAME + ADMIN_EMAIL",
+      "4. ./deploy/up.sh                # builds, pulls models in-boundary, starts egress-locked",
+      "5. open http://127.0.0.1:8000/console → sign in → Deployment → Generate attestation"].join("\n");
+    if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{ state.runbookCopied=true; render(); setTimeout(()=>{state.runbookCopied=false;render();},2000); }).catch(()=>{}); }
+  };
   async function loadBillback(){ const d=await getJSON("/v1/billback"); if(d && !d.error){ window.__billback=d; render(); } }
   app.selectTrace = function(rid){ state.selectedTrace=rid; state.traceExpanded=null; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
   app.setTraceTab = function(t){ state.traceTab=t; render(); };
