@@ -1231,23 +1231,24 @@ function settingsModal(){
     if(!r){ pane=`<div style="font-size:12px;color:#9CA3AF;padding:12px 0">Loading router configuration…</div>`; }
     else {
       const be = r.router_backend;
-      const card=(id,title,desc)=>{const on=be===id;return `<div onclick="app.setRouterBackend('${id}')" style="flex:1;cursor:pointer;border:1.5px solid ${on?'#2563EB':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:600;color:${on?'#1D4ED8':'#111827'}">${on?'● ':'○ '}${title}</div><div style="font-size:11px;color:#6B7280;margin-top:3px;line-height:1.45">${desc}</div></div>`;};
-      const keyStatus = r.hf_key_set
-        ? `<span style="color:#065F46;font-weight:500">✓ key stored</span> — enter a new value to replace it`
-        : `<span style="color:#9CA3AF">no key stored</span>`;
+      const ep = (state.routerHfEndpoint!==undefined?state.routerHfEndpoint:(r.hf_endpoint||''));
+      const mdl = (state.routerHfModel!==undefined?state.routerHfModel:(r.hf_model||''));
+      const card=(id,title,desc,onClick)=>{const on=be===id;return `<div onclick="${onClick}" style="flex:1;cursor:pointer;border:1.5px solid ${on?'#2563EB':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:600;color:${on?'#1D4ED8':'#111827'}">${on?'● ':'○ '}${title}</div><div style="font-size:11px;color:#6B7280;margin-top:3px;line-height:1.45">${desc}</div></div>`;};
+      const keyStatus = r.hf_key_set ? `<span style="color:#065F46;font-weight:500">✓ key stored</span> — leave blank to keep it` : `<span style="color:#9CA3AF">no key stored yet</span>`;
+      const fld=(label,val,handler,ph)=>`<div style="margin-bottom:10px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px">${label}</label><input value="${esc(val)}" oninput="${handler}" placeholder="${esc(ph)}" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"></div>`;
       pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">The router uses a small model to read each request's goal (cost / speed / quality). That model runs <strong>inside your network</strong> — the router never sends prompts to Precepta. Choose where it runs. <span style="color:#9CA3AF">Platform-owner only.</span></div>
-        <div style="display:flex;gap:10px;margin-bottom:16px">
-          ${card('ollama','Ollama (local)','The local model. Free, no key. Best for dev and small installs.')}
-          ${card('hf','Precepta HF endpoint','A dedicated HF endpoint deployed in your boundary, with a Precepta-owned key.')}
+        <div style="display:flex;gap:10px;margin-bottom:18px">
+          ${card('ollama','Ollama (local)','The local model. Free, no key. Best for dev and small installs.',"app.setRouterBackend('ollama')")}
+          ${card('hf','Precepta HF endpoint','A dedicated HF endpoint deployed in your boundary, with a Precepta-owned key.',"app.useHfRouter()")}
         </div>
-        <div style="font-size:12px;font-weight:600;color:#374151;margin:4px 0 2px">Precepta in-boundary HF endpoint</div>
-        ${editRow('Endpoint URL','__router_hf_endpoint', r.hf_endpoint, 'http://hf.internal:8080/v1', null, true)}
-        ${editRow('Model (optional)','__router_hf_model', r.hf_model, 'llama-3.1-8b-instruct', null, true)}
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
-          <div style="font-size:13px;font-weight:500">Precepta key<div style="font-size:11px;color:#9CA3AF;font-weight:400">${keyStatus}</div></div>
-          <div style="display:flex;gap:6px"><input type="password" value="${esc(s.routerKeyInput)}" oninput="app.onRouterKeyInput(this.value)" placeholder="paste key" style="width:180px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"><button onclick="app.saveRouterKey()" ${s.routerKeyInput?'':'disabled'} style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:${s.routerKeyInput?'#2563EB':'#E5E7EB'};color:${s.routerKeyInput?'#fff':'#9CA3AF'};border:none;cursor:${s.routerKeyInput?'pointer':'default'}">Save key</button></div>
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px">Precepta in-boundary HF endpoint</div>
+          ${fld('Endpoint URL',ep,"app.setQuiet('routerHfEndpoint',this.value)",'http://hf.internal:8080/v1')}
+          ${fld('Model (optional)',mdl,"app.setQuiet('routerHfModel',this.value)",'llama-3.1-8b-instruct')}
+          <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px">Precepta key <span style="font-weight:400;font-size:11px;color:#9CA3AF">(${keyStatus})</span></label><input type="password" value="${esc(s.routerKeyInput||'')}" oninput="app.setQuiet('routerKeyInput',this.value)" placeholder="paste key" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"></div>
+          <button onclick="app.saveHfRouter()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Save &amp; use HF endpoint</button>
         </div>
-        <div style="font-size:11px;color:#9CA3AF;padding:8px 0;line-height:1.5">The key is written to the secret store and never returned by the API — the Console only ever shows whether one is set. Selecting <strong>Precepta HF endpoint</strong> requires both an endpoint and a key.</div>`;
+        <div style="font-size:11px;color:#9CA3AF;padding:10px 0 0;line-height:1.5">The key is written to the secret store and never returned by the API. This saves the endpoint, model and key and switches the router to it in one step. Leave the key blank to keep the one already stored.</div>`;
     }
   } else {
     // members — only the real signed-in account is known to the backend today
@@ -1601,15 +1602,23 @@ render();
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__router=d; render(); }
         else alert("Router config: "+((d.error&&d.error.message)||r.status)); });
   };
-  app.setRouterBackend = function(b){
+  app.setQuiet = function(k,v){ state[k]=v; };   // update state without re-rendering (keeps input focus)
+  app.setRouterBackend = function(b){ app.saveRouterConfig({router_backend:b}); };  // Ollama always OK
+  app.useHfRouter = function(){
     const r=window.__router||{};
-    if(b==='hf' && !(r.hf_endpoint && r.hf_key_set)){ alert("Add the HF endpoint and key below first, then switch to it."); return; }
-    app.saveRouterConfig({router_backend:b});
+    if(r.hf_endpoint && r.hf_key_set){ app.saveRouterConfig({router_backend:'hf'}); }
+    else { alert("Fill in the endpoint and key below, then click 'Save & use HF endpoint'."); }
   };
-  app.onRouterKeyInput = function(v){ state.routerKeyInput=v; render(); };
-  app.saveRouterKey = function(){
-    const v=state.routerKeyInput; if(!v) return;
-    state.routerKeyInput=''; app.saveRouterConfig({hf_key:v});
+  app.saveHfRouter = function(){
+    const r=window.__router||{};
+    const ep=((state.routerHfEndpoint!==undefined?state.routerHfEndpoint:r.hf_endpoint)||'').trim();
+    const mdl=((state.routerHfModel!==undefined?state.routerHfModel:r.hf_model)||'');
+    const key=((state.routerKeyInput)||'').trim();
+    if(!ep){ alert("Enter the in-boundary HF endpoint URL first."); return; }
+    const patch={router_backend:'hf', hf_endpoint:ep, hf_model:mdl};
+    if(key) patch.hf_key=key;                    // blank = keep the stored key
+    state.routerKeyInput='';
+    app.saveRouterConfig(patch);                 // atomic: save endpoint+model+key AND switch
   };
 
   // Google/OIDC-aware sign-in: real SSO redirect when configured, else dev login
