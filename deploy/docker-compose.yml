@@ -1,0 +1,94 @@
+# Precepta — sovereign self-host stack (Phase 14, pilot slice).
+#
+# Sovereignty posture (provable): the `app` (the control plane that sees your
+# prompts) lives ONLY on an `internal` network with NO route to the internet —
+# the startup egress probe verifies this and records it in the attestation.
+# `ollama` also joins an `egress` network solely to DOWNLOAD models from its
+# registry; at request time your prompts go app -> ollama over the internal
+# network and are processed locally, so they never leave your boundary.
+# (A fully air-gapped variant — ollama offline too, models pre-baked — is the
+# later air-gap package.)
+name: precepta
+
+networks:
+  internal:
+    internal: true          # no gateway to the internet — the app is trapped here
+  egress: {}                # bridge (has internet) — ollama model pulls only
+  edge: {}                  # bridge — host <-> proxy front door (publishable)
+
+volumes:
+  precepta_data: {}         # SQLite DB + secrets (survives restarts)
+  ollama_data: {}           # pulled models (survives restarts; offline after first pull)
+
+services:
+  # In-boundary model server (router/intent model + embeddings).
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # GPU (optional): uncomment to pass an NVIDIA GPU through to Ollama.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+
+  # One-time: tell Ollama to pull the in-boundary helper models, then exit.
+  model-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama: {condition: service_healthy}
+    networks: [internal]     # only needs to reach ollama; ollama does the download
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+      ROUTER_MODEL: "${ROUTER_MODEL:-llama3.2:3b}"
+      EMBED_MODEL: "${EMBED_MODEL:-nomic-embed-text}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'echo "pulling in-boundary models..."; ollama pull "$${ROUTER_MODEL}" && ollama pull "$${EMBED_MODEL}" && echo "models ready (in-boundary)"'
+    restart: "no"
+
+  # Front door: the only inbound path (host -> app). Publishable because it is
+  # NOT on an internal-only network. It forwards host traffic to the app and
+  # nothing else — the app still cannot reach the internet.
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app: {condition: service_started}
+    ports:
+      - "127.0.0.1:8000:8000"     # Console on the host, loopback by default
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [internal, edge]
+
+  # The governed control plane + Console. NO internet route (internal only).
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: precepta-app:pilot
+    restart: unless-stopped
+    depends_on:
+      ollama: {condition: service_healthy}
+    volumes:
+      - precepta_data:/data
+    networks: [internal]          # <- the sovereignty guarantee: no internet
+    env_file:
+      - .env
+    environment:
+      PRECEPTA_DB: /data/preceptaai.db
+      PRECEPTA_HOST: 0.0.0.0
+      PRECEPTA_PORT: "8000"
+      PRECEPTA_SOVEREIGN: "true"
+      # In-boundary helper models: the router + embeddings use the bundled
+      # Ollama over the internal network. NO public Hugging Face.
+      PRECEPTA_OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_DEFAULT_MODEL: "${ROUTER_MODEL:-llama3.2:3b}"
