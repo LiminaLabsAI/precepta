@@ -1,0 +1,80 @@
+{
+  "version": "router_scenarios_v1",
+  "locked": "2026-08-10",
+  "note": "FROZEN router-decision evaluator (Rule 11). Deterministic — no model needed. Each scenario runs through app.router.scoring.resolve and must route to expect_target (null = blocked). Do NOT edit these cases while tuning the router; bump to v2 instead.",
+  "scenarios": [
+    {
+      "id": "cheap_goes_small",
+      "intent": "cheapest",
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": "small"
+    },
+    {
+      "id": "smartest_goes_strong",
+      "intent": "smartest",
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": "strong"
+    },
+    {
+      "id": "fastest_goes_lowest_latency",
+      "intent": "fastest",
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": "small"
+    },
+    {
+      "id": "low_confidence_cheap_caught_by_floor",
+      "intent": "cheapest",
+      "confidence": 0.2,
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": "strong",
+      "expect_intent": "accuracy"
+    },
+    {
+      "id": "policy_min_tier_forbids_small",
+      "intent": "cheapest",
+      "forbidden": ["small"],
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": "mid"
+    },
+    {
+      "id": "warm_cache_tips_a_tie",
+      "intent": "balanced",
+      "candidates": [
+        {"target": "cold", "quality": 0.5, "cost": 5, "latency": 50, "warm": false},
+        {"target": "warm", "quality": 0.5, "cost": 5, "latency": 50, "warm": true}
+      ],
+      "expect_target": "warm"
+    },
+    {
+      "id": "sensitive_all_forbidden_blocks",
+      "intent": "smartest",
+      "forbidden": ["small", "mid", "strong"],
+      "candidates": [
+        {"target": "small", "quality": 0.5, "cost": 0.1, "latency": 250},
+        {"target": "mid", "quality": 0.75, "cost": 0.5, "latency": 500},
+        {"target": "strong", "quality": 0.95, "cost": 3.0, "latency": 900}
+      ],
+      "expect_target": null
+    }
+  ]
+}
