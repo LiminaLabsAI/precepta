@@ -74,6 +74,9 @@ def snapshot(registry: dict | None = None) -> list[dict]:
             "in_boundary": bool(be.in_boundary),
             "model": getattr(be, "default_model", ""),
             "host": host,                       # derived from the registered endpoint URL
+            "base_url": base_url,               # for the edit form (admin-only endpoint); key never exposed
+            "tier": getattr(be, "tier", 1),
+            "has_key": bool(getattr(be, "api_key", None)),
             "egress_approved": egress_approved,  # is this host on the approved-egress allowlist?
             "egress_approvable": egress_approvable,  # external host, not yet approved
             "latency_ms": None if lat == float("inf") else round(lat),

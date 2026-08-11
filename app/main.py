@@ -943,6 +943,48 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
 
+    @app.put("/v1/backends/{provider}")
+    async def update_backend(provider: str, request: Request) -> JSONResponse:
+        """Edit a registered endpoint in place (URL, model, key, tier, boundary).
+        The identity (`provider`) is fixed; a blank key keeps the stored one."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        reg = get_registry()
+        existing = reg.get(provider)
+        if existing is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        b = await request.json()
+        base_url = (b.get("base_url") or existing.base_url or "").strip()
+        if not base_url:
+            return JSONResponse({"error": {"message": "base_url required",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        model = (b.get("model") if b.get("model") is not None
+                 else getattr(existing, "default_model", "")) or ""
+        model = model.strip()
+        try:
+            tier = int(b.get("tier") or getattr(existing, "tier", 1))
+        except (ValueError, TypeError):
+            tier = getattr(existing, "tier", 1)
+        tier = max(1, min(3, tier))
+        in_boundary = bool(b.get("in_boundary")) if "in_boundary" in b \
+            else bool(getattr(existing, "in_boundary", True))
+        # A blank/absent key KEEPS the stored one (never blank a secret by omission).
+        new_key = b.get("api_key")
+        api_key = (new_key.strip() if isinstance(new_key, str) and new_key.strip()
+                   else getattr(existing, "api_key", None))
+        backend = OpenAICompatBackend(provider, base_url, in_boundary=in_boundary,
+                                      api_key=api_key or None, default_model=model, tier=tier)
+        reg[provider] = backend
+        backend_store.save_backend(provider, base_url, api_key or None, model,
+                                   in_boundary, tier)
+        return JSONResponse({"ok": True, "provider": provider, "tier": tier,
+                             "in_boundary": in_boundary, "healthy": backend.health()})
+
     @app.post("/v1/backends/{provider}/boundary")
     async def set_backend_boundary(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
