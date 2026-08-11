@@ -72,6 +72,25 @@ def test_enforce_ignores_allowlist_for_in_boundary(monkeypatch):
     assert enforce_backend(be) is None            # in-boundary is always fine
 
 
+def test_internal_vs_external_host():
+    for internal in ("ollama", "vllm", "localhost", "vllm.internal",
+                     "api.svc", "10.0.0.5", "127.0.0.1", "192.168.1.9", ""):
+        assert eg.is_internal_host(internal) is True, internal
+    for external in ("router.huggingface.co", "api.huggingface.co",
+                     "api.neysa.ai", "example.com"):
+        assert eg.is_internal_host(external) is False, external
+
+
+def test_is_approvable_only_for_external_unapproved():
+    # external + not approved → approvable
+    assert eg.is_approvable("https://router.huggingface.co/v1") is True
+    # internal host → never approvable (approving egress is meaningless)
+    assert eg.is_approvable("http://ollama:11434/v1") is False
+    # once approved → no longer approvable
+    eg.add_host("huggingface.co", added_by="owner")
+    assert eg.is_approvable("https://router.huggingface.co/v1") is False
+
+
 def test_sync_allowfile_writes_hosts(tmp_path, monkeypatch):
     f = tmp_path / "approved_egress.txt"
     monkeypatch.setenv("PRECEPTA_EGRESS_ALLOWFILE", str(f))

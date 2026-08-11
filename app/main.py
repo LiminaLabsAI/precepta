@@ -486,12 +486,18 @@ def create_app() -> FastAPI:
         if be is None:
             return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
                                 status_code=404)
+        from .sovereign.egress import host_of, is_approvable
+        base_url = getattr(be, "base_url", "") or ""
+        host = host_of(base_url)
+        in_b = bool(getattr(be, "in_boundary", True))
         # 1) Would Sovereign Mode block routing here at all?
         block = enforce_backend(be)
         if block:
+            # Blocked because its host isn't approved — offer a one-click approve.
             return JSONResponse({"reachable": False, "status": "blocked",
-                                 "reason": block})
-        # 2) Actually try to reach it.
+                                 "reason": block, "host": host,
+                                 "approvable": is_approvable(base_url)})
+        # 2) Actually try to reach it (uses the key stored with this endpoint).
         ok = False
         try:
             ok = bool(be.health())
@@ -499,15 +505,44 @@ def create_app() -> FastAPI:
             ok = False
         if ok:
             return JSONResponse({"reachable": True, "status": "connected",
-                                 "reason": "The endpoint responded."})
-        in_b = bool(getattr(be, "in_boundary", True))
+                                 "reason": "The endpoint responded.", "host": host})
         reason = ("Registered, but it did not respond. In this sealed deployment "
                   "the app has no internet route, so a cloud endpoint won't answer "
-                  "unless you approve its host under Settings → Egress."
+                  "unless you approve its host and enable restricted egress."
                   if not in_b or _controls.sovereign_enabled()
                   else "Registered, but it did not respond — check the endpoint URL, "
                        "key, and that the server is up.")
-        return JSONResponse({"reachable": False, "status": "unreachable", "reason": reason})
+        return JSONResponse({"reachable": False, "status": "unreachable",
+                             "reason": reason, "host": host,
+                             "approvable": is_approvable(base_url)})
+
+    @app.post("/v1/backends/{provider}/approve-egress")
+    def approve_backend_egress(provider: str, request: Request) -> JSONResponse:
+        """Approve THIS registered endpoint's host for egress — the host comes
+        from the URL you entered in the Inference plane, so nothing is retyped."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only",
+                                           "type": "forbidden"}}, status_code=403)
+        be = get_registry().get(provider)
+        if be is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        from .sovereign import egress as _eg
+        base_url = getattr(be, "base_url", "") or ""
+        host = _eg.host_of(base_url)
+        if not host:
+            return JSONResponse({"error": {"message": "this endpoint has no host to approve",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        row = _eg.add_host(host, added_by=principal.subject,
+                           note=f"endpoint '{provider}'")
+        get_chain().append(
+            event_type="controls.egress", actor=principal.subject,
+            resource="controls.egress", action="approve-host",
+            outcome="applied", metadata={"host": row["host"], "endpoint": provider})
+        return JSONResponse({"ok": True, "host": row["host"], "provider": provider})
 
     # ── Router config (platform-owner-only) — where the router's own model runs ──
     @app.get("/v1/router/config")

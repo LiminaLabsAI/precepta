@@ -58,6 +58,37 @@ def host_of(url_or_host: str) -> str:
     return host.strip(".")
 
 
+def is_internal_host(host: str) -> bool:
+    """Heuristic: does this host name refer to something *inside* the network,
+    so approving it for internet egress would make no sense?
+
+    Internal: bare names with no dot (``ollama``, ``vllm``), ``localhost``,
+    ``*.internal`` / ``*.local``, and private/loopback IP literals. Everything
+    else (a public FQDN like ``router.huggingface.co``) is treated as external
+    and therefore approvable.
+    """
+    h = host_of(host)
+    if not h or h in ("localhost",):
+        return True
+    if "." not in h:                       # bare service name (docker/k8s)
+        return True
+    if h.endswith(".internal") or h.endswith(".local") or h.endswith(".svc"):
+        return True
+    # private / loopback IPv4 literals
+    if all(p.isdigit() for p in h.split(".")) and h.count(".") == 3:
+        a, b, *_ = (int(x) for x in h.split("."))
+        if a == 10 or a == 127 or (a == 192 and b == 168) or (a == 172 and 16 <= b <= 31):
+            return True
+    return False
+
+
+def is_approvable(url_or_host: str) -> bool:
+    """A host worth offering an 'approve egress' action for: external and not
+    already approved."""
+    host = host_of(url_or_host)
+    return bool(host) and not is_internal_host(host) and not is_approved(url_or_host)
+
+
 def list_hosts() -> list[dict]:
     ensure_table()
     with get_conn() as conn:

@@ -531,7 +531,7 @@ function modelPlaneView(){
       <td style="padding:10px 14px;color:${b.gpu&&b.gpu!=='—'?'#111827':'#9CA3AF'}">${esc(b.gpu||'—')}</td>
       <td style="padding:10px 14px;color:${b.latency&&b.latency!=='—'?'#111827':'#9CA3AF'}">${esc(b.latency||'—')}</td>
       <td style="padding:10px 14px">${priceCell(b)}</td>
-      <td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Unreachable'}</span><button onclick="app.testBackend('${esc(b.name)}')" title="Really probe this endpoint now" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;color:#374151;cursor:pointer">${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].busy)?'Testing…':'Test'}</button></div>${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].reason)?`<div style="font-size:11px;color:${state.testResults[b.name].reachable?'#065F46':'#991B1B'};margin-top:4px;max-width:260px;line-height:1.4">${esc(state.testResults[b.name].reason)}</div>`:''}</td>
+      <td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Unreachable'}</span><button onclick="app.testBackend('${esc(b.name)}')" title="Really probe this endpoint now" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;color:#374151;cursor:pointer">${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].busy)?'Testing…':'Test'}</button></div>${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].reason)?`<div style="font-size:11px;color:${state.testResults[b.name].reachable?'#065F46':'#991B1B'};margin-top:4px;max-width:280px;line-height:1.4">${esc(state.testResults[b.name].reason)}</div>`:''}${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].approvable&&state.testResults[b.name].host)?`<button onclick="app.approveBackendEgress('${esc(b.name)}')" style="margin-top:6px;font-size:11px;padding:3px 9px;border-radius:8px;border:none;background:#2563EB;color:#fff;cursor:pointer">Approve ${esc(state.testResults[b.name].host)} for egress</button>`:''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No inference endpoints yet — click "Add backend" to register your first one.</td></tr>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Inference plane</h1>
@@ -1378,7 +1378,16 @@ function settingsModal(){
     const list = hosts===null ? `<div style="font-size:12px;color:#9CA3AF;padding:10px 0">Loading…</div>`
       : (hosts.length ? hosts.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500;font-family:'JetBrains Mono',monospace">${esc(h.host)}</div><div style="font-size:11px;color:#9CA3AF">approved by ${esc(h.added_by||'—')}${h.note?' · '+esc(h.note):''}</div></div><button onclick="app.removeEgressHost('${esc(h.host)}')" style="font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #FECACA;background:#fff;color:#991B1B;cursor:pointer">Revoke</button></div>`).join('')
         : `<div style="font-size:12px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 12px">Fully sealed — no host is approved, so nothing can leave your network. This is the strongest posture.</div>`);
+    // Registered cloud endpoints whose host isn't approved yet — approve in one
+    // click, using the host from the URL you entered in the Inference plane.
+    const cloudEps=(s.backends||[]).filter(b=>b.egressApprovable);
+    const fromEndpoints = cloudEps.length ? `<div style="border:1px solid #BFDBFE;background:#F8FAFF;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:8px">From your registered endpoints</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:10px;line-height:1.5">These cloud endpoints you added in the Inference plane aren't reachable yet — approve each host (taken straight from the URL you entered) in one click.</div>
+        ${cloudEps.map(b=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid #E5E7EB"><div><div style="font-size:12.5px;font-weight:500">${esc(b.name)} <span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(b.host)}</span></div></div><button onclick="app.approveBackendEgress('${esc(b.name)}')" style="font-size:12px;padding:4px 11px;border-radius:6px;border:none;background:#2563EB;color:#fff;cursor:pointer">Approve host</button></div>`).join('')}
+      </div>` : '';
     pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">By default Precepta is <strong>fully sealed</strong> — the app has no way to reach the internet. To use a cloud inference endpoint (e.g. a Hugging Face or Neysa host), approve its host here. Precepta will then reach <strong>only</strong> the hosts you approve, and the attestation records exactly which ones. <span style="color:#9CA3AF">Platform-owner only.</span></div>
+      ${fromEndpoints}
       <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px">Approved egress hosts</div>
         ${list}
@@ -1508,7 +1517,7 @@ render();
     if(d && d.backends){
       state.backends = d.backends.map(b=>({
         name:b.backend, model:b.model, location:b.in_boundary?"Intent within boundary":"Intent crosses boundary",
-        inBoundary:b.in_boundary,
+        inBoundary:b.in_boundary, host:b.host||"", egressApproved:!!b.egress_approved, egressApprovable:!!b.egress_approvable,
         gpu:(b.vram && b.vram!=="—")?b.vram:"—",
         latency:(b.latency_ms!=null)?b.latency_ms+"ms":"—",
         status:b.status==="healthy"?"healthy":"down",
@@ -1722,8 +1731,16 @@ render();
     state.testResults[provider] = {busy:true}; render();
     fetch("/v1/backends/"+encodeURIComponent(provider)+"/test",{method:"POST",headers:hdr})
       .then(r=>r.json())
-      .then(d=>{ state.testResults[provider]={busy:false,reachable:!!d.reachable,reason:d.reason||d.status||""}; render(); loadInfra(); })
+      .then(d=>{ state.testResults[provider]={busy:false,reachable:!!d.reachable,reason:d.reason||d.status||"",host:d.host||"",approvable:!!d.approvable}; render(); loadInfra(); })
       .catch(e=>{ state.testResults[provider]={busy:false,reachable:false,reason:"Test failed: "+e}; render(); });
+  };
+  app.approveBackendEgress = function(provider){
+    // Approve THIS endpoint's host (taken from the URL you registered), then re-test.
+    state.testResults = state.testResults || {};
+    state.testResults[provider] = Object.assign({}, state.testResults[provider], {busy:true}); render();
+    fetch("/v1/backends/"+encodeURIComponent(provider)+"/approve-egress",{method:"POST",headers:hdr})
+      .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Approve failed: "+((d.error&&d.error.message)||r.status)); state.testResults[provider].busy=false; render(); return; } if(app.loadEgress) app.loadEgress(); app.testBackend(provider); })
+      .catch(e=>{ state.testResults[provider]={busy:false,reachable:false,reason:"Approve failed: "+e}; render(); });
   };
   app.openPriceEdit = function(name, model, pin, pout){ state.priceEditFor={name,model,pin,pout}; render(); };
   app.closePriceEdit = function(){ state.priceEditFor=null; render(); };

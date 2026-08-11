@@ -61,10 +61,21 @@ def snapshot(registry: dict | None = None) -> list[dict]:
     out = []
     for name, be in sorted(reg.items()):
         lat = _latency(name)
+        base_url = getattr(be, "base_url", "") or ""
+        try:
+            from ...sovereign.egress import host_of, is_approved, is_approvable
+            host = host_of(base_url)
+            egress_approved = is_approved(base_url) if host else False
+            egress_approvable = is_approvable(base_url) if host else False
+        except Exception:
+            host, egress_approved, egress_approvable = "", False, False
         entry = {
             "backend": name,
             "in_boundary": bool(be.in_boundary),
             "model": getattr(be, "default_model", ""),
+            "host": host,                       # derived from the registered endpoint URL
+            "egress_approved": egress_approved,  # is this host on the approved-egress allowlist?
+            "egress_approvable": egress_approvable,  # external host, not yet approved
             "latency_ms": None if lat == float("inf") else round(lat),
             "status": "healthy" if be.health() else "down",
             "gpu": "—",
