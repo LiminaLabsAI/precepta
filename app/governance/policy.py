@@ -110,10 +110,9 @@ def _violation(cond: dict, ctx: PolicyCheckContext, usage) -> str | None:
     block = cond.get("url_blocklist")
     if ctx.url and block and any(b in ctx.url for b in block):
         return f"url {ctx.url!r} matches blocklist"
-    max_tok = int(cond.get("max_tokens_per_day", 0) or 0)
-    if max_tok > 0 and ctx.tokens_requested:
-        if usage.tokens_used_today(ctx) + ctx.tokens_requested > max_tok:
-            return f"daily token cap {max_tok} exceeded"
+    # NOTE: a per-day *token* budget lives on the API KEY (token_cap_daily), not
+    # here — a policy condition would duplicate it. Policies keep the rate limit
+    # (calls/hour) and governance checks below.
     if cond.get("require_data_tag") and not ctx.has_data_tag:
         return "missing required data-classification tag"
     max_calls = int(cond.get("max_calls_per_hour", 0) or 0)

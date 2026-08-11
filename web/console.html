@@ -72,7 +72,7 @@ const state = {
   policies: [],                   // ← /v1/policies
   newPolicyOpen: false,
   newPolicyName:'', newPolicyDesc:'', newPolicyAction:'chat.completion', newPolicyEffect:'block',
-  newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxTokens:'', newPolicyMaxCalls:'', newPolicyMaxCost:'',
+  newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxCalls:'',
   newPolicyPii:false, newPolicyDataTag:false,
   newPolicyScopeTeams:[], newPolicyScopeRoles:[], newPolicyScopeAgents:[], newPolicyScopeBackends:[], newPolicyScopeModels:[],
 
@@ -214,8 +214,8 @@ const app = {
   toggleSmartRouting(){ const on=(window.__org||{}).optimize_auto==='true'; app.saveOrgSetting('optimize_auto', on?'false':'true'); },
   toggleLearningLoop(){ state.learningLoopEnabled=!state.learningLoopEnabled; render(); },
 
-  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
-  openEditPolicy(id){ const p=(window.__policies||[]).find(x=>x.id===id); if(!p)return; const c=p.conditions||{}, sc=p.scope||{}; Object.assign(state,{newPolicyOpen:true,editingPolicyId:id,newPolicyName:p.name||'',newPolicyDesc:p.description||'',newPolicyAction:p.action_type||'chat.completion',newPolicyEffect:p.effect||'block',newPolicyUrlAllow:(c.url_allowlist||[]).join(', '),newPolicyUrlBlock:(c.url_blocklist||[]).join(', '),newPolicyMaxTokens:c.max_tokens_per_day||'',newPolicyMaxCalls:c.max_calls_per_hour||'',newPolicyMaxCost:c.max_daily_cost_usd||'',newPolicyPii:!!c.pii_filter_output,newPolicyDataTag:!!c.require_data_tag,newPolicyScopeKeys:(sc.keys||[]).slice(),newPolicyScopeBackends:(sc.backends||[]).slice(),newPolicyScopeModels:(sc.models||[]).slice()}); render(); },
+  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxCalls:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
+  openEditPolicy(id){ const p=(window.__policies||[]).find(x=>x.id===id); if(!p)return; const c=p.conditions||{}, sc=p.scope||{}; Object.assign(state,{newPolicyOpen:true,editingPolicyId:id,newPolicyName:p.name||'',newPolicyDesc:p.description||'',newPolicyAction:p.action_type||'chat.completion',newPolicyEffect:p.effect||'block',newPolicyUrlAllow:(c.url_allowlist||[]).join(', '),newPolicyUrlBlock:(c.url_blocklist||[]).join(', '),newPolicyMaxCalls:c.max_calls_per_hour||'',newPolicyPii:!!c.pii_filter_output,newPolicyDataTag:!!c.require_data_tag,newPolicyScopeKeys:(sc.keys||[]).slice(),newPolicyScopeBackends:(sc.backends||[]).slice(),newPolicyScopeModels:(sc.models||[]).slice()}); render(); },
   closeNewPolicy(){ state.newPolicyOpen=false; render(); },
   toggleNewPolicyPii(){ state.newPolicyPii=!state.newPolicyPii; },
   toggleNewPolicyDataTag(){ state.newPolicyDataTag=!state.newPolicyDataTag; },
@@ -983,43 +983,41 @@ function savingsView(){
   const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''}>${o[1]}</option>`).join('')}</select>`;
   const listCard=(header,sub,rowsHtml,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:14px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:14px">${header}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${sub}</div></div>${rowsHtml||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference endpoints registered yet.</div>`}<div style="padding:12px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo}</div></div>`;
   const card=(inner)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">${inner}</div>`;
+  // One consistent table per tab: the "Auto — Smart router" row is simply the
+  // first row (the default for router-picked requests), with the SAME single
+  // dropdown as every endpoint. No separate "default" card, no toggles — so the
+  // control model is identical everywhere and "Smart router" is never mistaken
+  // for a caching strategy.
+  const tableWrap=(headRight,rows,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
+      <div style="padding:11px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;background:#F9FAFB"><span style="font-size:10.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Endpoint</span><span style="font-size:10.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${headRight}</span></div>
+      ${rows}
+      <div style="padding:11px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo} — <span style="font-weight:500">coming soon</span> (not selectable yet)</div>
+    </div>`;
+  const optRow=(e,isAuto,val,opts,handler)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid #F3F4F6;${isAuto?'background:#F8FAFF':''}">
+      <div><div style="font-size:13px;font-weight:${isAuto?'600':'500'}">${isAuto?'Auto — Smart router':esc(e.label)}</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:1px;${isAuto?'':"font-family:'JetBrains Mono',monospace"}">${isAuto?'default for requests the router routes (model: auto)':esc(e.endpoint)}</div></div>
+      ${sel(val,opts,handler)}</div>`;
   let body;
   if(tab==='cache'){
     const cs=auto.cache_stats||{};
-    const exactOn=!!auto.cache_enabled, semOn=auto.cache_enabled&&auto.cache_strategy==='semantic';
-    const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
-    const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Default cache strategy</div>
-       <div style="font-size:11px;color:#6B7280;margin-bottom:8px;line-height:1.5">This is the default applied to every request the <strong>Smart router</strong> picks a model for (model = <em>auto</em>). To use a different strategy for one specific endpoint, override it in the list below. "Strategy" = <em>how</em> we cache (exact vs semantic); the Smart router decides <em>which model</em> runs — they're separate choices.</div>`+
-      rowline('Exact-match cache','Reuses a previous answer only when the request is identical. On by default.', sw(exactOn,`app.setFeature('auto',{cache_enabled:${exactOn?'false':'true'},cache_strategy:'exact'})`))+
-      rowline('Semantic cache','Reuses a similar (not identical) answer. Off by default — it can confidently serve a wrong match.', sw(semOn,`app.setFeature('auto',{cache_enabled:true,cache_strategy:'${semOn?'exact':'semantic'}'})`))+
-      statsRow+
-      `<div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Visible only to admins — the user just gets an answer.</div>
-       <a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;display:inline-block;margin-top:8px;color:#2563EB">View cache.hit events in Audit log →</a>`);
-    const rows=models.map(e=>{
-      const val=!e.cache_enabled?'off':(e.cache_strategy||'exact');
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['exact','Exact match'],['semantic','Semantic'],['off','Off']],`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`)}</div>`;
-    }).join('');
-    body=defaults+listCard('Cache strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own cache algorithm — coming soon')+
-      `<div style="margin-top:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button></div>
-       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Cost reads $0 on free local endpoints — real dollars accrue against a priced one.</div>`;
+    const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
+    const opts=[['off','Off'],['exact','Exact match'],['semantic','Semantic']];
+    const row=(e,isAuto)=>optRow(e,isAuto,(!e.cache_enabled?'off':(e.cache_strategy||'exact')),opts,`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`);
+    const rows=row(auto,true)+models.map(e=>row(e,false)).join('');
+    const intro=`<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px;line-height:1.6;max-width:700px">Choose how each endpoint reuses a previous answer: <strong>Off</strong> (always ask the model), <strong>Exact match</strong> (reuse only when the request is identical), or <strong>Semantic</strong> (reuse a close match — opt-in, it can serve a wrong answer).<br>The <strong>Auto — Smart router</strong> row is just the default for requests where the router picks the model. The router chooses the <em>model</em>; this chooses the <em>caching</em> — two separate things.</div>`;
+    body=intro+tableWrap('Cache strategy',rows,'Bring your own cache algorithm')+statsRow+
+      `<div style="margin-top:14px;display:flex;align-items:center;gap:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;color:#2563EB">View cache.hit events in Audit log →</a></div>
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Admin-only view — the user just gets an answer. Cost reads $0 on free local endpoints.</div>`;
   } else {
     const ms=auto.compression_stats||{};
-    const aggrOn=auto.compression_enabled&&auto.compression_mode==='aggressive';
-    const statsRow=(ms.requests_compressed)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
-    const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Default compression strategy</div>
-       <div style="font-size:11px;color:#6B7280;margin-bottom:8px;line-height:1.5">The default applied to every request the <strong>Smart router</strong> routes (model = <em>auto</em>). Override it for a specific endpoint in the list below.</div>`+
-      rowline('Baseline trimming','Cuts filler without changing meaning — cannot make an answer worse. Always on.', `<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;flex:none">Always on</span>`)+
-      rowline('Cost-saving mode','Shortens more aggressively (lossy). Opt-in — the caller is notified whenever it is applied.', sw(aggrOn,`app.setFeature('auto',{compression_enabled:true,compression_mode:'${aggrOn?'baseline':'aggressive'}'})`))+
-      statsRow+
-      `<a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;display:inline-block;margin-top:12px;color:#2563EB">View compression events in Audit log →</a>`);
-    const rows=models.map(e=>{
-      const val=!e.compression_enabled?'off':(e.compression_mode||'baseline');
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']],`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)}</div>`;
-    }).join('');
-    body=defaults+listCard('Compression strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own compression algorithm — coming soon')+
-      `<div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55"><strong>Baseline</strong> is quality-safe (whitespace only). <strong>Aggressive</strong> also trims filler (lossy) — the caller sees it and an admin is alerted, never a silent change. Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
+    const statsRow=(ms.requests_compressed)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
+    const opts=[['off','Off'],['baseline','Baseline (safe)'],['aggressive','Aggressive']];
+    const row=(e,isAuto)=>optRow(e,isAuto,(!e.compression_enabled?'off':(e.compression_mode||'baseline')),opts,`app.setCompressionMode('${esc(e.endpoint)}',this.value)`);
+    const rows=row(auto,true)+models.map(e=>row(e,false)).join('');
+    const intro=`<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px;line-height:1.6;max-width:700px">Choose how each endpoint shortens prompts before sending: <strong>Off</strong> (send as-is), <strong>Baseline</strong> (trim filler safely — never changes meaning), or <strong>Aggressive</strong> (shorten more; lossy, opt-in — the caller is told).<br>The <strong>Auto — Smart router</strong> row is the default for router-routed requests.</div>`;
+    body=intro+tableWrap('Compression strategy',rows,'Bring your own compression algorithm')+statsRow+
+      `<div style="margin-top:14px"><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;color:#2563EB">View compression events in Audit log →</a></div>
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
   }
   return h1+tabs+body;
 }
@@ -1170,11 +1168,7 @@ function newPolicyModal(){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><i data-lucide="lock" style="width:13px;height:13px;color:#3B82F6"></i><span style="font-size:12px;font-weight:600;color:#374151">Conditions</span><span style="font-size:11px;color:#9CA3AF">(saved — leave blank to skip)</span></div>
         <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL allowlist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlAllow)}" oninput="app.set('newPolicyUrlAllow',this.value)" placeholder="vllm-cluster.internal, neysa.ai"></div>
         <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL blocklist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlBlock)}" oninput="app.set('newPolicyUrlBlock',this.value)" placeholder="openai.com, anthropic.com"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max tokens / day</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxTokens)}" oninput="app.set('newPolicyMaxTokens',this.value)" placeholder="50000"></div>
-          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCalls)}" oninput="app.set('newPolicyMaxCalls',this.value)" placeholder="120"></div>
-        </div>
-        <div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max daily cost (USD)</label><input type="number" step="0.01" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCost)}" oninput="app.set('newPolicyMaxCost',this.value)" placeholder="5.00"></div>
+        <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour <span style="font-weight:400;text-transform:none;color:#9CA3AF">— rate limit (per-app spend/token budgets live on the API key)</span></label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCalls)}" oninput="app.set('newPolicyMaxCalls',this.value)" placeholder="120"></div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${s.newPolicyPii?'checked':''} onchange="app.toggleNewPolicyPii()"><span style="font-size:12.5px;color:#374151">Filter PII in output (emails, phone numbers, card numbers)</span></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${s.newPolicyDataTag?'checked':''} onchange="app.toggleNewPolicyDataTag()"><span style="font-size:12.5px;color:#374151">Require a data-classification tag on the request</span></label>
       </div>
@@ -1666,9 +1660,7 @@ render();
     const c={};
     if(s.newPolicyUrlAllow.trim()) c.url_allowlist=s.newPolicyUrlAllow.split(",").map(x=>x.trim()).filter(Boolean);
     if(s.newPolicyUrlBlock.trim()) c.url_blocklist=s.newPolicyUrlBlock.split(",").map(x=>x.trim()).filter(Boolean);
-    if(s.newPolicyMaxTokens) c.max_tokens_per_day=parseInt(s.newPolicyMaxTokens);
     if(s.newPolicyMaxCalls) c.max_calls_per_hour=parseInt(s.newPolicyMaxCalls);
-    if(s.newPolicyMaxCost) c.max_daily_cost_usd=parseFloat(s.newPolicyMaxCost);
     if(s.newPolicyPii) c.pii_filter_output=true;
     if(s.newPolicyDataTag) c.require_data_tag=true;
     const scope={};
