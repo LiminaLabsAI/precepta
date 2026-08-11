@@ -983,39 +983,34 @@ function savingsView(){
   const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''}>${o[1]}</option>`).join('')}</select>`;
   const listCard=(header,sub,rowsHtml,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:14px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:14px">${header}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${sub}</div></div>${rowsHtml||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference endpoints registered yet.</div>`}<div style="padding:12px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo}</div></div>`;
   const card=(inner)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">${inner}</div>`;
-  // One consistent table per tab: the "Auto — Smart router" row is simply the
-  // first row (the default for router-picked requests), with the SAME single
-  // dropdown as every endpoint. No separate "default" card, no toggles — so the
-  // control model is identical everywhere and "Smart router" is never mistaken
-  // for a caching strategy.
-  const tableWrap=(headRight,rows,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">
-      <div style="padding:11px 20px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;background:#F9FAFB"><span style="font-size:10.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Endpoint</span><span style="font-size:10.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${headRight}</span></div>
-      ${rows}
-      <div style="padding:11px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo} — <span style="font-weight:500">coming soon</span> (not selectable yet)</div>
-    </div>`;
-  const optRow=(e,isAuto,val,opts,handler)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid #F3F4F6;${isAuto?'background:#F8FAFF':''}">
-      <div><div style="font-size:13px;font-weight:${isAuto?'600':'500'}">${isAuto?'Auto — Smart router':esc(e.label)}</div>
-      <div style="font-size:11px;color:#9CA3AF;margin-top:1px;${isAuto?'':"font-family:'JetBrains Mono',monospace"}">${isAuto?'default for requests the router routes (model: auto)':esc(e.endpoint)}</div></div>
-      ${sel(val,opts,handler)}</div>`;
+  // Two sections (matching the design): a compact "Default" selector for
+  // router-picked requests (model: auto), then a per-model override table with
+  // friendly names. "Smart router (auto-decide)" is a real strategy — the system
+  // picks exact vs. semantic vs. skip per request (app/cache.py::decide_smart).
+  const EP_META={ollama:{name:'Ollama',desc:'Local (in-boundary)'},vllm:{name:'vLLM cluster',desc:'On-prem GPU (in-boundary)'},neysa:{name:'Neysa',desc:'Sovereign cloud'},hf:{name:'Hugging Face endpoint',desc:'Dedicated inference endpoint'}};
+  const epMeta=(ep,label)=>{ for(const k in EP_META){ if(ep===k||ep.indexOf(k)===0) return EP_META[k]; } return {name:label||ep,desc:ep}; };
+  const defCard=(title,sub,control)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:16px"><div><div style="font-weight:600;font-size:14px">${title}</div><div style="font-size:11.5px;color:#9CA3AF;margin-top:2px;max-width:440px;line-height:1.5">${sub}</div></div>${control}</div>`;
+  const modelCard=(title,sub,rows,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:16px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:15px">${title}</div><div style="font-size:12px;color:#9CA3AF;margin-top:3px;line-height:1.5;max-width:620px">${sub}</div></div>${rows||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference models registered yet.</div>`}<div style="padding:13px 20px;border-top:1px dashed #E5E7EB;font-size:12.5px;color:#9CA3AF">+ ${byo} — coming soon</div></div>`;
+  const modelRow=(e,val,opts,handler)=>{const m=epMeta(e.endpoint,e.label);return `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:14px;font-weight:600">${esc(m.name)}</div><div style="font-size:12px;color:#9CA3AF;margin-top:2px">${esc(m.desc)}</div></div>${sel(val,opts,handler)}</div>`;};
   let body;
   if(tab==='cache'){
     const cs=auto.cache_stats||{};
     const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
-    const opts=[['off','Off'],['exact','Exact match'],['semantic','Semantic']];
-    const row=(e,isAuto)=>optRow(e,isAuto,(!e.cache_enabled?'off':(e.cache_strategy||'exact')),opts,`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`);
-    const rows=row(auto,true)+models.map(e=>row(e,false)).join('');
-    const intro=`<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px;line-height:1.6;max-width:700px">Choose how each endpoint reuses a previous answer: <strong>Off</strong> (always ask the model), <strong>Exact match</strong> (reuse only when the request is identical), or <strong>Semantic</strong> (reuse a close match — opt-in, it can serve a wrong answer).<br>The <strong>Auto — Smart router</strong> row is just the default for requests where the router picks the model. The router chooses the <em>model</em>; this chooses the <em>caching</em> — two separate things.</div>`;
-    body=intro+tableWrap('Cache strategy',rows,'Bring your own cache algorithm')+statsRow+
+    const opts=[['smart','Smart router (auto-decide)'],['exact','Exact match'],['semantic','Semantic'],['off','Skip']];
+    const cval=e=>!e.cache_enabled?'off':(e.cache_strategy||'smart');
+    const def=defCard('Default cache strategy','Applies to requests the Smart router routes (model: auto).',sel(cval(auto),opts,`app.setCacheStrategy('auto',this.value)`));
+    const rows=models.map(e=>modelRow(e,cval(e),opts,`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`)).join('');
+    body=def+modelCard('Cache strategy by inference model','Overrides the defaults above per model. "Smart router" lets the system decide exact vs. semantic vs. skip, per request.',rows,'Bring your own cache algorithm')+statsRow+
       `<div style="margin-top:14px;display:flex;align-items:center;gap:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;color:#2563EB">View cache.hit events in Audit log →</a></div>
-       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Admin-only view — the user just gets an answer. Cost reads $0 on free local endpoints.</div>`;
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Admin-only view. Cost reads $0 on free local endpoints.</div>`;
   } else {
     const ms=auto.compression_stats||{};
     const statsRow=(ms.requests_compressed)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
-    const opts=[['off','Off'],['baseline','Baseline (safe)'],['aggressive','Aggressive']];
-    const row=(e,isAuto)=>optRow(e,isAuto,(!e.compression_enabled?'off':(e.compression_mode||'baseline')),opts,`app.setCompressionMode('${esc(e.endpoint)}',this.value)`);
-    const rows=row(auto,true)+models.map(e=>row(e,false)).join('');
-    const intro=`<div style="font-size:12.5px;color:#6B7280;margin-bottom:14px;line-height:1.6;max-width:700px">Choose how each endpoint shortens prompts before sending: <strong>Off</strong> (send as-is), <strong>Baseline</strong> (trim filler safely — never changes meaning), or <strong>Aggressive</strong> (shorten more; lossy, opt-in — the caller is told).<br>The <strong>Auto — Smart router</strong> row is the default for router-routed requests.</div>`;
-    body=intro+tableWrap('Compression strategy',rows,'Bring your own compression algorithm')+statsRow+
+    const opts=[['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']];
+    const cval=e=>!e.compression_enabled?'off':(e.compression_mode||'baseline');
+    const def=defCard('Default compression strategy','Applies to requests the Smart router routes (model: auto).',sel(cval(auto),opts,`app.setCompressionMode('auto',this.value)`));
+    const rows=models.map(e=>modelRow(e,cval(e),opts,`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)).join('');
+    body=def+modelCard('Compression strategy by inference model','Overrides the defaults above per model. Baseline trims filler safely; Aggressive shortens more (lossy — the caller is told).',rows,'Bring your own compression algorithm')+statsRow+
       `<div style="margin-top:14px"><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;color:#2563EB">View compression events in Audit log →</a></div>
        <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
   }
