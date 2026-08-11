@@ -80,7 +80,7 @@ def snapshot(registry: dict | None = None) -> list[dict]:
             "egress_approved": egress_approved,  # is this host on the approved-egress allowlist?
             "egress_approvable": egress_approvable,  # external host, not yet approved
             "latency_ms": None if lat == float("inf") else round(lat),
-            "status": "healthy" if be.health() else "down",
+            "status": "healthy" if be.health(timeout=8.0) else "down",
             "gpu": "—",
             "vram": "—",
         }

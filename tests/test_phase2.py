@@ -34,7 +34,7 @@ class FakeBackend:
 
     def litellm_model(self, m): return f"{self.name}/{m}"
     def price(self, m): return Price(self.in_price, self.out_price)
-    def health(self): return not self.fail
+    def health(self, timeout: float = 3.0): return not self.fail
 
     async def complete(self, messages, model, **kw):
         if self.fail:

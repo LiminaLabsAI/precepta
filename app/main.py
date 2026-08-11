@@ -498,9 +498,10 @@ def create_app() -> FastAPI:
                                  "reason": block, "host": host,
                                  "approvable": is_approvable(base_url)})
         # 2) Actually try to reach it (uses the key stored with this endpoint).
+        #    Generous timeout: a cloud endpoint via the broker answers in ~4-5s.
         ok = False
         try:
-            ok = bool(be.health())
+            ok = bool(be.health(timeout=15.0))
         except Exception:
             ok = False
         if ok:

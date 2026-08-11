@@ -43,10 +43,15 @@ class OpenAICompatBackend:
     def price(self, model: str) -> Price:
         return self._prices.get(model, Price(0.0, 0.0))
 
-    def health(self) -> bool:
-        """Reachable AND authorized. 401/403/404/5xx → not healthy (honest status)."""
+    def health(self, timeout: float = 3.0) -> bool:
+        """Reachable AND authorized. 401/403/404/5xx → not healthy (honest status).
+
+        `timeout` is caller-tunable: internal/fast paths keep the short default,
+        while UI-facing checks (the status snapshot, the explicit Test button)
+        pass a longer one — a cloud endpoint reached over the internet through the
+        egress broker answers in ~4-5s, which a 3s probe would wrongly call down."""
         try:
-            r = httpx.get(self.base_url + "/models", headers=self._headers(), timeout=3.0)
+            r = httpx.get(self.base_url + "/models", headers=self._headers(), timeout=timeout)
             return r.status_code < 400
         except httpx.HTTPError:
             return False
