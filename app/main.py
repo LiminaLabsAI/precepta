@@ -876,6 +876,8 @@ def create_app() -> FastAPI:
             "in_boundary_endpoints": inb,
             "models_in_boundary": total > 0 and inb == total,
             "sovereign": sovereign_enabled(),
+            "repo_url": os.environ.get("PRECEPTA_REPO_URL",
+                                       "https://github.com/LiminaLabsAI/precepta.git"),
             "egress": {"result": egress["result"],
                        "verified": egress["result"] == "blocked"},
         })

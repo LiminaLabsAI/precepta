@@ -35,6 +35,38 @@ _SYSTEM = (
 )
 
 
+# ── navigation: let the copilot move the Console to a page on request ───────
+# Ordered so more specific keywords win; each screen maps to the Console's route key.
+_SCREENS: list[tuple[str, str, list[str]]] = [
+    ("deployment", "Deployment", ["deployment", "deploy"]),
+    ("modelplane", "Inference plane", ["inference plane", "inference", "model plane",
+                                       "models", "endpoints", "backends"]),
+    ("keys", "Keys & budgets", ["keys", "budgets", "api key"]),
+    ("policies", "Policies", ["policies", "policy", "governance", "guardrail"]),
+    ("savings", "Cache & compression", ["cache", "compression", "caching"]),
+    ("traces", "Traces", ["traces", "trace", "request log"]),
+    ("playground", "Playground", ["playground", "chat", "try it"]),
+    ("overview", "Overview", ["overview", "dashboard", "home"]),
+]
+_NAV_VERBS = ("take me", "go to", "goto", "navigate", "open", "show me", "bring up",
+              "switch to", "move to", "jump to", "visit", "head to", "take to")
+
+
+def detect_nav(question: str) -> tuple[str, str] | None:
+    """If the message is a 'go to <page>' command, return (screen_key, label)."""
+    q = (question or "").lower()
+    if not q:
+        return None
+    intent = (any(v in q for v in _NAV_VERBS)
+              or "page" in q or "screen" in q or "tab" in q or "section" in q)
+    if not intent:
+        return None
+    for screen, label, kws in _SCREENS:
+        if any(kw in q for kw in kws):
+            return screen, label
+    return None
+
+
 def gather_facts() -> dict[str, Any]:
     """Snapshot the live deployment state the copilot is allowed to reason over.
 
@@ -186,10 +218,19 @@ def _fallback_answer(question: str, facts: dict[str, Any]) -> str:
 async def answer(question: str, model: str | None = None) -> dict[str, Any]:
     """Answer an operator question, grounded in live state. Never raises."""
     q = (question or "").strip()
+
+    # Navigation command → move the Console, no model call needed.
+    nav = detect_nav(q)
+    if nav is not None:
+        screen, label = nav
+        return {"answer": f"Taking you to the {label} page.", "nav": screen,
+                "grounded": True, "model": None, "in_boundary": True}
+
     facts = gather_facts()
     if not q:
         return {"answer": "Ask me about your endpoints, keys, policies, cache, "
-                          "egress, or how sovereignty is enforced.",
+                          "egress, or how sovereignty is enforced — or say "
+                          "“take me to the Deployment page” to navigate.",
                 "grounded": True, "model": None}
 
     try:

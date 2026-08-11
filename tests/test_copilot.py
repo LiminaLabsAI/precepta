@@ -83,3 +83,15 @@ def test_working_model_produces_grounded_answer(monkeypatch):
     assert out["answer"] == "Sovereign Mode is on."
     assert out["in_boundary"] is True
     assert out["model"] == "llama3.2:3b"
+
+
+def test_navigation_intent_returns_nav_action():
+    import app.copilot as copilot
+    out = _run(copilot.answer("can you take me to the deployment page"))
+    assert out["nav"] == "deployment"
+    assert "Deployment" in out["answer"]
+    out2 = _run(copilot.answer("open cache & compression"))
+    assert out2["nav"] == "savings"
+    # a normal question is NOT treated as navigation
+    out3 = _run(copilot.answer("how many endpoints do I have?"))
+    assert "nav" not in out3

@@ -251,6 +251,7 @@ const app = {
       const r=await fetch('/v1/copilot',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({question:q})});
       const d=await r.json();
       state.copilotMsgs.push({role:'assistant',text:d.answer||'(no answer)',model:d.model,inb:d.in_boundary});
+      if(d.nav && app.setScreen){ state.copilotBusy=false; render(); app.setScreen(d.nav); return; }   // navigate on command
     }catch(e){
       state.copilotMsgs.push({role:'assistant',text:'Couldn’t reach the copilot. Is the stack up?'});
     }
@@ -707,14 +708,17 @@ function deploymentView(){
     ${item(false,'Generate the sovereignty attestation',"app.openAttestation()",'Generate →')}
   </div>`;
   // Copyable, step-by-step runbook — each command has its own Copy button.
+  const repo=(d.repo_url||'https://github.com/LiminaLabsAI/precepta.git');
   const steps=[
-    {n:1,title:'Check the machine is ready',cmd:'./deploy/doctor.sh',
+    {n:1,title:'Get the code',cmd:'git clone '+repo+' && cd precepta',
+     note:'Clone the Precepta repo onto the machine that will host it, then enter the folder.'},
+    {n:2,title:'Check the machine is ready',cmd:'./deploy/doctor.sh',
      note:'A plain-English checklist (Docker · port 8000 free · .env). Each ✗ tells you the fix.'},
-    {n:2,title:'Set your details',cmd:'cp deploy/.env.example deploy/.env',
+    {n:3,title:'Set your details',cmd:'cp deploy/.env.example deploy/.env',
      note:'Then open deploy/.env and fill the top three lines (ORG_NAME, ADMIN_EMAIL, PRECEPTA_PLATFORM_OWNERS). Leave the rest — they are the sovereign defaults.'},
-    {n:3,title:'Start it',cmd:'./deploy/up.sh',
+    {n:4,title:'Start it',cmd:'./deploy/up.sh',
      note:'Builds the app, pulls the AI models onto your machine (one time), and starts everything locked off from the internet. Prints the Console URL when ready.'},
-    {n:4,title:'Prove it is sealed',cmd:'./deploy/smoke.sh',
+    {n:5,title:'Prove it is sealed',cmd:'./deploy/smoke.sh',
      note:'Runs a governed request, checks the real egress probe reports BLOCKED, and confirms the app container cannot reach the internet. Expect: SMOKE PASS.'},
   ];
   const codeBox=(id,cmd)=>`<div style="display:flex;align-items:center;gap:8px;background:#0B1220;border-radius:8px;padding:10px 12px;margin-top:8px">
@@ -1006,11 +1010,11 @@ function savingsView(){
   } else {
     const ms=auto.compression_stats||{};
     const statsRow=(ms.requests_compressed)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
-    const opts=[['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']];
-    const cval=e=>!e.compression_enabled?'off':(e.compression_mode||'baseline');
+    const opts=[['smart','Smart router (auto-decide)'],['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']];
+    const cval=e=>!e.compression_enabled?'off':(e.compression_mode||'smart');
     const def=defCard('Default compression strategy','Applies to requests the Smart router routes (model: auto).',sel(cval(auto),opts,`app.setCompressionMode('auto',this.value)`));
     const rows=models.map(e=>modelRow(e,cval(e),opts,`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)).join('');
-    body=def+modelCard('Compression strategy by inference model','Overrides the defaults above per model. Baseline trims filler safely; Aggressive shortens more (lossy — the caller is told).',rows,'Bring your own compression algorithm')+statsRow+
+    body=def+modelCard('Compression strategy by inference model','Overrides the defaults above per model. "Smart router" lets the system decide skip vs. baseline vs. aggressive, per request.',rows,'Bring your own compression algorithm')+statsRow+
       `<div style="margin-top:14px"><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;color:#2563EB">View compression events in Audit log →</a></div>
        <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
   }
@@ -1879,7 +1883,7 @@ render();
   };
   app.copyRunbook = function(){
     const steps=window.__runbookSteps||[];
-    const txt=["# Run Precepta inside your network","git clone <your-precepta-repo> && cd precepta"]
+    const txt=["# Run Precepta inside your network"]
       .concat(steps.map(st=>st.cmd))
       .concat(["# then open http://127.0.0.1:8000/console → sign in → Deployment → Generate attestation"]).join("\n");
     if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{ state.runbookCopied=true; render(); setTimeout(()=>{state.runbookCopied=false;render();},2000); }).catch(()=>{}); }

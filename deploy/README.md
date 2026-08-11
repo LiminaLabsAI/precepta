@@ -13,7 +13,7 @@ signed **zero-egress attestation** to prove it. Great for a pilot or evaluation.
 
 ### 1. Get the files
 ```bash
-git clone <your-precepta-repo> && cd precepta
+git clone https://github.com/LiminaLabsAI/precepta.git && cd precepta
 ```
 
 ### 2. Check your machine is ready
