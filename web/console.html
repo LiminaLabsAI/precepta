@@ -893,7 +893,7 @@ function tracesView(){
           <div style="margin-left:126px;margin-top:4px;font-size:12px;line-height:1.4"><span style="font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}</div>
         </div>${det}
       </div>`;}).join('');
-    checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Checkpoints</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
+    checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Intelligent router traces</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
   }
 
   // ── right: detail tabs (summary / route / messages / attributes) ──
@@ -909,7 +909,7 @@ function tracesView(){
     if(tab==='summary'){
       tabBody=`<div style="padding:16px 18px">
         ${row('Outcome',m.outcome, m.outcome==='allowed'?'#065F46':(m.outcome==='warn'?'#92400E':'#991B1B'))}
-        ${row('Duration',m.total_ms+'ms')}${row('Checkpoints',m.step_count)}
+        ${row('Duration',m.total_ms+'ms')}${row('Intelligent router traces',m.step_count)}
         ${row('Flagged',flagged,flagged?'#92400E':'#111827')}${row('Blocked/failed',failed,failed?'#991B1B':'#111827')}
         ${row('PII redacted',m.pii_redacted)}${row('Cost','$'+Number(m.cost_usd||0).toFixed(4))}
         ${row('Backend',m.backend||'—')}
@@ -959,7 +959,7 @@ function tracesView(){
     <div id="trDetail" class="pc-scroll" style="width:${dw}px;flex:1;min-width:${dw}px;overflow-y:auto">${tabBar}${tabBody}</div>
    </div>
   </div>
-  <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a checkpoint to expand its details.</div>`;
+  <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a step to expand its details.</div>`;
   return head+kpis+bbPanel+threePane+learn;
 }
 function traceSummarySentence(d){
