@@ -28,6 +28,10 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     networks: [internal, egress]
+    environment:
+      # Keep models resident so the first Playground/router call isn't a ~25s
+      # cold load. -1 = never unload (uses more RAM; fine for a single-node pilot).
+      OLLAMA_KEEP_ALIVE: "-1"
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s

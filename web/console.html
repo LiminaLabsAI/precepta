@@ -87,7 +87,7 @@ const state = {
 
   settingsOpen:false, settingsTab:'general', routerKeyInput:'',
 
-  chatModel:'', chatInput:'', messages:[],
+  chatModel:'', chatInput:'', messages:[], chatPending:false, testResults:{},
   copilotQuery:'',
 };
 
@@ -149,7 +149,9 @@ const nav = [
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
   {key:'savings',label:'Cache & compression',icon:'zap'},
-  {key:'workflow',label:'Workflow',icon:'git-branch'},
+  // Workflow hidden from the menu — it duplicated Traces + settings and confused users.
+  // Screen + /v1/workflow endpoint are kept; uncomment to restore.
+  // {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
   // Audit & Attestation hidden from the menu per request — still reachable via the
   // Traces "Generate attestation" button; uncomment to restore.
@@ -192,7 +194,10 @@ const app = {
   goToAuditFiltered(f){ state.screen='audit'; state.auditEventFilter=f; render(); },
   skipOnboarding(){ state.screen='overview'; render(); },
   selectInfra(id){ state.infraSelected=id; state.connectionStatus='idle'; render(); },
-  testConnection(){ state.connectionStatus='testing'; render(); setTimeout(()=>{ state.connectionStatus='success'; render(); },700); },
+  // NOTE: the real app.testConnection (registers + probes the endpoint honestly)
+  // is defined later and overrides this; kept as a no-op placeholder only so the
+  // object shape is stable before that assignment runs.
+  testConnection(){},
   nextStep(){ if(state.onboardStep>=2){ state.screen='overview'; state.showSetupToast=true; render(); return;} state.onboardStep++; render(); },
   prevStep(){ state.onboardStep=Math.max(0,state.onboardStep-1); render(); },
   dismissSetupToast(){ state.showSetupToast=false; render(); },
@@ -225,7 +230,7 @@ const app = {
 
   openSettings(){ state.settingsOpen=true; state.profileMenuOpen=false; render(); if(window.__loadAuthz) window.__loadAuthz(); },
   closeSettings(){ state.settingsOpen=false; render(); },
-  setSettingsTab(t){ state.settingsTab=t; render(); },
+  setSettingsTab(t){ state.settingsTab=t; render(); if(t==='egress'&&app.loadEgress) app.loadEgress(); },
   goToMembersFromAccount(){ state.settingsTab='members'; render(); },
   goToPoliciesFromSettings(){ state.settingsOpen=false; state.screen='policies'; render(); },
 
@@ -413,6 +418,7 @@ function onboardingView(){
         <button onclick="app.testConnection()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Test &amp; connect</button>
         ${conn?`<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${conn.bg};color:${conn.color}">${conn.label}</span>`:''}
       </div>
+      ${(s.connectionStatus==='unreachable'&&s.connReason)?`<div style="font-size:12px;color:#991B1B;margin-top:10px;line-height:1.5;max-width:520px">${esc(s.connReason)}</div>`:''}
     </div>`;
   } else if(s.onboardStep===1){
     body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
@@ -525,7 +531,7 @@ function modelPlaneView(){
       <td style="padding:10px 14px;color:${b.gpu&&b.gpu!=='—'?'#111827':'#9CA3AF'}">${esc(b.gpu||'—')}</td>
       <td style="padding:10px 14px;color:${b.latency&&b.latency!=='—'?'#111827':'#9CA3AF'}">${esc(b.latency||'—')}</td>
       <td style="padding:10px 14px">${priceCell(b)}</td>
-      <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Down'}</span></td>
+      <td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Unreachable'}</span><button onclick="app.testBackend('${esc(b.name)}')" title="Really probe this endpoint now" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;color:#374151;cursor:pointer">${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].busy)?'Testing…':'Test'}</button></div>${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].reason)?`<div style="font-size:11px;color:${state.testResults[b.name].reachable?'#065F46':'#991B1B'};margin-top:4px;max-width:260px;line-height:1.4">${esc(state.testResults[b.name].reason)}</div>`:''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No inference endpoints yet — click "Add backend" to register your first one.</td></tr>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Inference plane</h1>
@@ -631,7 +637,7 @@ function newKeyModal(){
           <div style="display:flex;gap:6px;flex-wrap:wrap">${(s.backends||[]).map(b=>{const on=s.newKeyBackends.includes(b.name);return `<div onclick="app.toggleKeyBackend('${esc(b.name)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No inference endpoints yet</span>'}</div>
         </div>
         <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed models <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>m.value!=='auto'&&!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button onclick="app.closeNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.saveKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">${s.editingKeyId?'Save changes':'Create key'}</button></div>
@@ -697,11 +703,37 @@ function deploymentView(){
     ${item(keys>0,'Issue an API key for your apps',"app.setScreen('keys')",'Keys & budgets →')}
     ${item(false,'Generate the sovereignty attestation',"app.openAttestation()",'Generate →')}
   </div>`;
-  const copy=`<div style="display:flex;align-items:center;gap:12px">
-    <button onclick="app.copyRunbook()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${state.runbookCopied?'✓ Copied':'Copy the runbook for your IT team'}</button>
-    <span style="font-size:11px;color:#9CA3AF">the exact step-by-step to run this in another environment</span>
+  // Copyable, step-by-step runbook — each command has its own Copy button.
+  const steps=[
+    {n:1,title:'Check the machine is ready',cmd:'./deploy/doctor.sh',
+     note:'A plain-English checklist (Docker · port 8000 free · .env). Each ✗ tells you the fix.'},
+    {n:2,title:'Set your details',cmd:'cp deploy/.env.example deploy/.env',
+     note:'Then open deploy/.env and fill the top three lines (ORG_NAME, ADMIN_EMAIL, PRECEPTA_PLATFORM_OWNERS). Leave the rest — they are the sovereign defaults.'},
+    {n:3,title:'Start it',cmd:'./deploy/up.sh',
+     note:'Builds the app, pulls the AI models onto your machine (one time), and starts everything locked off from the internet. Prints the Console URL when ready.'},
+    {n:4,title:'Prove it is sealed',cmd:'./deploy/smoke.sh',
+     note:'Runs a governed request, checks the real egress probe reports BLOCKED, and confirms the app container cannot reach the internet. Expect: SMOKE PASS.'},
+  ];
+  const codeBox=(id,cmd)=>`<div style="display:flex;align-items:center;gap:8px;background:#0B1220;border-radius:8px;padding:10px 12px;margin-top:8px">
+      <code style="flex:1;color:#E5E7EB;font-family:'JetBrains Mono',monospace;font-size:12.5px;overflow-x:auto;white-space:nowrap">$ ${esc(cmd)}</code>
+      <button onclick="app.copyStep(${id},this)" style="flex:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;background:#1F2937;color:#E5E7EB;border:1px solid #374151;cursor:pointer">Copy</button>
+    </div>`;
+  const stepsBlock=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:4px">Run it yourself — step by step</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:14px">Copy each command in order. The whole thing takes ~10 minutes on a fresh machine.</div>
+    ${steps.map(st=>`<div style="padding:10px 0;border-top:1px solid #F3F4F6">
+      <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#EFF6FF;color:#1D4ED8">${st.n}</span><span style="font-size:13px;font-weight:600">${esc(st.title)}</span></div>
+      ${codeBox(st.n, st.cmd)}
+      <div style="font-size:11.5px;color:#6B7280;margin-top:7px;line-height:1.5;max-width:640px">${esc(st.note)}</div>
+    </div>`).join('')}
+    <div style="padding:12px 0 2px;border-top:1px solid #F3F4F6;margin-top:6px"><span style="font-size:11.5px;color:#6B7280">Then open <strong>http://127.0.0.1:8000/console</strong>, sign in with your ADMIN_EMAIL, and click <em>Generate the sovereignty attestation</em> above.</span></div>
   </div>`;
-  return head+statusStrip+checklist+copy;
+  window.__runbookSteps = steps;   // for the whole-runbook copy button
+  const copy=`<div style="display:flex;align-items:center;gap:12px">
+    <button onclick="app.copyRunbook()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${state.runbookCopied?'✓ Copied':'Copy the whole runbook'}</button>
+    <span style="font-size:11px;color:#9CA3AF">all steps as one block, to hand to your IT team</span>
+  </div>`;
+  return head+statusStrip+checklist+stepsBlock+copy;
 }
 
 /* ---------- Workflow (read-only, from live config) ---------- */
@@ -954,8 +986,8 @@ function savingsView(){
     const exactOn=!!auto.cache_enabled, semOn=auto.cache_enabled&&auto.cache_strategy==='semantic';
     const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
     const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Response cache — Smart router default</div>
-       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
+      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Default cache strategy</div>
+       <div style="font-size:11px;color:#6B7280;margin-bottom:8px;line-height:1.5">This is the default applied to every request the <strong>Smart router</strong> picks a model for (model = <em>auto</em>). To use a different strategy for one specific endpoint, override it in the list below. "Strategy" = <em>how</em> we cache (exact vs semantic); the Smart router decides <em>which model</em> runs — they're separate choices.</div>`+
       rowline('Exact-match cache','Reuses a previous answer only when the request is identical. On by default.', sw(exactOn,`app.setFeature('auto',{cache_enabled:${exactOn?'false':'true'},cache_strategy:'exact'})`))+
       rowline('Semantic cache','Reuses a similar (not identical) answer. Off by default — it can confidently serve a wrong match.', sw(semOn,`app.setFeature('auto',{cache_enabled:true,cache_strategy:'${semOn?'exact':'semantic'}'})`))+
       statsRow+
@@ -973,8 +1005,8 @@ function savingsView(){
     const aggrOn=auto.compression_enabled&&auto.compression_mode==='aggressive';
     const statsRow=(ms.requests_compressed)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
     const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Prompt compression — Smart router default</div>
-       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
+      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Default compression strategy</div>
+       <div style="font-size:11px;color:#6B7280;margin-bottom:8px;line-height:1.5">The default applied to every request the <strong>Smart router</strong> routes (model = <em>auto</em>). Override it for a specific endpoint in the list below.</div>`+
       rowline('Baseline trimming','Cuts filler without changing meaning — cannot make an answer worse. Always on.', `<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;flex:none">Always on</span>`)+
       rowline('Cost-saving mode','Shortens more aggressively (lossy). Opt-in — the caller is notified whenever it is applied.', sw(aggrOn,`app.setFeature('auto',{compression_enabled:true,compression_mode:'${aggrOn?'baseline':'aggressive'}'})`))+
       statsRow+
@@ -1107,7 +1139,7 @@ function newPolicyModal(){
   const effDesc=(effectOptions.find(o=>o.value===s.newPolicyEffect)||{}).desc||'';
   const keys=(window.__keys||[]).filter(k=>k.active!==false).map(k=>({value:k.name,label:k.name}));
   const backs=s.backends.map(b=>({value:b.name,label:b.name}));
-  const models=modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>({value:m.value,label:m.value}));
+  const models=modelOptions.filter(m=>m.value!=='auto'&&!m.value.startsWith('auto:')).map(m=>({value:m.value,label:m.value}));
   const anyScope = s.newPolicyScopeKeys.length||s.newPolicyScopeBackends.length||s.newPolicyScopeModels.length;
   return `<div onclick="app.closeNewPolicy()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -1208,8 +1240,7 @@ function auditView(){
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${chips}</div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#F9FAFB">${['Time','Actor','Event','Backend','Outcome','Hash'].map(t=>th(t)).join('')}</tr></thead>
-      <tbody>${empty ? `<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">${loaded?'No audit events'+(s.auditEventFilter!=='all'?' for this filter':' yet — run a request in the Playground')+'.':'Loading…'}</td></tr>` : rows}</tbody></table></div>
-    ${s.attestationOpen?attestationModal():''}`;
+      <tbody>${empty ? `<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">${loaded?'No audit events'+(s.auditEventFilter!=='all'?' for this filter':' yet — run a request in the Playground')+'.':'Loading…'}</td></tr>` : rows}</tbody></table></div>`;
 }
 
 function attestationModal(){
@@ -1264,11 +1295,11 @@ function playgroundView(){
         ${s.messages.length?`<button onclick="app.newChat()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer"><i data-lucide="plus" style="width:14px;height:14px"></i>New chat</button>`:''}
       </div>
     </div>
-    <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
+    <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}${s.chatPending?`<div style="align-self:flex-start;max-width:78%"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">preceptaai</div><div style="display:flex;align-items:center;gap:8px;background:#F3F4F6;color:#6B7280;padding:10px 14px;border-radius:10px;font-size:13px"><i data-lucide="loader" class="spin" style="width:14px;height:14px"></i>Thinking… <span style="color:#9CA3AF">(a local model's first reply can take ~20–30s while it warms up)</span></div></div>`:''}</div>
     ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGG.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
     <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
       <input id="chatInput" style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="${esc(s.chatInput)}" oninput="app.set('chatInput',this.value)" onkeydown="app.handleChatKey(event)">
-      <button onclick="app.sendMessage()" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
+      <button onclick="app.sendMessage()" ${s.chatPending?'disabled':''} style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:${s.chatPending?'not-allowed':'pointer'};opacity:${s.chatPending?'0.5':'1'}">Send</button>
     </div>
   </div>`;
 }
@@ -1277,7 +1308,7 @@ function playgroundView(){
 function settingsModal(){
   const s=state;
   const me = window.__me || {};
-  const tabDefs = me.platform_owner ? settingsTabDefs.concat([{key:'router', label:'Router'}]) : settingsTabDefs;
+  const tabDefs = me.platform_owner ? settingsTabDefs.concat([{key:'router', label:'Router'},{key:'egress', label:'Egress'}]) : settingsTabDefs;
   const tabs=tabDefs.map(t=>{const a=s.settingsTab===t.key;return `<div onclick="app.setSettingsTab('${t.key}')" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'};margin-bottom:2px">${t.label}</div>`;}).join('');
   const o = window.__org || {};
   const rowKV=(k,v,sub)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${k}</div>${sub?`<div style="font-size:11px;color:#9CA3AF">${sub}</div>`:''}</div><span style="font-size:12px;color:#6B7280">${v}</span></div>`;
@@ -1341,6 +1372,19 @@ function settingsModal(){
         </div>
         <div style="font-size:11px;color:#9CA3AF;padding:10px 0 0;line-height:1.5">The key is written to the secret store and never returned by the API. This saves the endpoint, model and key and switches the router to it in one step. Leave the key blank to keep the one already stored.</div>`;
     }
+  } else if(s.settingsTab==='egress'){
+    const eg = window.__egress;
+    const hosts = eg ? (eg.hosts||[]) : null;
+    const list = hosts===null ? `<div style="font-size:12px;color:#9CA3AF;padding:10px 0">Loading…</div>`
+      : (hosts.length ? hosts.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500;font-family:'JetBrains Mono',monospace">${esc(h.host)}</div><div style="font-size:11px;color:#9CA3AF">approved by ${esc(h.added_by||'—')}${h.note?' · '+esc(h.note):''}</div></div><button onclick="app.removeEgressHost('${esc(h.host)}')" style="font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #FECACA;background:#fff;color:#991B1B;cursor:pointer">Revoke</button></div>`).join('')
+        : `<div style="font-size:12px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 12px">Fully sealed — no host is approved, so nothing can leave your network. This is the strongest posture.</div>`);
+    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">By default Precepta is <strong>fully sealed</strong> — the app has no way to reach the internet. To use a cloud inference endpoint (e.g. a Hugging Face or Neysa host), approve its host here. Precepta will then reach <strong>only</strong> the hosts you approve, and the attestation records exactly which ones. <span style="color:#9CA3AF">Platform-owner only.</span></div>
+      <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px">Approved egress hosts</div>
+        ${list}
+        <div style="display:flex;gap:6px;margin-top:14px"><input id="egHostIn" placeholder="huggingface.co" style="flex:1;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"><input id="egNoteIn" placeholder="note (optional)" style="width:150px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px"><button onclick="app.addEgressHost()" style="padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Approve</button></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;line-height:1.5">Approving a host changes your posture from <strong>sealed</strong> to <strong>restricted</strong> (only named hosts reachable). Subdomains are covered — approving <code>huggingface.co</code> also allows <code>api.huggingface.co</code>. Every approve/revoke is written to the tamper-evident audit log. <br><br>Note: in the pilot's sealed network the app also needs a network path to reach an approved host — see <code>deploy/README.md</code> → "Restricted egress".</div>`;
   } else {
     // members — only the real signed-in account is known to the backend today
     const name=esc(me.name||me.subject||'—'), email=esc(me.subject||''), role=esc(me.role||'user');
@@ -1419,6 +1463,7 @@ function render(){
       <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:28px 32px 80px;background:#fff">${contentFor()}</div>
     </div>
     ${state.settingsOpen?settingsModal():''}
+    ${state.attestationOpen?attestationModal():''}
     ${copilotFab()}
   </div>`;
   if(window.lucide) lucide.createIcons();
@@ -1471,9 +1516,17 @@ render();
         priceMissing:b.price_missing, priceSource:b.price_source,
       }));
       modelOptions.length = 0;
-      d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model, label:b.backend+" / "+b.model}));
+      // Auto = the Smart router picks a healthy, in-boundary target — the safe default.
+      modelOptions.push({value:"auto", label:"Auto — Smart router (recommended)"});
+      d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model,
+        label:b.backend+" / "+b.model+(b.status!=='healthy'?' — unreachable':'')}));
       if(d.backends.length){ modelOptions.push({value:"auto:cheapest", label:"auto : cheapest"}); modelOptions.push({value:"auto:best-quality", label:"auto : best-quality"}); }
-      if(!state.chatModel && d.backends[0]) state.chatModel = d.backends[0].backend+"/"+d.backends[0].model;
+      // Default to a healthy in-boundary backend; if none is reachable, use Auto
+      // (never default to an unreachable cloud endpoint — that made the Playground hang).
+      if(!state.chatModel){
+        const healthy=d.backends.find(b=>b.status==='healthy' && b.in_boundary!==false);
+        state.chatModel = healthy ? (healthy.backend+"/"+healthy.model) : "auto";
+      }
       render();
     }
   }
@@ -1545,12 +1598,14 @@ render();
   // Playground → real governed inference
   function sendText(text){
     text=(text||"").trim(); if(!text) return;
-    if(!state.chatModel){ return; }
+    if(!state.chatModel){ state.chatModel="auto"; }
+    if(state.chatPending) return;                       // one in-flight request at a time
     state.messages.push({who:"You",text,align:"flex-end",textAlign:"right",bg:"#3B82F6",color:"#fff",hasMeta:false});
-    state.chatInput=""; render();
+    state.chatInput=""; state.chatPending=true; render();
     fetch("/v1/chat/completions",{method:"POST",headers:hdr,body:JSON.stringify({
       model:state.chatModel, messages:[{role:"user",content:text}], max_tokens:200})})
     .then(async r=>{
+      state.chatPending=false;
       const d=await r.json(); const p=d.precepta||{}; let reply;
       if(r.status!==200){
         reply={who:"preceptaai",text:(d.error&&d.error.message)||"blocked",align:"flex-start",textAlign:"left",
@@ -1571,7 +1626,7 @@ render();
           .then(x=>x.json()).then(sd=>{ if(sd && Array.isArray(sd.suggestions) && sd.suggestions.length){ state.suggestions=sd.suggestions; render(); } }).catch(()=>{});
       }
     })
-    .catch(e=>{ state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
+    .catch(e=>{ state.chatPending=false; state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
   }
   app.sendMessage = function(){ const el=document.getElementById("chatInput"); sendText(el ? el.value : state.chatInput); };
   app.sendSuggested = function(i){ const L=(state.suggestions&&state.suggestions.length)?state.suggestions:SUGGESTED; sendText(L[i]); };
@@ -1624,7 +1679,14 @@ render();
       model:(state.infraModel||"").trim(), in_boundary:true})})
     .then(async r=>{
       const d=await r.json();
-      if(r.ok){ state.connectionStatus = d.healthy ? "success" : "unreachable"; await loadInfra(); }
+      if(r.ok){
+        state.connectionStatus = d.healthy ? "success" : "unreachable";
+        state.connReason = "";
+        await loadInfra();
+        if(!d.healthy){                       // get the honest 'why' from a real probe
+          try{ const t=await (await fetch("/v1/backends/"+encodeURIComponent(provider)+"/test",{method:"POST",headers:hdr})).json(); state.connReason=t.reason||""; }catch(e){}
+        }
+      }
       else { state.connectionStatus="idle"; alert("Registration failed: "+((d.error&&d.error.message)||r.status)); }
       render();
     }).catch(e=>{ state.connectionStatus="idle"; render(); alert("error: "+e); });
@@ -1654,6 +1716,14 @@ render();
     fetch("/v1/backends/"+encodeURIComponent(provider)+"/boundary",{method:"POST",headers:hdr,
       body:JSON.stringify({in_boundary: !wasIn})})
       .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Failed: "+((d.error&&d.error.message)||r.status)); } loadInfra(); });
+  };
+  app.testBackend = function(provider){
+    state.testResults = state.testResults || {};
+    state.testResults[provider] = {busy:true}; render();
+    fetch("/v1/backends/"+encodeURIComponent(provider)+"/test",{method:"POST",headers:hdr})
+      .then(r=>r.json())
+      .then(d=>{ state.testResults[provider]={busy:false,reachable:!!d.reachable,reason:d.reason||d.status||""}; render(); loadInfra(); })
+      .catch(e=>{ state.testResults[provider]={busy:false,reachable:false,reason:"Test failed: "+e}; render(); });
   };
   app.openPriceEdit = function(name, model, pin, pout){ state.priceEditFor={name,model,pin,pout}; render(); };
   app.closePriceEdit = function(){ state.priceEditFor=null; render(); };
@@ -1712,6 +1782,18 @@ render();
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__router=d; render(); }
         else alert("Router config: "+((d.error&&d.error.message)||r.status)); });
   };
+  app.loadEgress = async function(){ const d=await getJSON("/v1/egress"); if(d && !d.error){ window.__egress=d; render(); } };
+  app.addEgressHost = function(){
+    const host=(document.getElementById('egHostIn')||{}).value||'';
+    const note=(document.getElementById('egNoteIn')||{}).value||'';
+    if(!host.trim()) return;
+    fetch("/v1/egress",{method:"POST",headers:hdr,body:JSON.stringify({host:host.trim(),note:note.trim()})})
+      .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Approve failed: "+((d.error&&d.error.message)||r.status)); } app.loadEgress(); loadInfra(); });
+  };
+  app.removeEgressHost = function(host){
+    fetch("/v1/egress/"+encodeURIComponent(host),{method:"DELETE",headers:hdr})
+      .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Revoke failed: "+((d.error&&d.error.message)||r.status)); } app.loadEgress(); loadInfra(); });
+  };
   app.setQuiet = function(k,v){ state[k]=v; };   // update state without re-rendering (keeps input focus)
   app.setRouterBackend = function(b){ app.saveRouterConfig({router_backend:b}); };  // Ollama always OK
   app.useHfRouter = function(){
@@ -1767,13 +1849,17 @@ render();
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
   async function loadWorkflow(){ const d=await getJSON("/v1/workflow"); if(d && !d.error){ window.__workflow=d; render(); } }
   async function loadDeployment(){ const d=await getJSON("/v1/deployment"); if(d && !d.error){ window.__deployment=d; render(); } }
+  app.copyStep = function(n, btn){
+    const steps=window.__runbookSteps||[];
+    const st=steps.find(x=>x.n===n); if(!st) return;
+    const done=()=>{ if(btn){ const t=btn.textContent; btn.textContent='✓ Copied'; setTimeout(()=>{try{btn.textContent=t;}catch(e){}},1500); } };
+    if(navigator.clipboard){ navigator.clipboard.writeText(st.cmd).then(done).catch(()=>{}); }
+  };
   app.copyRunbook = function(){
-    const txt=["Run Precepta inside your network — 5 steps:",
-      "1. git clone <your-precepta-repo> && cd precepta",
-      "2. ./deploy/doctor.sh            # check the machine is ready",
-      "3. cp deploy/.env.example deploy/.env  # then set ORG_NAME + ADMIN_EMAIL",
-      "4. ./deploy/up.sh                # builds, pulls models in-boundary, starts egress-locked",
-      "5. open http://127.0.0.1:8000/console → sign in → Deployment → Generate attestation"].join("\n");
+    const steps=window.__runbookSteps||[];
+    const txt=["# Run Precepta inside your network","git clone <your-precepta-repo> && cd precepta"]
+      .concat(steps.map(st=>st.cmd))
+      .concat(["# then open http://127.0.0.1:8000/console → sign in → Deployment → Generate attestation"]).join("\n");
     if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{ state.runbookCopied=true; render(); setTimeout(()=>{state.runbookCopied=false;render();},2000); }).catch(()=>{}); }
   };
   async function loadBillback(){ const d=await getJSON("/v1/billback"); if(d && !d.error){ window.__billback=d; render(); } }

@@ -410,6 +410,98 @@ def create_app() -> FastAPI:
         state["can_edit"] = True
         return JSONResponse(state)
 
+    # ── Approved-egress allowlist (owner-gated) ─────────────────────────
+    @app.get("/v1/egress")
+    def get_egress(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "audit.read"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from .sovereign import egress as _eg
+        return JSONResponse({"hosts": _eg.list_hosts(),
+                             "can_edit": is_platform_owner(principal)})
+
+    @app.post("/v1/egress")
+    async def add_egress(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse(
+                {"error": {"message": "platform owner only — approving a host lets "
+                           "Precepta reach it, which changes your egress posture",
+                           "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        from .sovereign import egress as _eg
+        try:
+            row = _eg.add_host(str(b.get("host", "")), added_by=principal.subject,
+                               note=str(b.get("note", "") or ""))
+        except ValueError:
+            return JSONResponse({"error": {"message": "a host is required",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        get_chain().append(                                # audit the posture change
+            event_type="controls.egress", actor=principal.subject,
+            resource="controls.egress", action="approve-host",
+            outcome="applied", metadata={"host": row["host"]})
+        return JSONResponse({"ok": True, "host": row}, status_code=201)
+
+    @app.delete("/v1/egress/{host}")
+    def remove_egress(host: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only",
+                                           "type": "forbidden"}}, status_code=403)
+        from .sovereign import egress as _eg
+        removed = _eg.remove_host(host)
+        if removed:
+            get_chain().append(
+                event_type="controls.egress", actor=principal.subject,
+                resource="controls.egress", action="revoke-host",
+                outcome="applied", metadata={"host": _eg.host_of(host)})
+        return JSONResponse({"ok": True, "removed": removed})
+
+    @app.post("/v1/backends/{provider}/test")
+    def test_backend(provider: str, request: Request) -> JSONResponse:
+        """Really probe a registered backend and explain the result honestly —
+        reachable, or why not (outside the sealed boundary / not approved)."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        reg = get_registry()
+        be = reg.get(provider)
+        if be is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        # 1) Would Sovereign Mode block routing here at all?
+        block = enforce_backend(be)
+        if block:
+            return JSONResponse({"reachable": False, "status": "blocked",
+                                 "reason": block})
+        # 2) Actually try to reach it.
+        ok = False
+        try:
+            ok = bool(be.health())
+        except Exception:
+            ok = False
+        if ok:
+            return JSONResponse({"reachable": True, "status": "connected",
+                                 "reason": "The endpoint responded."})
+        in_b = bool(getattr(be, "in_boundary", True))
+        reason = ("Registered, but it did not respond. In this sealed deployment "
+                  "the app has no internet route, so a cloud endpoint won't answer "
+                  "unless you approve its host under Settings → Egress."
+                  if not in_b or _controls.sovereign_enabled()
+                  else "Registered, but it did not respond — check the endpoint URL, "
+                       "key, and that the server is up.")
+        return JSONResponse({"reachable": False, "status": "unreachable", "reason": reason})
+
     # ── Router config (platform-owner-only) — where the router's own model runs ──
     @app.get("/v1/router/config")
     def get_router_config(request: Request) -> JSONResponse:

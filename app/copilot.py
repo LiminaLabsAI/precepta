@@ -65,16 +65,28 @@ def gather_facts() -> dict[str, Any]:
     if sov is not None:
         facts["sovereign_mode"] = sov
 
-    # Inference endpoints (registry) + in-boundary flags
+    # Inference endpoints (registry) + in-boundary flags + live reachability
     def _endpoints():
         from .adapters.model.registry import get_registry
         reg = get_registry()
         eps = []
         for name, b in reg.items():
+            try:
+                healthy = bool(b.health())
+            except Exception:
+                healthy = False
+            in_b = bool(getattr(b, "in_boundary", True))
+            reason = "responding"
+            if not healthy:
+                reason = ("unreachable — a cloud endpoint can't be reached from this "
+                          "sealed deployment unless its host is approved under egress"
+                          if not in_b else "unreachable — check the URL/key/server")
             eps.append({
                 "name": name,
                 "default_model": getattr(b, "default_model", "") or "",
-                "in_boundary": bool(getattr(b, "in_boundary", True)),
+                "in_boundary": in_b,
+                "status": "responding" if healthy else "unreachable",
+                "why": reason,
             })
         return eps
     eps = _safe(_endpoints)
@@ -82,6 +94,14 @@ def gather_facts() -> dict[str, Any]:
         facts["inference_endpoints"] = eps
         facts["endpoint_count"] = len(eps)
         facts["all_endpoints_in_boundary"] = bool(eps) and all(e["in_boundary"] for e in eps)
+
+    # Approved-egress allowlist (which cloud hosts Precepta may reach)
+    def _egress_hosts():
+        from .sovereign.egress import list_hosts
+        return [h["host"] for h in list_hosts()]
+    eh = _safe(_egress_hosts)
+    if eh is not None:
+        facts["approved_egress_hosts"] = eh
 
     # Keys
     def _keys():

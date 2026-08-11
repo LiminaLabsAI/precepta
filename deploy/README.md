@@ -80,6 +80,35 @@ docker compose -f deploy/docker-compose.yml down          # stop (data + models 
 | Model pull fails | The pull needs internet on first run; for a fully offline site, pre-bake the `ollama_data` volume. |
 | Console blank | The stack isn't up — run `./deploy/up.sh`, then reload. |
 
+## Restricted egress (opt-in) — using a cloud endpoint
+
+By default the app has **no path to the internet** (the `internal` network), so a
+cloud inference endpoint (Hugging Face, Neysa, …) will show as **Unreachable** —
+that is the sealed guarantee working, not a bug.
+
+If you *want* to route to a specific cloud endpoint, do **two** things:
+
+1. **Approve its host** in the Console: **Settings → Egress → Approve** (e.g.
+   `huggingface.co`). Precepta will then permit routing to that host and record
+   it in the attestation (posture changes from `sealed` to `restricted`). This is
+   owner-only and audited.
+2. **Give the app a network path** to that host. In the sealed compose the app is
+   on the `internal` network only; to allow restricted egress, add the `egress`
+   network to the `app` service in `docker-compose.yml`:
+
+   ```yaml
+   app:
+     networks: [internal, egress]   # was: [internal]
+   ```
+
+   Then `./deploy/up.sh` again. The attestation's egress probe will now report the
+   real posture honestly (the app can reach approved hosts). Approve **only** the
+   hosts you trust — everything Precepta routes is still checked against the
+   allowlist, and unapproved hosts stay blocked at the application layer.
+
+> **The strongest posture is the default: no approved hosts, no egress network.**
+> Only opt in if a pilot genuinely needs a cloud model.
+
 ## What this pilot deploy is **not** (yet)
 High-availability / multi-node, Kubernetes/Helm, Postgres, a secrets vault,
 offline (air-gapped) install media, and directory user-sync are **deferred** to

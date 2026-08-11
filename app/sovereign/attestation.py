@@ -49,8 +49,17 @@ def _egress_result() -> dict:
             metadata={"targets": probe.get("targets", [])})
     except Exception:
         pass
+    # Owner-approved egress hosts shift the posture honestly from "sealed"
+    # (nothing may leave) to "restricted" (only these named hosts may be reached).
+    try:
+        from .egress import list_hosts
+        approved = [h["host"] for h in list_hosts()]
+    except Exception:
+        approved = []
     return {"result": probe["result"], "verified": probe["result"] == "blocked",
-            "targets": probe.get("targets", [])}
+            "targets": probe.get("targets", []),
+            "approved_hosts": approved,
+            "posture": "restricted" if approved else "sealed"}
 
 
 def build_attestation(settings, registry) -> dict:

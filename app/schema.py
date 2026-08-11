@@ -21,6 +21,7 @@ _MODULES = (
     "app.pricing", "app.traces",
     "app.governance.sensitive",
     "app.router.config",
+    "app.sovereign.egress",
     "app.adapters.audit", "app.adapters.audit.chain",
     "app.adapters.authz.openguard", "app.adapters.authz.scopes",
     "app.adapters.identity.keys", "app.adapters.identity.session",
