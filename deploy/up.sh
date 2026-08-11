@@ -10,8 +10,17 @@ if [[ ! -f .env ]]; then
   exit 0
 fi
 
-echo "Building and starting Precepta (this is locked off from the internet)…"
-docker compose up -d --build
+# Restricted-egress opt-in: RESTRICTED_EGRESS=1 adds the filtering egress broker
+# so owner-approved cloud endpoints can be reached (the app still has no direct
+# internet route). Default (unset) stays fully sealed.
+COMPOSE_FILES=(-f docker-compose.yml)
+if [[ "${RESTRICTED_EGRESS:-0}" == "1" ]]; then
+  COMPOSE_FILES+=(-f docker-compose.egress.yml)
+  echo "Restricted egress ON — the app reaches ONLY hosts you approve in Settings → Egress, via the broker."
+else
+  echo "Building and starting Precepta (this is locked off from the internet)…"
+fi
+docker compose "${COMPOSE_FILES[@]}" up -d --build
 
 echo "Loading the AI models into your machine (first run pulls them — a few minutes)…"
 code=""

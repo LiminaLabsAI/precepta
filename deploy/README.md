@@ -89,25 +89,26 @@ that is the sealed guarantee working, not a bug.
 If you *want* to route to a specific cloud endpoint, do **two** things:
 
 1. **Approve its host** in the Console: **Settings → Egress → Approve** (e.g.
-   `huggingface.co`). Precepta will then permit routing to that host and record
-   it in the attestation (posture changes from `sealed` to `restricted`). This is
-   owner-only and audited.
-2. **Give the app a network path** to that host. In the sealed compose the app is
-   on the `internal` network only; to allow restricted egress, add the `egress`
-   network to the `app` service in `docker-compose.yml`:
+   `huggingface.co`). Owner-only and audited; the attestation posture changes
+   from `sealed` to `restricted` and lists exactly which hosts are approved.
+2. **Turn on the egress broker** — start with restricted egress enabled:
 
-   ```yaml
-   app:
-     networks: [internal, egress]   # was: [internal]
+   ```bash
+   RESTRICTED_EGRESS=1 ./deploy/up.sh
    ```
 
-   Then `./deploy/up.sh` again. The attestation's egress probe will now report the
-   real posture honestly (the app can reach approved hosts). Approve **only** the
-   hosts you trust — everything Precepta routes is still checked against the
-   allowlist, and unapproved hosts stay blocked at the application layer.
+How it stays sovereign: the **app never gets a direct internet route** — it stays
+on the `internal` network, so the attestation's egress probe *still* proves it
+cannot reach the internet on its own. Its outbound HTTPS is sent through a small
+**egress broker** (`app/sovereign/broker.py`) that runs between the internal and
+egress networks and opens a tunnel **only** to the hosts you approved (read live
+from the allowlist — approving/revoking takes effect immediately). Unapproved
+hosts — and any direct connection attempt — are refused. So the guarantee shifts
+honestly from *"nothing can leave"* to *"the app has no direct egress; it can
+reach only the named hosts you approved, through an audited broker."*
 
-> **The strongest posture is the default: no approved hosts, no egress network.**
-> Only opt in if a pilot genuinely needs a cloud model.
+> **The strongest posture is the default** (no `RESTRICTED_EGRESS`, no approved
+> hosts, no broker). Only opt in if a pilot genuinely needs a cloud model.
 
 ## What this pilot deploy is **not** (yet)
 High-availability / multi-node, Kubernetes/Helm, Postgres, a secrets vault,

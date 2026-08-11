@@ -113,6 +113,13 @@ def create_app() -> FastAPI:
     # self-host database can't 500 on a read-before-write path.
     from .schema import ensure_all
     ensure_all()
+    # Keep the egress broker's allowfile in sync with the approved-egress table
+    # at boot (no-op in the sealed default where no allowfile path is set).
+    try:
+        from .sovereign.egress import sync_allowfile
+        sync_allowfile()
+    except Exception:
+        pass
     app = FastAPI(
         title="preceptaai control plane",
         version=__version__,

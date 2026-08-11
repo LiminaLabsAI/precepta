@@ -72,6 +72,47 @@ def test_enforce_ignores_allowlist_for_in_boundary(monkeypatch):
     assert enforce_backend(be) is None            # in-boundary is always fine
 
 
+def test_sync_allowfile_writes_hosts(tmp_path, monkeypatch):
+    f = tmp_path / "approved_egress.txt"
+    monkeypatch.setenv("PRECEPTA_EGRESS_ALLOWFILE", str(f))
+    eg.add_host("huggingface.co", added_by="owner")     # add → auto-sync
+    eg.add_host("neysa.ai", added_by="owner")
+    lines = [l.strip() for l in f.read_text().splitlines() if l and not l.startswith("#")]
+    assert set(lines) == {"huggingface.co", "neysa.ai"}
+    eg.remove_host("neysa.ai")                            # remove → auto-sync
+    lines2 = [l.strip() for l in f.read_text().splitlines() if l and not l.startswith("#")]
+    assert lines2 == ["huggingface.co"]
+
+
+def test_sync_allowfile_noop_without_path(monkeypatch):
+    monkeypatch.delenv("PRECEPTA_EGRESS_ALLOWFILE", raising=False)
+    eg.add_host("example.com", added_by="owner")         # must not raise
+    eg.sync_allowfile()                                   # no path → no-op
+
+
+def test_broker_is_allowed_reads_allowfile(tmp_path, monkeypatch):
+    f = tmp_path / "hosts.txt"
+    f.write_text("# comment\nhuggingface.co\nneysa.ai\n")
+    monkeypatch.setenv("PRECEPTA_EGRESS_ALLOWFILE", str(f))
+    # broker reads the env at call time via module-level constant → reimport
+    import importlib
+    import app.sovereign.broker as broker
+    importlib.reload(broker)
+    assert broker.is_allowed("api.huggingface.co") is True     # subdomain
+    assert broker.is_allowed("huggingface.co:443") is True     # port ignored
+    assert broker.is_allowed("1.1.1.1") is False               # not approved
+    assert broker.is_allowed("evilhuggingface.co") is False    # not a subdomain
+    assert broker.is_allowed("") is False
+
+
+def test_broker_denies_all_when_no_allowfile(tmp_path, monkeypatch):
+    monkeypatch.setenv("PRECEPTA_EGRESS_ALLOWFILE", str(tmp_path / "missing.txt"))
+    import importlib
+    import app.sovereign.broker as broker
+    importlib.reload(broker)
+    assert broker.is_allowed("huggingface.co") is False        # deny-by-default
+
+
 def test_attestation_reports_posture(monkeypatch):
     from app.sovereign.attestation import _egress_result
     # sealed by default

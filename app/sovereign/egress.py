@@ -20,6 +20,7 @@ attestation, which is why it is surfaced there.
 from __future__ import annotations
 
 import datetime as _dt
+import os
 from urllib.parse import urlparse
 
 from ..db import get_conn
@@ -67,6 +68,33 @@ def list_hosts() -> list[dict]:
             for r in rows]
 
 
+def _allowfile_path() -> str | None:
+    """The file the egress broker reads. Set PRECEPTA_EGRESS_ALLOWFILE in a
+    restricted-egress deployment; unset in the sealed default (no broker)."""
+    return os.environ.get("PRECEPTA_EGRESS_ALLOWFILE")
+
+
+def sync_allowfile() -> None:
+    """Write the current approved hosts to the broker's allowfile (fail-soft).
+
+    Called on every change and at startup, so the broker always reflects the
+    live allowlist. A no-op when no allowfile path is configured (sealed mode).
+    """
+    path = _allowfile_path()
+    if not path:
+        return
+    try:
+        hosts = [h["host"] for h in list_hosts()]
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("# approved egress hosts — written by Precepta, read by the broker\n")
+            for h in hosts:
+                f.write(h + "\n")
+        os.replace(tmp, path)      # atomic swap so the broker never reads a partial file
+    except OSError:
+        pass
+
+
 def _approved_set() -> list[str]:
     return [h["host"] for h in list_hosts()]
 
@@ -94,6 +122,7 @@ def add_host(host: str, added_by: str | None = None, note: str | None = None) ->
             "INSERT INTO approved_egress (host, added_by, added_at, note) "
             "VALUES (?,?,?,?) ON CONFLICT(host) DO UPDATE SET note=excluded.note",
             (h, added_by or "", now, note or ""))
+    sync_allowfile()
     return {"host": h, "added_by": added_by or "", "added_at": now, "note": note or ""}
 
 
@@ -102,4 +131,5 @@ def remove_host(host: str) -> bool:
     ensure_table()
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM approved_egress WHERE host=?", (h,))
+    sync_allowfile()
     return cur.rowcount > 0

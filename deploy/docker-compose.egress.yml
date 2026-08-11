@@ -1,0 +1,40 @@
+# Restricted-egress OPT-IN overlay (Phase 14).
+#
+# Lets Precepta reach OWNER-APPROVED cloud endpoints (a Hugging Face / Neysa
+# host you approved in Settings -> Egress) WITHOUT giving the app a direct
+# internet route. The `app` stays internal-only — the startup egress probe still
+# proves it cannot reach the internet directly — and its outbound HTTPS is sent
+# through `egress-proxy`, a filtering CONNECT broker that forwards ONLY to the
+# approved hosts (read live from /data/approved_egress.txt).
+#
+# Enable:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.egress.yml up -d --build
+#   (or)  RESTRICTED_EGRESS=1 ./deploy/up.sh
+#
+# Sealed by default: without this overlay there is no broker and no egress at all.
+services:
+  # The ONLY path out. On `internal` (so the app can reach it) + `egress` (so it
+  # can reach the internet). Enforces the approved-host allowlist independently.
+  egress-proxy:
+    image: precepta-app:pilot
+    restart: unless-stopped
+    depends_on:
+      app: {condition: service_started}
+    command: ["python", "-m", "app.sovereign.broker"]
+    networks: [internal, egress]
+    volumes:
+      - precepta_data:/data:ro          # read (only) the allowfile the app writes
+    environment:
+      PRECEPTA_EGRESS_ALLOWFILE: /data/approved_egress.txt
+      PRECEPTA_BROKER_PORT: "8080"
+
+  app:
+    # app is NOT given the egress network — it still has no direct internet route.
+    environment:
+      # Send app outbound HTTPS through the broker; keep internal traffic direct.
+      HTTPS_PROXY: "http://egress-proxy:8080"
+      HTTP_PROXY: "http://egress-proxy:8080"
+      NO_PROXY: "ollama,proxy,egress-proxy,localhost,127.0.0.1,app"
+      # Where the control plane writes the allowlist for the broker to read, so
+      # Console approve/revoke takes effect live.
+      PRECEPTA_EGRESS_ALLOWFILE: /data/approved_egress.txt
