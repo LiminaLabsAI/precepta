@@ -48,8 +48,10 @@ def test_resolve_rejects_auto_and_bad():
 def test_list_models_endpoint():
     r = client.get("/v1/models")
     assert r.status_code == 200
-    ids = [m["id"] for m in r.json()["data"]]
-    assert "ollama/*" in ids
+    # Phase 15: /v1/models is enriched (id is "<endpoint>/<model>", + owned_by).
+    data = r.json()["data"]
+    assert any(m["owned_by"] == "ollama" for m in data)
+    assert any(m["id"].startswith("ollama") for m in data)
 
 
 def test_bad_model_returns_400():

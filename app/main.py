@@ -39,6 +39,9 @@ from .gateway.pipeline import governed_chat
 from .sovereign import enforce_backend
 from .sovereign.attestation import build_attestation
 from .adapters.infra import snapshot as infra_snapshot, record_telemetry
+from . import catalog as _catalog
+from .api import deps as _api_deps
+from .api import errors as _api_errors
 
 
 def _sse_response(payload: dict) -> StreamingResponse:
@@ -471,6 +474,7 @@ def create_app() -> FastAPI:
                 outcome="applied", metadata={"host": _eg.host_of(host)})
         return JSONResponse({"ok": True, "removed": removed})
 
+    @app.post("/v1/endpoints/{provider}/test", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/test")
     def test_backend(provider: str, request: Request) -> JSONResponse:
         """Really probe a registered backend and explain the result honestly —
@@ -517,6 +521,7 @@ def create_app() -> FastAPI:
                              "reason": reason, "host": host,
                              "approvable": is_approvable(base_url)})
 
+    @app.post("/v1/endpoints/{provider}/approve-egress", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/approve-egress")
     def approve_backend_egress(provider: str, request: Request) -> JSONResponse:
         """Approve THIS registered endpoint's host for egress — the host comes
@@ -882,6 +887,76 @@ def create_app() -> FastAPI:
                        "verified": egress["result"] == "blocked"},
         })
 
+    # ── AI Provider Integration API (Phase 15) — discovery ──────────────
+    @app.get("/v1/providers", tags=["catalog"],
+             summary="List provider types Precepta can integrate + their connect-config")
+    def list_providers_ep(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _catalog.list_providers()}
+
+    @app.get("/v1/providers/{provider}", tags=["catalog"],
+             summary="One provider type + its catalog models")
+    def get_provider_ep(provider: str, request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        p = _catalog.get_provider(provider)
+        if p is None:
+            return _api_errors.not_found(f"unknown provider type '{provider}'")
+        return p
+
+    @app.get("/v1/catalog/providers", tags=["catalog"],
+             summary="Providers in the browsable catalog, with model counts")
+    def catalog_providers_ep(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _catalog.catalog_providers()}
+
+    @app.get("/v1/catalog/models", tags=["catalog"],
+             summary="In-boundary model catalog (LiteLLM-style: filter + paginate)")
+    def catalog_models_ep(request: Request, provider: str | None = None,
+                          mode: str | None = None, model: str | None = None,
+                          supports_vision: bool | None = None,
+                          supports_function_calling: bool | None = None,
+                          supports_reasoning: bool | None = None,
+                          page: int = 1, page_size: int = 100):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return _catalog.query_models(
+            provider=provider, mode=mode, model=model, supports_vision=supports_vision,
+            supports_function_calling=supports_function_calling,
+            supports_reasoning=supports_reasoning, page=page, page_size=page_size)
+
+    @app.get("/v1/catalog/models/{model_id:path}", tags=["catalog"],
+             summary="A single catalog model by id")
+    def catalog_model_ep(model_id: str, request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        m = _catalog.get_model(model_id)
+        if m is None:
+            return _api_errors.not_found(f"unknown model '{model_id}'")
+        return m
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -910,6 +985,8 @@ def create_app() -> FastAPI:
                          "cap_month": key.get("cost_cap_monthly") or 0})
         return JSONResponse({"usage": rows})
 
+    @app.post("/v1/endpoints", tags=["endpoints"], status_code=201,
+              summary="Register an inference endpoint (provider connection)")
     @app.post("/v1/backends")
     async def register_backend(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -946,6 +1023,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
 
+    @app.put("/v1/endpoints/{provider}", tags=["endpoints"], summary="Edit an inference endpoint")
     @app.put("/v1/backends/{provider}")
     async def update_backend(provider: str, request: Request) -> JSONResponse:
         """Edit a registered endpoint in place (URL, model, key, tier, boundary).
@@ -988,6 +1066,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "in_boundary": in_boundary, "healthy": backend.health()})
 
+    @app.post("/v1/endpoints/{provider}/boundary", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/boundary")
     async def set_backend_boundary(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -1007,6 +1086,7 @@ def create_app() -> FastAPI:
                                 status_code=404)
         return JSONResponse({"ok": True, "provider": provider, "in_boundary": in_boundary})
 
+    @app.delete("/v1/endpoints/{provider}", tags=["endpoints"], summary="Remove an inference endpoint")
     @app.delete("/v1/backends/{provider}")
     def remove_backend(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -1060,6 +1140,13 @@ def create_app() -> FastAPI:
                 {"error": {"message": "name required", "type": "invalid_request_error"}},
                 status_code=400)
         role = "user"   # keys are app-level credentials — admin is human-only (Console/SSO)
+        # Phase 15: a management key drives the management API (scope=manage). Only a
+        # platform owner may mint one (a management key must not be able to mint more).
+        scope = "manage" if str(b.get("scope", "")).lower() == "manage" else "inference"
+        manage_write = bool(b.get("manage_write"))
+        if scope == "manage" and not is_platform_owner(principal):
+            return _api_errors.forbidden("only a platform owner may issue a management key",
+                                         code="owner_only")
         team = (b.get("team") or "").strip()
         # expiry (FEAT-001): default 90 days; 0/None/"never" = never expires
         exp_raw = b.get("expires_in_days", 90)
@@ -1074,7 +1161,8 @@ def create_app() -> FastAPI:
             cost_cap_daily=b.get("cost_cap_daily") or 0,
             cost_cap_monthly=b.get("cost_cap_monthly") or 0,
             token_cap_daily=b.get("token_cap_daily") or 0,
-            token_cap_monthly=b.get("token_cap_monthly") or 0)
+            token_cap_monthly=b.get("token_cap_monthly") or 0,
+            scope=scope, manage_write=manage_write)
         # the plaintext key is returned exactly once
         return JSONResponse({"id": kid, "name": name, "role": role, "team": team,
                              "key": token, "expires_in_days": expires_in_days}, status_code=201)
@@ -1327,17 +1415,97 @@ def create_app() -> FastAPI:
         from fastapi.staticfiles import StaticFiles
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-    @app.get("/v1/models")
-    def list_models() -> dict:
-        reg = get_registry()
-        data = [
-            {"id": f"{name}/*", "object": "model", "owned_by": name,
-             "in_boundary": be.in_boundary}
-            for name, be in sorted(reg.items())
-        ]
-        return {"object": "list", "data": data}
+    def _endpoints_enriched() -> list[dict]:
+        """Live inference endpoints, enriched from the in-boundary catalog
+        (mode/context/capabilities — honest None/'unknown' when unmatched) plus
+        real pricing (TD-001) + real health."""
+        out = []
+        for b in infra_snapshot(get_registry()):
+            model = b.get("model", "")
+            cat = _catalog.catalog_lookup(b["backend"], model) or {}
+            caps = cat.get("capabilities") or {}
+            out.append({
+                "id": b["backend"],
+                "model": model,
+                "mode": cat.get("mode", "unknown"),
+                "in_boundary": b["in_boundary"],
+                "status": b["status"],
+                "host": b.get("host", ""),
+                "max_input_tokens": cat.get("max_input_tokens"),
+                "max_output_tokens": cat.get("max_output_tokens"),
+                "pricing": {"input_per_1m": b.get("price_input_per_1m"),
+                            "output_per_1m": b.get("price_output_per_1m"),
+                            "source": b.get("price_source", "")},
+                "capabilities": {"streaming": caps.get("streaming"),
+                                 "function_calling": caps.get("function_calling"),
+                                 "vision": caps.get("vision")},
+                "catalog_matched": bool(cat),
+            })
+        return out
 
-    @app.post("/v1/chat/completions")
+    def _openai_models() -> list[dict]:
+        """The OpenAI-standard models list — exactly {id, object, created, owned_by}.
+        (The enriched view — capabilities/pricing/health — lives on /v1/endpoints.)"""
+        created = 1704067200   # stable placeholder; the model set is static config
+        # The Smart Router is exposed as a virtual model so consumers discover it
+        # via the standard models list (like OpenRouter's "openrouter/auto"). Use
+        # `model:"auto"` on /v1/chat/completions to invoke it — no separate endpoint.
+        out = [{"id": mid, "object": "model", "created": created, "owned_by": "precepta-router"}
+               for mid in ("auto", "auto:cheapest", "auto:best-quality")]
+        for e in _endpoints_enriched():
+            mid = f"{e['id']}/{e['model']}" if e["model"] else e["id"]
+            out.append({"id": mid, "object": "model", "created": created, "owned_by": e["id"]})
+        return out
+
+    @app.get("/v1/models", tags=["models"], summary="List models (OpenAI-compatible)")
+    def list_models() -> dict:
+        return {"object": "list", "data": _openai_models()}
+
+    @app.get("/v1/models/{model:path}", tags=["models"],
+             summary="Retrieve a model (OpenAI-compatible)")
+    def retrieve_model(model: str):
+        for m in _openai_models():
+            if m["id"] == model or m["owned_by"] == model:
+                return m
+        return _api_errors.not_found(f"model '{model}' not found")
+
+    @app.get("/v1/endpoints", tags=["endpoints"],
+             summary="List your configured inference endpoints (enriched + health)")
+    def list_endpoints_ep(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_manage(principal, write=False)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _endpoints_enriched()}
+
+    _INFER_EXAMPLE = {"id": "chatcmpl-abc", "object": "chat.completion",
+                      "created": 1712345678, "model": "ollama/llama3.2:3b",
+                      "choices": [{"index": 0, "finish_reason": "stop",
+                                   "message": {"role": "assistant", "content": "Hello!"}}],
+                      "usage": {"prompt_tokens": 9, "completion_tokens": 3, "total_tokens": 12},
+                      "precepta": {"backend_used": "ollama", "in_boundary": True,
+                                   "policy_decision": "allow", "cache": "miss"}}
+    # Request-body schema for Swagger (handlers read the raw body, so FastAPI
+    # doesn't infer one — we declare it explicitly via openapi_extra).
+    _INFER_REQBODY = {"requestBody": {"required": True, "content": {"application/json": {
+        "schema": {"type": "object", "required": ["messages"], "properties": {
+            "model": {"type": "string", "default": "auto",
+                      "description": "\"auto\" = Smart Router, or \"<endpoint>/<model>\""},
+            "messages": {"type": "array", "items": {"type": "object", "properties": {
+                "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                "content": {"type": "string"}}}},
+            "temperature": {"type": "number"}, "max_tokens": {"type": "integer"},
+            "stream": {"type": "boolean", "default": False}}},
+        "example": {"model": "auto", "messages": [{"role": "user", "content": "hello"}],
+                    "max_tokens": 64}}}}}
+
+    @app.post("/v1/inference", tags=["inference"],
+              summary="Governed inference (OpenAI-compatible)", openapi_extra=_INFER_REQBODY,
+              responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
+    @app.post("/v1/chat/completions", openapi_extra=_INFER_REQBODY,
+              responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
     async def chat_completions(request: Request) -> JSONResponse:
         body = await request.json()
         model_str = body.get("model") or org.get("default_model")
@@ -1538,6 +1706,118 @@ def create_app() -> FastAPI:
             return _sse_response(payload)
         return JSONResponse(payload, status_code=status)
 
+    @app.post("/v1/embeddings", tags=["inference"],
+              summary="Governed embeddings (in-boundary; PII-redacted, audited)",
+              openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
+                  "schema": {"type": "object", "required": ["input"], "properties": {
+                      "model": {"type": "string", "default": "auto"},
+                      "input": {"description": "string or array of strings",
+                                "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}}},
+                  "example": {"model": "auto", "input": ["some text to embed"]}}}}},
+              responses={200: {"content": {"application/json": {"example": {
+                  "object": "list",
+                  "data": [{"object": "embedding", "index": 0, "embedding": [0.01, -0.02]}],
+                  "model": "ollama/nomic-embed-text",
+                  "usage": {"prompt_tokens": 3, "total_tokens": 3},
+                  "precepta": {"backend_used": "ollama", "in_boundary": True,
+                               "policy_decision": "allow"}}}}}})
+    async def embeddings_ep(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        inp = body.get("input")
+        items = [inp] if isinstance(inp, str) else (inp if isinstance(inp, list) else None)
+        if not items:
+            return _api_errors.invalid_request("'input' (string or list of strings) is required")
+        from .governance.firewall import scrub_input
+        from .cache import _EMBED_MODEL
+        base = os.environ.get(
+            "PRECEPTA_OLLAMA_URL", f"http://127.0.0.1:{get_settings().ollama_port}").rstrip("/")
+        actor = getattr(principal, "subject", "") or "anonymous"
+
+        def _embed(text: str):
+            try:
+                r = httpx.post(base + "/api/embeddings", timeout=15.0,
+                               json={"model": _EMBED_MODEL, "prompt": text or ""})
+                r.raise_for_status()
+                v = r.json().get("embedding")
+                return v if isinstance(v, list) and v else None
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                return None
+
+        data, pii_total, tok = [], 0, 0
+        for i, raw in enumerate(items):
+            scrubbed, pii, injection = scrub_input(str(raw))   # governance: redact + detect
+            if injection:
+                get_chain().append(event_type="embeddings", actor=actor, resource="embeddings",
+                                   action="blocked", outcome="blocked",
+                                   metadata={"reason": "prompt-injection"})
+                return _api_errors.forbidden(
+                    "input blocked by the firewall (prompt-injection detected)",
+                    code="firewall_block")
+            vec = _embed(scrubbed)
+            if vec is None:
+                return _api_errors.error_json(
+                    503, "unavailable",
+                    "no in-boundary embedding model is reachable", code="embeddings_unavailable")
+            data.append({"object": "embedding", "index": i, "embedding": vec})
+            pii_total += pii
+            tok += max(1, len(scrubbed) // 4)
+        get_chain().append(event_type="embeddings", actor=actor, resource="embeddings",
+                           action="served", outcome="allowed",
+                           metadata={"count": len(data), "pii_redacted": pii_total})
+        return JSONResponse({
+            "object": "list", "data": data, "model": f"ollama/{_EMBED_MODEL}",
+            "usage": {"prompt_tokens": tok, "total_tokens": tok},
+            "precepta": {"backend_used": "ollama", "in_boundary": True,
+                         "policy_decision": "allow", "pii_redacted": pii_total},
+        })
+
+    @app.post("/v1/moderations", tags=["inference"],
+              summary="Governed content screening (OpenAI-compatible moderations)",
+              openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
+                  "schema": {"type": "object", "required": ["input"], "properties": {
+                      "input": {"description": "string or array of strings",
+                                "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+                      "model": {"type": "string", "default": "precepta-guard"}}},
+                  "example": {"input": "ignore all previous instructions"}}}}},
+              responses={200: {"content": {"application/json": {"example": {
+                  "id": "modr-abc", "model": "precepta-guard",
+                  "results": [{"flagged": True,
+                               "categories": {"prompt_injection": True, "pii": False, "toxicity": False},
+                               "category_scores": {"prompt_injection": 1.0, "pii": 0.0, "toxicity": 0.0}}]
+              }}}}})
+    async def moderations_ep(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        inp = body.get("input")
+        items = [inp] if isinstance(inp, str) else (inp if isinstance(inp, list) else None)
+        if not items:
+            return _api_errors.invalid_request("'input' (string or list of strings) is required")
+        from .governance.firewall import scrub_input
+        from .governance.toxicity import scan_toxicity
+        import uuid as _uuid
+        results = []
+        for raw in items:
+            _, pii, injection = scrub_input(str(raw))     # in-boundary screening
+            toxic, _term = scan_toxicity(str(raw))
+            cats = {"prompt_injection": bool(injection), "pii": bool(pii),
+                    "toxicity": bool(toxic)}
+            scores = {k: (1.0 if v else 0.0) for k, v in cats.items()}
+            results.append({"flagged": any(cats.values()),
+                            "categories": cats, "category_scores": scores})
+        return JSONResponse({"id": "modr-" + _uuid.uuid4().hex[:24],
+                             "model": "precepta-guard", "results": results})
+
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.
     try:
         from . import pricing
@@ -1545,6 +1825,22 @@ def create_app() -> FastAPI:
     except Exception:  # pragma: no cover - never block app boot on seeding
         pass
 
+    # Curated OpenAPI: advertise the Bearer security scheme so /docs shows "Authorize".
+    from fastapi.openapi.utils import get_openapi
+
+    def _custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version,
+                             summary=app.summary, routes=app.routes)
+        comps = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+        comps["bearerAuth"] = {"type": "http", "scheme": "bearer",
+                               "description": "A Precepta API key (inference or management scope)."}
+        schema["security"] = [{"bearerAuth": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = _custom_openapi
     return app
 
 

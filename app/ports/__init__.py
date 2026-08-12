@@ -28,6 +28,7 @@ class Principal:
     role: str               # "admin" | "user" | "auditor"
     display_name: str = ""
     team: str = ""          # org/team for attribution + scoping (Phase 7/9)
+    scope: str = "inference"  # "inference" | "manage:ro" | "manage:rw" (Phase 15)
 
 
 @dataclass
