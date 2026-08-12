@@ -17,10 +17,10 @@ Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 - [x] tests: manage-scope authenticate + require_manage matrix; catalog_lookup hit/miss
 
 ## Group 1 — Providers + catalog endpoints
-- [ ] `GET /v1/providers` (types + config_schema)
-- [ ] `GET /v1/providers/{type}` (type + its catalog models)
-- [ ] `GET /v1/catalog/models?provider=&mode=` (typed, filtered)
-- [ ] tests: shapes, filters, no-network/in-boundary
+- [x] `GET /v1/providers` (types + config_schema)
+- [x] `GET /v1/providers/{type}` (type + its catalog models)
+- [x] `GET /v1/catalog/models?provider=&mode=` (typed, filtered)
+- [x] tests: shapes, filters, no-network/in-boundary
 
 ## Group 2 — Endpoints resource + enriched models
 - [ ] `GET/POST /v1/endpoints`, `GET/PUT/DELETE /v1/endpoints/{id}`, `/test`, `/approve-egress`

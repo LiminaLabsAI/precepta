@@ -39,6 +39,9 @@ from .gateway.pipeline import governed_chat
 from .sovereign import enforce_backend
 from .sovereign.attestation import build_attestation
 from .adapters.infra import snapshot as infra_snapshot, record_telemetry
+from . import catalog as _catalog
+from .api import deps as _api_deps
+from .api import errors as _api_errors
 
 
 def _sse_response(payload: dict) -> StreamingResponse:
@@ -881,6 +884,44 @@ def create_app() -> FastAPI:
             "egress": {"result": egress["result"],
                        "verified": egress["result"] == "blocked"},
         })
+
+    # ── AI Provider Integration API (Phase 15) — discovery ──────────────
+    @app.get("/v1/providers", tags=["catalog"],
+             summary="List provider types Precepta can integrate + their connect-config")
+    def list_providers_ep(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _catalog.list_providers()}
+
+    @app.get("/v1/providers/{provider}", tags=["catalog"],
+             summary="One provider type + its catalog models")
+    def get_provider_ep(provider: str, request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        p = _catalog.get_provider(provider)
+        if p is None:
+            return _api_errors.not_found(f"unknown provider type '{provider}'")
+        return p
+
+    @app.get("/v1/catalog/models", tags=["catalog"],
+             summary="Curated, in-boundary model catalog (capabilities/context/pricing)")
+    def catalog_models_ep(request: Request, provider: str | None = None,
+                          mode: str | None = None):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _catalog.list_models(provider=provider, mode=mode)}
 
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
