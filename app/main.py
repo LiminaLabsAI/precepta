@@ -1447,7 +1447,11 @@ def create_app() -> FastAPI:
         """The OpenAI-standard models list — exactly {id, object, created, owned_by}.
         (The enriched view — capabilities/pricing/health — lives on /v1/endpoints.)"""
         created = 1704067200   # stable placeholder; the model set is static config
-        out = []
+        # The Smart Router is exposed as a virtual model so consumers discover it
+        # via the standard models list (like OpenRouter's "openrouter/auto"). Use
+        # `model:"auto"` on /v1/chat/completions to invoke it — no separate endpoint.
+        out = [{"id": mid, "object": "model", "created": created, "owned_by": "precepta-router"}
+               for mid in ("auto", "auto:cheapest", "auto:best-quality")]
         for e in _endpoints_enriched():
             mid = f"{e['id']}/{e['model']}" if e["model"] else e["id"]
             out.append({"id": mid, "object": "model", "created": created, "owned_by": e["id"]})
@@ -1483,11 +1487,24 @@ def create_app() -> FastAPI:
                       "usage": {"prompt_tokens": 9, "completion_tokens": 3, "total_tokens": 12},
                       "precepta": {"backend_used": "ollama", "in_boundary": True,
                                    "policy_decision": "allow", "cache": "miss"}}
+    # Request-body schema for Swagger (handlers read the raw body, so FastAPI
+    # doesn't infer one — we declare it explicitly via openapi_extra).
+    _INFER_REQBODY = {"requestBody": {"required": True, "content": {"application/json": {
+        "schema": {"type": "object", "required": ["messages"], "properties": {
+            "model": {"type": "string", "default": "auto",
+                      "description": "\"auto\" = Smart Router, or \"<endpoint>/<model>\""},
+            "messages": {"type": "array", "items": {"type": "object", "properties": {
+                "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                "content": {"type": "string"}}}},
+            "temperature": {"type": "number"}, "max_tokens": {"type": "integer"},
+            "stream": {"type": "boolean", "default": False}}},
+        "example": {"model": "auto", "messages": [{"role": "user", "content": "hello"}],
+                    "max_tokens": 64}}}}}
 
     @app.post("/v1/inference", tags=["inference"],
-              summary="Governed inference (OpenAI-compatible)",
+              summary="Governed inference (OpenAI-compatible)", openapi_extra=_INFER_REQBODY,
               responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
-    @app.post("/v1/chat/completions",
+    @app.post("/v1/chat/completions", openapi_extra=_INFER_REQBODY,
               responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
     async def chat_completions(request: Request) -> JSONResponse:
         body = await request.json()
@@ -1691,6 +1708,12 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/embeddings", tags=["inference"],
               summary="Governed embeddings (in-boundary; PII-redacted, audited)",
+              openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
+                  "schema": {"type": "object", "required": ["input"], "properties": {
+                      "model": {"type": "string", "default": "auto"},
+                      "input": {"description": "string or array of strings",
+                                "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}}},
+                  "example": {"model": "auto", "input": ["some text to embed"]}}}}},
               responses={200: {"content": {"application/json": {"example": {
                   "object": "list",
                   "data": [{"object": "embedding", "index": 0, "embedding": [0.01, -0.02]}],
@@ -1756,6 +1779,12 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/moderations", tags=["inference"],
               summary="Governed content screening (OpenAI-compatible moderations)",
+              openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
+                  "schema": {"type": "object", "required": ["input"], "properties": {
+                      "input": {"description": "string or array of strings",
+                                "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+                      "model": {"type": "string", "default": "precepta-guard"}}},
+                  "example": {"input": "ignore all previous instructions"}}}}},
               responses={200: {"content": {"application/json": {"example": {
                   "id": "modr-abc", "model": "precepta-guard",
                   "results": [{"flagged": True,

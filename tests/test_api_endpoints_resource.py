@@ -103,3 +103,21 @@ def test_owner_can_issue_management_key_via_api():
     for k in list_keys():
         if k["name"] == "mgmt-via-api":
             revoke_key(k["id"])
+
+
+def test_smart_router_is_a_listed_model():
+    data = client.get("/v1/models").json()["data"]
+    ids = {m["id"]: m for m in data}
+    assert "auto" in ids and ids["auto"]["owned_by"] == "precepta-router"
+    assert "auto:cheapest" in ids and "auto:best-quality" in ids
+
+
+def test_openapi_shows_request_bodies():
+    p = client.get("/openapi.json").json()["paths"]
+    for path in ("/v1/chat/completions", "/v1/embeddings", "/v1/moderations"):
+        rb = p[path]["post"].get("requestBody")
+        assert rb, f"{path} missing requestBody"
+        assert rb["content"]["application/json"].get("example") is not None
+    # inference request body documents the Smart Router in the model field
+    schema = p["/v1/chat/completions"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    assert "model" in schema["properties"] and "messages" in schema["properties"]

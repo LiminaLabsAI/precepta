@@ -29,7 +29,7 @@ r = requests.post("http://127.0.0.1:8000/v1/chat/completions",
   json={"model": "auto", "messages": [{"role": "user", "content": "hello"}]})
 print(r.json()["choices"][0]["message"]["content"])
 ```
-**OpenAI SDK** (drop-in — only the base URL changes)
+**OpenAI SDK — Python** (drop-in — only the base URL changes)
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key=KEY)
@@ -37,6 +37,22 @@ resp = client.chat.completions.create(
   model="auto", messages=[{"role": "user", "content": "hello"}])
 print(resp.choices[0].message.content)
 ```
+
+**OpenAI SDK — TypeScript**
+```typescript
+import OpenAI from "openai";
+const client = new OpenAI({ baseURL: "http://127.0.0.1:8000/v1", apiKey: process.env.KEY });
+const resp = await client.chat.completions.create({
+  model: "auto", messages: [{ role: "user", content: "hello" }],
+});
+console.log(resp.choices[0].message.content);
+```
+
+> **The Smart Router is a model, not a separate endpoint.** Set `model:"auto"`
+> and it picks the best healthy in-boundary model per request (like OpenRouter's
+> `openrouter/auto`). It appears in `GET /v1/models` (owned by `precepta-router`);
+> variants: `auto:cheapest`, `auto:best-quality`. Or name a specific
+> `"<endpoint>/<model>"`.
 
 ---
 
