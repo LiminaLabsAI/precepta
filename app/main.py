@@ -1443,13 +1443,27 @@ def create_app() -> FastAPI:
             })
         return out
 
-    @app.get("/v1/models", tags=["catalog"],
-             summary="Your live inference endpoints (OpenAI-compatible + enriched)")
+    def _openai_models() -> list[dict]:
+        """The OpenAI-standard models list — exactly {id, object, created, owned_by}.
+        (The enriched view — capabilities/pricing/health — lives on /v1/endpoints.)"""
+        created = 1704067200   # stable placeholder; the model set is static config
+        out = []
+        for e in _endpoints_enriched():
+            mid = f"{e['id']}/{e['model']}" if e["model"] else e["id"]
+            out.append({"id": mid, "object": "model", "created": created, "owned_by": e["id"]})
+        return out
+
+    @app.get("/v1/models", tags=["models"], summary="List models (OpenAI-compatible)")
     def list_models() -> dict:
-        data = [{"id": (f"{e['id']}/{e['model']}" if e["model"] else e["id"]),
-                 "object": "model", "owned_by": e["id"], **e}
-                for e in _endpoints_enriched()]
-        return {"object": "list", "data": data}
+        return {"object": "list", "data": _openai_models()}
+
+    @app.get("/v1/models/{model:path}", tags=["models"],
+             summary="Retrieve a model (OpenAI-compatible)")
+    def retrieve_model(model: str):
+        for m in _openai_models():
+            if m["id"] == model or m["owned_by"] == model:
+                return m
+        return _api_errors.not_found(f"model '{model}' not found")
 
     @app.get("/v1/endpoints", tags=["endpoints"],
              summary="List your configured inference endpoints (enriched + health)")
@@ -1462,9 +1476,19 @@ def create_app() -> FastAPI:
             return gerr
         return {"object": "list", "data": _endpoints_enriched()}
 
+    _INFER_EXAMPLE = {"id": "chatcmpl-abc", "object": "chat.completion",
+                      "created": 1712345678, "model": "ollama/llama3.2:3b",
+                      "choices": [{"index": 0, "finish_reason": "stop",
+                                   "message": {"role": "assistant", "content": "Hello!"}}],
+                      "usage": {"prompt_tokens": 9, "completion_tokens": 3, "total_tokens": 12},
+                      "precepta": {"backend_used": "ollama", "in_boundary": True,
+                                   "policy_decision": "allow", "cache": "miss"}}
+
     @app.post("/v1/inference", tags=["inference"],
-              summary="Governed inference (OpenAI-compatible)")
-    @app.post("/v1/chat/completions")
+              summary="Governed inference (OpenAI-compatible)",
+              responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
+    @app.post("/v1/chat/completions",
+              responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
     async def chat_completions(request: Request) -> JSONResponse:
         body = await request.json()
         model_str = body.get("model") or org.get("default_model")
@@ -1666,7 +1690,14 @@ def create_app() -> FastAPI:
         return JSONResponse(payload, status_code=status)
 
     @app.post("/v1/embeddings", tags=["inference"],
-              summary="Governed embeddings (in-boundary; PII-redacted, audited)")
+              summary="Governed embeddings (in-boundary; PII-redacted, audited)",
+              responses={200: {"content": {"application/json": {"example": {
+                  "object": "list",
+                  "data": [{"object": "embedding", "index": 0, "embedding": [0.01, -0.02]}],
+                  "model": "ollama/nomic-embed-text",
+                  "usage": {"prompt_tokens": 3, "total_tokens": 3},
+                  "precepta": {"backend_used": "ollama", "in_boundary": True,
+                               "policy_decision": "allow"}}}}}})
     async def embeddings_ep(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
         if err is not None:
@@ -1722,6 +1753,41 @@ def create_app() -> FastAPI:
             "precepta": {"backend_used": "ollama", "in_boundary": True,
                          "policy_decision": "allow", "pii_redacted": pii_total},
         })
+
+    @app.post("/v1/moderations", tags=["inference"],
+              summary="Governed content screening (OpenAI-compatible moderations)",
+              responses={200: {"content": {"application/json": {"example": {
+                  "id": "modr-abc", "model": "precepta-guard",
+                  "results": [{"flagged": True,
+                               "categories": {"prompt_injection": True, "pii": False, "toxicity": False},
+                               "category_scores": {"prompt_injection": 1.0, "pii": 0.0, "toxicity": 0.0}}]
+              }}}}})
+    async def moderations_ep(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        inp = body.get("input")
+        items = [inp] if isinstance(inp, str) else (inp if isinstance(inp, list) else None)
+        if not items:
+            return _api_errors.invalid_request("'input' (string or list of strings) is required")
+        from .governance.firewall import scrub_input
+        from .governance.toxicity import scan_toxicity
+        import uuid as _uuid
+        results = []
+        for raw in items:
+            _, pii, injection = scrub_input(str(raw))     # in-boundary screening
+            toxic, _term = scan_toxicity(str(raw))
+            cats = {"prompt_injection": bool(injection), "pii": bool(pii),
+                    "toxicity": bool(toxic)}
+            scores = {k: (1.0 if v else 0.0) for k, v in cats.items()}
+            results.append({"flagged": any(cats.values()),
+                            "categories": cats, "category_scores": scores})
+        return JSONResponse({"id": "modr-" + _uuid.uuid4().hex[:24],
+                             "model": "precepta-guard", "results": results})
 
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.
     try:
