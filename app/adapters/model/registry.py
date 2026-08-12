@@ -20,8 +20,10 @@ def build_registry() -> dict[str, OpenAICompatBackend]:
     reg: dict[str, OpenAICompatBackend] = {}
 
     # Ollama — local, in-boundary, no key, free. Always registered. Tier 1 (small/fast).
+    _ollama = os.environ.get(
+        "PRECEPTA_OLLAMA_URL", f"http://127.0.0.1:{s.ollama_port}").rstrip("/")
     reg["ollama"] = OpenAICompatBackend(
-        "ollama", f"http://127.0.0.1:{s.ollama_port}/v1", in_boundary=True,
+        "ollama", f"{_ollama}/v1", in_boundary=True,
         default_model=os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:3b"), tier=1,
     )
 

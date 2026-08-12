@@ -119,10 +119,49 @@ def _query_text(messages: list[dict]) -> str:
                  if m.get("role") == "user"), "")
 
 
+# ── "smart" strategy: auto-decide exact vs semantic vs skip, per request ─────
+# Time-sensitive / personalized phrasings where reusing a prior answer risks
+# serving something stale — so the smart strategy SKIPS the cache for these.
+_SKIP_HINTS = (
+    "today", "right now", "as of", "currently", "current ", "latest",
+    "this week", "this month", "this year", "breaking", "live ", "just now",
+    "stock price", "weather", "news",
+)
+
+
+def decide_smart(messages: list[dict]) -> str:
+    """For a 'smart' endpoint, pick 'exact' | 'semantic' | 'skip' for THIS request.
+
+    - skip: the ask looks time-sensitive/personalized — don't reuse a stale answer.
+    - exact: short/lookup-style — only reuse an identical request (semantic could
+      confidently return a wrong near-match).
+    - semantic: a longer natural-language question — a close match is worth reusing.
+    """
+    q = _query_text(messages).strip().lower()
+    if not q:
+        return "exact"
+    if any(h in q for h in _SKIP_HINTS):
+        return "skip"
+    if len(q) < 40:
+        return "exact"
+    return "semantic"
+
+
+def effective_strategy(endpoint: str, messages: list[dict]) -> str:
+    """Resolve the endpoint's configured strategy to a concrete per-request one."""
+    strat = features.cache_strategy(endpoint)
+    if strat == "smart":
+        return decide_smart(messages)
+    return strat if strat in ("exact", "semantic") else "exact"
+
+
 # ── lookup / store ────────────────────────────────────────────────────────
 def lookup(model_str: str, messages: list[dict], kw: dict, team: str, endpoint: str) -> dict | None:
     """Return the cached entry for a hit, else None. Strategy is per endpoint. Fail-soft."""
     try:
+        eff = effective_strategy(endpoint, messages)
+        if eff == "skip":                       # smart decided this request shouldn't reuse
+            return None
         ensure_tables()
         key = cache_key(model_str, messages, kw)
         with get_conn() as conn:
@@ -131,7 +170,7 @@ def lookup(model_str: str, messages: list[dict], kw: dict, team: str, endpoint: 
         if row is not None:
             return _entry(row, exact=True)
 
-        if not features.cache_semantic(endpoint):
+        if eff != "semantic":
             return None
         thr = features.cache_threshold(endpoint)
         if thr >= 1.0:
@@ -174,10 +213,13 @@ def store(model_str: str, messages: list[dict], kw: dict, team: str, endpoint: s
           response: dict, tokens_in: int, tokens_out: int, backend: str, model: str) -> None:
     """Persist a fresh answer for reuse under this endpoint's config. Fail-soft."""
     try:
+        eff = effective_strategy(endpoint, messages)
+        if eff == "skip":                       # smart decided not to cache this one
+            return
         ensure_tables()
         key = cache_key(model_str, messages, kw)
         emb = None
-        if features.cache_semantic(endpoint):
+        if eff == "semantic":                   # store an embedding only when semantic reuse is on
             vec = embed(_query_text(messages))
             emb = json.dumps(vec) if vec is not None else None
         with get_conn() as conn:

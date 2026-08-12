@@ -61,12 +61,26 @@ def snapshot(registry: dict | None = None) -> list[dict]:
     out = []
     for name, be in sorted(reg.items()):
         lat = _latency(name)
+        base_url = getattr(be, "base_url", "") or ""
+        try:
+            from ...sovereign.egress import host_of, is_approved, is_approvable
+            host = host_of(base_url)
+            egress_approved = is_approved(base_url) if host else False
+            egress_approvable = is_approvable(base_url) if host else False
+        except Exception:
+            host, egress_approved, egress_approvable = "", False, False
         entry = {
             "backend": name,
             "in_boundary": bool(be.in_boundary),
             "model": getattr(be, "default_model", ""),
+            "host": host,                       # derived from the registered endpoint URL
+            "base_url": base_url,               # for the edit form (admin-only endpoint); key never exposed
+            "tier": getattr(be, "tier", 1),
+            "has_key": bool(getattr(be, "api_key", None)),
+            "egress_approved": egress_approved,  # is this host on the approved-egress allowlist?
+            "egress_approvable": egress_approvable,  # external host, not yet approved
             "latency_ms": None if lat == float("inf") else round(lat),
-            "status": "healthy" if be.health() else "down",
+            "status": "healthy" if be.health(timeout=8.0) else "down",
             "gpu": "—",
             "vram": "—",
         }
@@ -87,8 +101,31 @@ def snapshot(registry: dict | None = None) -> list[dict]:
 
 
 # ── telemetry recording ─────────────────────────────────────────────────
+_DDL = """
+CREATE TABLE IF NOT EXISTS telemetry (
+    id            TEXT PRIMARY KEY,
+    captured_at   TEXT,
+    workflow_id   TEXT,
+    agent_id      TEXT,
+    cpu_pct       REAL,
+    memory_gb     REAL,
+    gpu_pct       REAL,
+    vram_gb       REAL,
+    tokens_input  INTEGER,
+    tokens_output INTEGER,
+    inference_ms  INTEGER
+)
+"""
+
+
+def ensure_table() -> None:
+    with get_conn() as conn:
+        conn.execute(_DDL)
+
+
 def record_telemetry(*, inference_ms: int | None, tokens_in: int | None,
                      tokens_out: int | None, backend: str | None = None) -> None:
+    ensure_table()
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO telemetry (id,captured_at,workflow_id,agent_id,cpu_pct,"

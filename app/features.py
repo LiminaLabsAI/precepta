@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS endpoint_features (
 """
 
 _DEFAULTS = {
-    "cache_enabled": 0, "cache_strategy": "exact", "cache_threshold": 1.0,
-    "compression_enabled": 0, "compression_mode": "baseline",
+    # Smart-by-default: the router auto-decides exact vs semantic vs skip per
+    # request (threshold governs the semantic match). Matches the product design.
+    "cache_enabled": 1, "cache_strategy": "smart", "cache_threshold": 0.9,
+    "compression_enabled": 1, "compression_mode": "smart",
 }
 _ALLOWED = set(_DEFAULTS)
 
@@ -67,9 +69,11 @@ def set_config(endpoint: str, values: dict) -> dict:
                 except (ValueError, TypeError):
                     continue
             elif k == "cache_strategy":
-                v = "semantic" if str(v).lower() == "semantic" else "exact"
+                sv = str(v).lower()
+                v = sv if sv in ("exact", "semantic", "smart") else "exact"
             elif k == "compression_mode":
-                v = "aggressive" if str(v).lower() == "aggressive" else "baseline"
+                mv = str(v).lower()
+                v = mv if mv in ("baseline", "aggressive", "smart") else "baseline"
             conn.execute(f"UPDATE endpoint_features SET {k}=? WHERE endpoint=?", (v, ep))
     return get_config(ep)
 
@@ -83,6 +87,11 @@ def cache_semantic(endpoint: str) -> bool:
     return get_config(endpoint)["cache_strategy"] == "semantic"
 
 
+def cache_strategy(endpoint: str) -> str:
+    """Raw configured strategy: 'exact' | 'semantic' | 'smart'."""
+    return get_config(endpoint)["cache_strategy"]
+
+
 def cache_threshold(endpoint: str) -> float:
     return float(get_config(endpoint)["cache_threshold"])
 
@@ -93,6 +102,11 @@ def compression_on(endpoint: str) -> bool:
 
 def compression_aggressive(endpoint: str) -> bool:
     return get_config(endpoint)["compression_mode"] == "aggressive"
+
+
+def compression_mode(endpoint: str) -> str:
+    """Raw configured mode: 'baseline' | 'aggressive' | 'smart'."""
+    return get_config(endpoint)["compression_mode"]
 
 
 def clear() -> None:

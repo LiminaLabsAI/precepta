@@ -1,0 +1,17 @@
+# Keep the image small + never bake in local state or secrets.
+.venv/
+__pycache__/
+*.pyc
+preceptaai.db
+preceptaai.db-*
+.env
+.git/
+.githooks/
+.momentum/
+tests/
+specs/
+docs/
+design/
+*.md
+node_modules/
+.DS_Store

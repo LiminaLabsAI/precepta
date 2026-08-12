@@ -197,19 +197,22 @@ async def governed_chat(
     infer_msgs = scrubbed
     comp_stats = None
     if _compress.enabled(config_key):
-        infer_msgs, comp_stats = _compress.compress(
-            scrubbed, aggressive=_compress.aggressive_on(config_key))
-        _compress.record(comp_stats, config_key)
-        if comp_stats["saved_tokens"] > 0:
-            # Anchor the compression as its own audit event (filterable, tamper-evident).
-            get_chain().append(
-                event_type="compression", actor=getattr(principal, "subject", "") or "anonymous",
-                resource="compression", action=comp_stats["mode"], outcome="applied",
-                metadata={"saved_tokens": comp_stats["saved_tokens"],
-                          "original_tokens": comp_stats["original_tokens"],
-                          "compressed_tokens": comp_stats["compressed_tokens"]})
-            if comp_stats["mode"] == "aggressive":
-                _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
+        # 'smart' auto-decides skip/baseline/aggressive per request.
+        eff_mode = _compress.effective_mode(config_key, scrubbed)
+        if eff_mode != "skip":
+            infer_msgs, comp_stats = _compress.compress(
+                scrubbed, aggressive=(eff_mode == "aggressive"))
+            _compress.record(comp_stats, config_key)
+            if comp_stats["saved_tokens"] > 0:
+                # Anchor the compression as its own audit event (filterable, tamper-evident).
+                get_chain().append(
+                    event_type="compression", actor=getattr(principal, "subject", "") or "anonymous",
+                    resource="compression", action=comp_stats["mode"], outcome="applied",
+                    metadata={"saved_tokens": comp_stats["saved_tokens"],
+                              "original_tokens": comp_stats["original_tokens"],
+                              "compressed_tokens": comp_stats["compressed_tokens"]})
+                if comp_stats["mode"] == "aggressive":
+                    _compress.notify_aggressive(comp_stats["saved_tokens"])   # never surprise
     if tr is not None:
         if comp_stats is not None and comp_stats.get("saved_tokens", 0) > 0:
             tr.step("compression", f"{comp_stats['mode'].title()} trim",

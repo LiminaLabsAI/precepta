@@ -35,6 +35,33 @@ def _data_stores() -> list[dict]:
             for name, desc in _STORE_DESCRIPTORS.items() if name in present]
 
 
+def _egress_result() -> dict:
+    """Real egress probe → attestation payload, recorded to the tamper-evident chain."""
+    try:
+        from .probe import egress_probe
+        probe = egress_probe()
+    except Exception:
+        probe = {"result": "unknown", "reachable": False, "targets": []}
+    try:
+        get_chain().append(
+            event_type="egress.probe", actor="system", resource="egress",
+            action="probe", outcome=probe["result"],
+            metadata={"targets": probe.get("targets", [])})
+    except Exception:
+        pass
+    # Owner-approved egress hosts shift the posture honestly from "sealed"
+    # (nothing may leave) to "restricted" (only these named hosts may be reached).
+    try:
+        from .egress import list_hosts
+        approved = [h["host"] for h in list_hosts()]
+    except Exception:
+        approved = []
+    return {"result": probe["result"], "verified": probe["result"] == "blocked",
+            "targets": probe.get("targets", []),
+            "approved_hosts": approved,
+            "posture": "restricted" if approved else "sealed"}
+
+
 def build_attestation(settings, registry) -> dict:
     from ..controls import sovereign_enabled
     sovereign = sovereign_enabled()          # effective (runtime-overridable) mode
@@ -60,9 +87,7 @@ def build_attestation(settings, registry) -> dict:
             "external_calls": 0,          # in-boundary-only routing → zero egress
             "chain_verified": verified,
         },
-        "egress_test": {
-            "result": "blocked" if sovereign else "open",
-        },
+        "egress_test": _egress_result(),   # a REAL outbound probe, not just the flag
     }
     anchor = chain.head_hash()
     signature = hashlib.sha256(

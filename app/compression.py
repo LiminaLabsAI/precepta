@@ -50,6 +50,33 @@ def aggressive_on(endpoint: str) -> bool:
     return features.compression_aggressive(endpoint)
 
 
+def _user_len(messages: list[dict]) -> int:
+    return sum(len(m.get("content") or "") for m in messages if m.get("role") == "user")
+
+
+def decide_smart(messages: list[dict]) -> str:
+    """For a 'smart' endpoint, pick 'skip' | 'baseline' | 'aggressive' for THIS
+    request by how much there is to save:
+    - skip: short prompt — nothing worth trimming.
+    - aggressive: very long prompt — the lossy trim pays for itself.
+    - baseline: everything in between (quality-safe, never changes meaning).
+    """
+    n = _user_len(messages)
+    if n < 400:
+        return "skip"
+    if n > 4000:
+        return "aggressive"
+    return "baseline"
+
+
+def effective_mode(endpoint: str, messages: list[dict]) -> str:
+    """Resolve the endpoint's configured mode to a concrete per-request one."""
+    mode = features.compression_mode(endpoint)
+    if mode == "smart":
+        return decide_smart(messages)
+    return mode if mode in ("baseline", "aggressive") else "baseline"
+
+
 def est_tokens(text: str) -> int:
     return max(0, round(len(text or "") / 4))
 

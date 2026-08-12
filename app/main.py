@@ -109,6 +109,17 @@ def _resolve_principal(request: Request):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Fresh-DB bootstrap: ensure every table exists before serving, so a brand-new
+    # self-host database can't 500 on a read-before-write path.
+    from .schema import ensure_all
+    ensure_all()
+    # Keep the egress broker's allowfile in sync with the approved-egress table
+    # at boot (no-op in the sealed default where no allowfile path is set).
+    try:
+        from .sovereign.egress import sync_allowfile
+        sync_allowfile()
+    except Exception:
+        pass
     app = FastAPI(
         title="preceptaai control plane",
         version=__version__,
@@ -406,6 +417,134 @@ def create_app() -> FastAPI:
         state["can_edit"] = True
         return JSONResponse(state)
 
+    # ── Approved-egress allowlist (owner-gated) ─────────────────────────
+    @app.get("/v1/egress")
+    def get_egress(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "audit.read"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        from .sovereign import egress as _eg
+        return JSONResponse({"hosts": _eg.list_hosts(),
+                             "can_edit": is_platform_owner(principal)})
+
+    @app.post("/v1/egress")
+    async def add_egress(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse(
+                {"error": {"message": "platform owner only — approving a host lets "
+                           "Precepta reach it, which changes your egress posture",
+                           "type": "forbidden"}}, status_code=403)
+        b = await request.json()
+        from .sovereign import egress as _eg
+        try:
+            row = _eg.add_host(str(b.get("host", "")), added_by=principal.subject,
+                               note=str(b.get("note", "") or ""))
+        except ValueError:
+            return JSONResponse({"error": {"message": "a host is required",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        get_chain().append(                                # audit the posture change
+            event_type="controls.egress", actor=principal.subject,
+            resource="controls.egress", action="approve-host",
+            outcome="applied", metadata={"host": row["host"]})
+        return JSONResponse({"ok": True, "host": row}, status_code=201)
+
+    @app.delete("/v1/egress/{host}")
+    def remove_egress(host: str, request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only",
+                                           "type": "forbidden"}}, status_code=403)
+        from .sovereign import egress as _eg
+        removed = _eg.remove_host(host)
+        if removed:
+            get_chain().append(
+                event_type="controls.egress", actor=principal.subject,
+                resource="controls.egress", action="revoke-host",
+                outcome="applied", metadata={"host": _eg.host_of(host)})
+        return JSONResponse({"ok": True, "removed": removed})
+
+    @app.post("/v1/backends/{provider}/test")
+    def test_backend(provider: str, request: Request) -> JSONResponse:
+        """Really probe a registered backend and explain the result honestly —
+        reachable, or why not (outside the sealed boundary / not approved)."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        reg = get_registry()
+        be = reg.get(provider)
+        if be is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        from .sovereign.egress import host_of, is_approvable
+        base_url = getattr(be, "base_url", "") or ""
+        host = host_of(base_url)
+        in_b = bool(getattr(be, "in_boundary", True))
+        # 1) Would Sovereign Mode block routing here at all?
+        block = enforce_backend(be)
+        if block:
+            # Blocked because its host isn't approved — offer a one-click approve.
+            return JSONResponse({"reachable": False, "status": "blocked",
+                                 "reason": block, "host": host,
+                                 "approvable": is_approvable(base_url)})
+        # 2) Actually try to reach it (uses the key stored with this endpoint).
+        #    Generous timeout: a cloud endpoint via the broker answers in ~4-5s.
+        ok = False
+        try:
+            ok = bool(be.health(timeout=15.0))
+        except Exception:
+            ok = False
+        if ok:
+            return JSONResponse({"reachable": True, "status": "connected",
+                                 "reason": "The endpoint responded.", "host": host})
+        reason = ("Registered, but it did not respond. In this sealed deployment "
+                  "the app has no internet route, so a cloud endpoint won't answer "
+                  "unless you approve its host and enable restricted egress."
+                  if not in_b or _controls.sovereign_enabled()
+                  else "Registered, but it did not respond — check the endpoint URL, "
+                       "key, and that the server is up.")
+        return JSONResponse({"reachable": False, "status": "unreachable",
+                             "reason": reason, "host": host,
+                             "approvable": is_approvable(base_url)})
+
+    @app.post("/v1/backends/{provider}/approve-egress")
+    def approve_backend_egress(provider: str, request: Request) -> JSONResponse:
+        """Approve THIS registered endpoint's host for egress — the host comes
+        from the URL you entered in the Inference plane, so nothing is retyped."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only",
+                                           "type": "forbidden"}}, status_code=403)
+        be = get_registry().get(provider)
+        if be is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        from .sovereign import egress as _eg
+        base_url = getattr(be, "base_url", "") or ""
+        host = _eg.host_of(base_url)
+        if not host:
+            return JSONResponse({"error": {"message": "this endpoint has no host to approve",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        row = _eg.add_host(host, added_by=principal.subject,
+                           note=f"endpoint '{provider}'")
+        get_chain().append(
+            event_type="controls.egress", actor=principal.subject,
+            resource="controls.egress", action="approve-host",
+            outcome="applied", metadata={"host": row["host"], "endpoint": provider})
+        return JSONResponse({"ok": True, "host": row["host"], "provider": provider})
+
     # ── Router config (platform-owner-only) — where the router's own model runs ──
     @app.get("/v1/router/config")
     def get_router_config(request: Request) -> JSONResponse:
@@ -687,6 +826,62 @@ def create_app() -> FastAPI:
         return JSONResponse({"stages": stages, "intents": intents,
                              "targets": targets, "controls": controls})
 
+    @app.post("/v1/suggest")
+    async def suggest_ep(request: Request) -> JSONResponse:
+        """Dynamic Playground follow-up suggestions from the last response
+        (in-boundary model; fail-soft to [])."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        from .suggest import suggest_followups
+        sug = await suggest_followups(b.get("context", ""))
+        return JSONResponse({"suggestions": sug})
+
+    @app.post("/v1/copilot")
+    async def copilot_ep(request: Request) -> JSONResponse:
+        """Grounded, in-boundary Console assistant. Answers about THIS deployment
+        from a live state snapshot; fail-soft to a deterministic summary."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            b = await request.json()
+        except Exception:
+            b = {}
+        from .copilot import answer as copilot_answer
+        out = await copilot_answer(str(b.get("question", "")))
+        return JSONResponse(out)
+
+    @app.get("/v1/deployment")
+    def deployment_ep(request: Request) -> JSONResponse:
+        """Live self-host status for the Deployment screen — all real signals."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        from .sovereign.probe import egress_probe
+        from .controls import sovereign_enabled
+        from . import org
+        reg = get_registry()
+        total = len(reg)
+        inb = sum(1 for b in reg.values() if getattr(b, "in_boundary", True))
+        egress = egress_probe()
+        return JSONResponse({
+            "org_name": org.get("org_name"),
+            "running": True,
+            "endpoints": total,
+            "in_boundary_endpoints": inb,
+            "models_in_boundary": total > 0 and inb == total,
+            "sovereign": sovereign_enabled(),
+            "repo_url": os.environ.get("PRECEPTA_REPO_URL",
+                                       "https://github.com/LiminaLabsAI/precepta.git"),
+            "egress": {"result": egress["result"],
+                       "verified": egress["result"] == "blocked"},
+        })
+
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -750,6 +945,48 @@ def create_app() -> FastAPI:
             (b.get("model") or "").strip(), bool(b.get("in_boundary", True)), tier)
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
+
+    @app.put("/v1/backends/{provider}")
+    async def update_backend(provider: str, request: Request) -> JSONResponse:
+        """Edit a registered endpoint in place (URL, model, key, tier, boundary).
+        The identity (`provider`) is fixed; a blank key keeps the stored one."""
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not get_authz().can(principal, "policy.update"):
+            return JSONResponse({"error": {"message": "forbidden", "type": "forbidden"}},
+                                status_code=403)
+        reg = get_registry()
+        existing = reg.get(provider)
+        if existing is None:
+            return JSONResponse({"error": {"message": "not found", "type": "not_found"}},
+                                status_code=404)
+        b = await request.json()
+        base_url = (b.get("base_url") or existing.base_url or "").strip()
+        if not base_url:
+            return JSONResponse({"error": {"message": "base_url required",
+                                           "type": "invalid_request_error"}}, status_code=400)
+        model = (b.get("model") if b.get("model") is not None
+                 else getattr(existing, "default_model", "")) or ""
+        model = model.strip()
+        try:
+            tier = int(b.get("tier") or getattr(existing, "tier", 1))
+        except (ValueError, TypeError):
+            tier = getattr(existing, "tier", 1)
+        tier = max(1, min(3, tier))
+        in_boundary = bool(b.get("in_boundary")) if "in_boundary" in b \
+            else bool(getattr(existing, "in_boundary", True))
+        # A blank/absent key KEEPS the stored one (never blank a secret by omission).
+        new_key = b.get("api_key")
+        api_key = (new_key.strip() if isinstance(new_key, str) and new_key.strip()
+                   else getattr(existing, "api_key", None))
+        backend = OpenAICompatBackend(provider, base_url, in_boundary=in_boundary,
+                                      api_key=api_key or None, default_model=model, tier=tier)
+        reg[provider] = backend
+        backend_store.save_backend(provider, base_url, api_key or None, model,
+                                   in_boundary, tier)
+        return JSONResponse({"ok": True, "provider": provider, "tier": tier,
+                             "in_boundary": in_boundary, "healthy": backend.health()})
 
     @app.post("/v1/backends/{provider}/boundary")
     async def set_backend_boundary(provider: str, request: Request) -> JSONResponse:
@@ -1220,7 +1457,10 @@ def create_app() -> FastAPI:
                     "route_mode": intent, "brain": brain.name,
                     "technique": meta["technique"], "reason": meta["reason"],
                     "fell_over": meta["fell_over"], "calls": meta["calls"],
-                    "cost_estimate_usd": meta["cost_estimate_usd"], "model": model_str,
+                    "cost_estimate_usd": meta["cost_estimate_usd"],
+                    # the real model served, not the "auto" alias
+                    "model": (meta.get("model") or getattr(used, "default_model", "")
+                              or model_str),
                     "candidates": route_candidates, "intent": route_intent,
                     "inferred": route_inferred,
                 }

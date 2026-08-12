@@ -21,6 +21,8 @@
   .iconbtn:hover{background:#F3F4F6 !important}
   button{font-family:inherit}
   .gbtn:hover{background:#F9FAFB}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{animation:spin 0.8s linear infinite}
 </style>
 </head>
 <body style="font-family:Inter,system-ui,sans-serif;color:#111827;font-size:14px;background:#FFFFFF">
@@ -45,6 +47,8 @@ const state = {
   profileMenuOpen: false,
   notifOpen: false,
   copilotOpen: false,
+  copilotMsgs: [],
+  copilotBusy: false,
 
   onboardStep: 0,
   infraSelected: 'onprem',
@@ -56,7 +60,7 @@ const state = {
   egressProbeStatus: 'idle', sovereignConfirm:false, savingsTab:'cache',
 
   backends: [],                   // ← /infra
-  addBackendOpen: false,
+  addBackendOpen: false, editingBackend: null,
   newBackendName:'', newBackendModel:'', newBackendLocation:'', newBackendInBoundary:true,
   newBackendType:'onprem', newBackendEndpoint:'', newBackendKey:'', newBackendRegion:'mumbai', newBackendTier:'2', priceEditFor:null,
 
@@ -68,7 +72,7 @@ const state = {
   policies: [],                   // ← /v1/policies
   newPolicyOpen: false,
   newPolicyName:'', newPolicyDesc:'', newPolicyAction:'chat.completion', newPolicyEffect:'block',
-  newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxTokens:'', newPolicyMaxCalls:'', newPolicyMaxCost:'',
+  newPolicyUrlAllow:'', newPolicyUrlBlock:'', newPolicyMaxCalls:'',
   newPolicyPii:false, newPolicyDataTag:false,
   newPolicyScopeTeams:[], newPolicyScopeRoles:[], newPolicyScopeAgents:[], newPolicyScopeBackends:[], newPolicyScopeModels:[],
 
@@ -83,7 +87,7 @@ const state = {
 
   settingsOpen:false, settingsTab:'general', routerKeyInput:'',
 
-  chatModel:'', chatInput:'', messages:[],
+  chatModel:'', chatInput:'', messages:[], chatPending:false, testResults:{},
   copilotQuery:'',
 };
 
@@ -140,13 +144,18 @@ let modelOptions = [];   // populated from real /infra backends
 const nav = [
   {key:'onboarding',label:'Setup',icon:'rocket'},
   {key:'overview',label:'Overview',icon:'layout-dashboard'},
+  {key:'deployment',label:'Deployment',icon:'shield-check'},
   {key:'modelplane',label:'Inference plane',icon:'server'},
   {key:'keys',label:'Keys & budgets',icon:'key'},
   {key:'policies',label:'Policies',icon:'shield'},
   {key:'savings',label:'Cache & compression',icon:'zap'},
-  {key:'workflow',label:'Workflow',icon:'git-branch'},
+  // Workflow hidden from the menu — it duplicated Traces + settings and confused users.
+  // Screen + /v1/workflow endpoint are kept; uncomment to restore.
+  // {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
-  {key:'audit',label:'Audit & Attestation',icon:'file-check'},
+  // Audit & Attestation hidden from the menu per request — still reachable via the
+  // Traces "Generate attestation" button; uncomment to restore.
+  // {key:'audit',label:'Audit & Attestation',icon:'file-check'},
   {key:'playground',label:'Playground',icon:'message-square'},
 ];
 
@@ -185,14 +194,18 @@ const app = {
   goToAuditFiltered(f){ state.screen='audit'; state.auditEventFilter=f; render(); },
   skipOnboarding(){ state.screen='overview'; render(); },
   selectInfra(id){ state.infraSelected=id; state.connectionStatus='idle'; render(); },
-  testConnection(){ state.connectionStatus='testing'; render(); setTimeout(()=>{ state.connectionStatus='success'; render(); },700); },
+  // NOTE: the real app.testConnection (registers + probes the endpoint honestly)
+  // is defined later and overrides this; kept as a no-op placeholder only so the
+  // object shape is stable before that assignment runs.
+  testConnection(){},
   nextStep(){ if(state.onboardStep>=2){ state.screen='overview'; state.showSetupToast=true; render(); return;} state.onboardStep++; render(); },
   prevStep(){ state.onboardStep=Math.max(0,state.onboardStep-1); render(); },
   dismissSetupToast(){ state.showSetupToast=false; render(); },
   toggleControl(key){ state.securityControls[key]=!state.securityControls[key]; render(); },
   runEgressProbe(){ state.egressProbeStatus='running'; render(); setTimeout(()=>{ state.egressProbeStatus='done'; render(); },900); },
-  openAddBackend(){ Object.assign(state,{addBackendOpen:true,newBackendName:'',newBackendModel:'',newBackendLocation:'',newBackendInBoundary:true,newBackendType:'onprem',newBackendEndpoint:'',newBackendKey:'',newBackendRegion:'mumbai',newBackendTier:'2'}); render(); },
-  closeAddBackend(){ state.addBackendOpen=false; render(); },
+  openAddBackend(){ Object.assign(state,{addBackendOpen:true,editingBackend:null,newBackendName:'',newBackendModel:'',newBackendLocation:'',newBackendInBoundary:true,newBackendType:'onprem',newBackendEndpoint:'',newBackendKey:'',newBackendRegion:'mumbai',newBackendTier:'2'}); render(); },
+  openEditBackend(name){ const b=(state.backends||[]).find(x=>x.name===name); if(!b)return; Object.assign(state,{addBackendOpen:true,editingBackend:name,newBackendName:name,newBackendModel:b.model||'',newBackendInBoundary:b.inBoundary!==false,newBackendType:'onprem',newBackendEndpoint:b.baseUrl||'',newBackendKey:'',newBackendTier:String(b.tier||2)}); render(); },
+  closeAddBackend(){ state.addBackendOpen=false; state.editingBackend=null; render(); },
   setNewBackendType(t){ state.newBackendType=t; state.newBackendInBoundary=(t!=='hf'); render(); },  // HF defaults external (public API); tick the box for a dedicated in-VPC endpoint
   toggleNewBackendBoundary(){ state.newBackendInBoundary=!state.newBackendInBoundary; render(); },
   toggleBackendBoundary(i){ if(state.backends[i]){ state.backends[i].inBoundary=!state.backends[i].inBoundary; render(); } },
@@ -201,8 +214,8 @@ const app = {
   toggleSmartRouting(){ const on=(window.__org||{}).optimize_auto==='true'; app.saveOrgSetting('optimize_auto', on?'false':'true'); },
   toggleLearningLoop(){ state.learningLoopEnabled=!state.learningLoopEnabled; render(); },
 
-  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxTokens:'',newPolicyMaxCalls:'',newPolicyMaxCost:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
-  openEditPolicy(id){ const p=(window.__policies||[]).find(x=>x.id===id); if(!p)return; const c=p.conditions||{}, sc=p.scope||{}; Object.assign(state,{newPolicyOpen:true,editingPolicyId:id,newPolicyName:p.name||'',newPolicyDesc:p.description||'',newPolicyAction:p.action_type||'chat.completion',newPolicyEffect:p.effect||'block',newPolicyUrlAllow:(c.url_allowlist||[]).join(', '),newPolicyUrlBlock:(c.url_blocklist||[]).join(', '),newPolicyMaxTokens:c.max_tokens_per_day||'',newPolicyMaxCalls:c.max_calls_per_hour||'',newPolicyMaxCost:c.max_daily_cost_usd||'',newPolicyPii:!!c.pii_filter_output,newPolicyDataTag:!!c.require_data_tag,newPolicyScopeKeys:(sc.keys||[]).slice(),newPolicyScopeBackends:(sc.backends||[]).slice(),newPolicyScopeModels:(sc.models||[]).slice()}); render(); },
+  openNewPolicy(){ Object.assign(state,{newPolicyOpen:true,editingPolicyId:null,newPolicyName:'',newPolicyDesc:'',newPolicyAction:'chat.completion',newPolicyEffect:'block',newPolicyUrlAllow:'',newPolicyUrlBlock:'',newPolicyMaxCalls:'',newPolicyPii:false,newPolicyDataTag:false,newPolicyScopeKeys:[],newPolicyScopeBackends:[],newPolicyScopeModels:[]}); render(); },
+  openEditPolicy(id){ const p=(window.__policies||[]).find(x=>x.id===id); if(!p)return; const c=p.conditions||{}, sc=p.scope||{}; Object.assign(state,{newPolicyOpen:true,editingPolicyId:id,newPolicyName:p.name||'',newPolicyDesc:p.description||'',newPolicyAction:p.action_type||'chat.completion',newPolicyEffect:p.effect||'block',newPolicyUrlAllow:(c.url_allowlist||[]).join(', '),newPolicyUrlBlock:(c.url_blocklist||[]).join(', '),newPolicyMaxCalls:c.max_calls_per_hour||'',newPolicyPii:!!c.pii_filter_output,newPolicyDataTag:!!c.require_data_tag,newPolicyScopeKeys:(sc.keys||[]).slice(),newPolicyScopeBackends:(sc.backends||[]).slice(),newPolicyScopeModels:(sc.models||[]).slice()}); render(); },
   closeNewPolicy(){ state.newPolicyOpen=false; render(); },
   toggleNewPolicyPii(){ state.newPolicyPii=!state.newPolicyPii; },
   toggleNewPolicyDataTag(){ state.newPolicyDataTag=!state.newPolicyDataTag; },
@@ -218,7 +231,7 @@ const app = {
 
   openSettings(){ state.settingsOpen=true; state.profileMenuOpen=false; render(); if(window.__loadAuthz) window.__loadAuthz(); },
   closeSettings(){ state.settingsOpen=false; render(); },
-  setSettingsTab(t){ state.settingsTab=t; render(); },
+  setSettingsTab(t){ state.settingsTab=t; render(); if(t==='egress'&&app.loadEgress) app.loadEgress(); },
   goToMembersFromAccount(){ state.settingsTab='members'; render(); },
   goToPoliciesFromSettings(){ state.settingsOpen=false; state.screen='policies'; render(); },
 
@@ -226,7 +239,27 @@ const app = {
   signOut(){ state.isLoggedIn=false; state.profileMenuOpen=false; state.settingsOpen=false; render(); },
   toggleProfileMenu(){ state.profileMenuOpen=!state.profileMenuOpen; render(); },
   toggleNotif(){ state.notifOpen=!state.notifOpen; render(); },
-  toggleCopilot(){ state.copilotOpen=!state.copilotOpen; render(); },
+  toggleCopilot(){ state.copilotOpen=!state.copilotOpen; render(); if(state.copilotOpen){ setTimeout(()=>{const i=document.getElementById('copilot-input'); if(i) i.focus();},50); } },
+  async copilotSend(){
+    const el=document.getElementById('copilot-input');
+    const q=(el?el.value:'').trim();
+    if(!q||state.copilotBusy) return;
+    state.copilotMsgs.push({role:'user',text:q});
+    state.copilotBusy=true; render();
+    try{
+      const tok=localStorage.getItem('precepta_session')||'dev-admin';
+      const r=await fetch('/v1/copilot',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({question:q})});
+      const d=await r.json();
+      state.copilotMsgs.push({role:'assistant',text:d.answer||'(no answer)',model:d.model,inb:d.in_boundary});
+      if(d.nav && app.setScreen){ state.copilotBusy=false; render(); app.setScreen(d.nav); return; }   // navigate on command
+    }catch(e){
+      state.copilotMsgs.push({role:'assistant',text:'Couldn’t reach the copilot. Is the stack up?'});
+    }
+    state.copilotBusy=false; render();
+    setTimeout(()=>{const b=document.getElementById('copilot-body'); if(b) b.scrollTop=b.scrollHeight; const i=document.getElementById('copilot-input'); if(i) i.focus();},30);
+  },
+  copilotKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); app.copilotSend(); } },
+  copilotAsk(q){ const i=document.getElementById('copilot-input'); if(i){ i.value=q; app.copilotSend(); } },
   stop(e){ e.stopPropagation(); },
 
   // keys
@@ -245,7 +278,7 @@ const app = {
   // playground
   setChatModel(v){ state.chatModel=v; },
   handleChatKey(e){ if(e.key==='Enter') app.sendMessage(); },
-  newChat(){ state.messages=[]; state.chatInput=''; render(); },
+  newChat(){ state.messages=[]; state.chatInput=""; state.suggestions=null; render(); },
   sendMessage(){ render(); },                                   // overridden live
   sendSuggested(){}, sendPreset(){},
 
@@ -387,6 +420,7 @@ function onboardingView(){
         <button onclick="app.testConnection()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Test &amp; connect</button>
         ${conn?`<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${conn.bg};color:${conn.color}">${conn.label}</span>`:''}
       </div>
+      ${(s.connectionStatus==='unreachable'&&s.connReason)?`<div style="font-size:12px;color:#991B1B;margin-top:10px;line-height:1.5;max-width:520px">${esc(s.connReason)}</div>`:''}
     </div>`;
   } else if(s.onboardStep===1){
     body=`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:20px">
@@ -499,15 +533,16 @@ function modelPlaneView(){
       <td style="padding:10px 14px;color:${b.gpu&&b.gpu!=='—'?'#111827':'#9CA3AF'}">${esc(b.gpu||'—')}</td>
       <td style="padding:10px 14px;color:${b.latency&&b.latency!=='—'?'#111827':'#9CA3AF'}">${esc(b.latency||'—')}</td>
       <td style="padding:10px 14px">${priceCell(b)}</td>
-      <td style="padding:10px 14px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Down'}</span></td>
+      <td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:${sb?'#ECFDF5':'#FEF2F2'};color:${sb?'#065F46':'#991B1B'}">${sb?'Healthy':'Unreachable'}</span><button onclick="app.testBackend('${esc(b.name)}')" title="Really probe this endpoint now" style="font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;color:#374151;cursor:pointer">${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].busy)?'Testing…':'Test'}</button></div>${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].reason)?`<div style="font-size:11px;color:${state.testResults[b.name].reachable?'#065F46':'#991B1B'};margin-top:4px;max-width:280px;line-height:1.4">${esc(state.testResults[b.name].reason)}</div>`:''}${(state.testResults&&state.testResults[b.name]&&state.testResults[b.name].approvable&&state.testResults[b.name].host)?`<button onclick="app.approveBackendEgress('${esc(b.name)}')" style="margin-top:6px;font-size:11px;padding:3px 9px;border-radius:8px;border:none;background:#2563EB;color:#fff;cursor:pointer">Approve ${esc(state.testResults[b.name].host)} for egress</button>`:''}</td>
+      <td style="padding:10px 14px;white-space:nowrap"><button onclick="app.openEditBackend('${esc(b.name)}')" title="Edit this endpoint" style="font-size:11px;padding:3px 10px;border-radius:8px;border:1px solid #E5E7EB;background:#fff;color:#374151;cursor:pointer">Edit</button> <button onclick="app.deleteBackend('${esc(b.name)}')" title="Remove this endpoint" style="font-size:11px;padding:3px 9px;border-radius:8px;border:1px solid #FECACA;background:#fff;color:#991B1B;cursor:pointer">Delete</button></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="7" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No inference endpoints yet — click "Add backend" to register your first one.</td></tr>`;
+  }).join('') : `<tr><td colspan="8" style="padding:20px 14px;color:#9CA3AF;font-size:13px">No inference endpoints yet — click "Add backend" to register your first one.</td></tr>`;
   return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Inference plane</h1>
     <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:640px;line-height:1.6">Every place a model can run for you — a local Ollama box, your own GPU cluster, a sovereign cloud — and its live health. Register a new one below.</div>
     <div style="font-size:12px;color:#9CA3AF;margin-bottom:16px;max-width:640px">"Intent within boundary" = inference runs on your own infrastructure; the request never touches the public internet. "Intent crosses boundary" = a third-party API call.</div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="app.openAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add inference endpoint</button></div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow-x:auto;margin-bottom:12px"><table style="width:100%;min-width:940px;border-collapse:collapse;font-size:13px">
-      <thead><tr style="background:#F9FAFB">${['Endpoint','Model','Boundary','GPU / VRAM','p50 latency','Cost / 1M tok (in / out)','Status'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
+      <thead><tr style="background:#F9FAFB">${['Endpoint','Model','Boundary','GPU / VRAM','p50 latency','Cost / 1M tok (in / out)','Status','Actions'].map(t=>th(t,'10px 14px')).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <div style="font-size:11px;color:#9CA3AF;margin-bottom:24px;max-width:680px;line-height:1.6">Live health (latency, status) and VRAM come from the infra snapshot. Per-token cost comes from the pricing source of truth (TD-001): local endpoints are <b>Free</b>; a metered endpoint with no price set shows <b>Set price</b> — click it to enter the price. Click the <b>Boundary</b> tag to change whether an endpoint is inside your network.</div>
@@ -516,20 +551,21 @@ function modelPlaneView(){
 
 function addBackendModal(btMeta){
   const s=state;
+  const editing=!!s.editingBackend;
   return `<div onclick="app.closeAddBackend()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:440px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <div style="font-size:16px;font-weight:600;margin-bottom:4px">Add an inference endpoint</div>
-      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">Same infra types as setup — pick one and reuse the same connection info.</div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Endpoint type</label>
+      <div style="font-size:16px;font-weight:600;margin-bottom:4px">${editing?'Edit inference endpoint':'Add an inference endpoint'}</div>
+      <div style="font-size:12px;color:#6B7280;margin-bottom:16px">${editing?`Editing <strong>${esc(s.editingBackend)}</strong>. Leave the key blank to keep the stored one.`:'Same infra types as setup — pick one and reuse the same connection info.'}</div>
+      ${editing?'':`<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Endpoint type</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(backendTypeMeta).map(k=>{const sel=k===s.newBackendType;return `<div onclick="app.setNewBackendType('${k}')" style="padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid ${sel?'#93C5FD':'#E5E7EB'};background:${sel?'#EFF6FF':'#fff'};color:${sel?'#1D4ED8':'#374151'}">${backendTypeMeta[k].label}</div>`;}).join('')}</div>
-      </div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. HF Gemma 31B">${s.newBackendName.trim()?`<div style="font-size:11px;color:#9CA3AF;margin-top:4px">Identifier: <code>${esc((s.newBackendName||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''))}</code> — give each backend a distinct name to run several of the same type.</div>`:''}</div>
+      </div>`}
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Name</label><input ${editing?'disabled':''} style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;${editing?'background:#F3F4F6;color:#6B7280':''}" value="${esc(s.newBackendName)}" oninput="app.set('newBackendName',this.value)" placeholder="e.g. HF Gemma 31B">${(!editing&&s.newBackendName.trim())?`<div style="font-size:11px;color:#9CA3AF;margin-top:4px">Identifier: <code>${esc((s.newBackendName||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''))}</code> — give each backend a distinct name to run several of the same type.</div>`:''}${editing?`<div style="font-size:11px;color:#9CA3AF;margin-top:4px">The identifier is fixed once created. To rename, delete and re-add.</div>`:''}</div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model string</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendModel)}" oninput="app.set('newBackendModel',this.value)" placeholder="${esc(btMeta.modelPh)}"></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.endpointLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendEndpoint)}" oninput="app.set('newBackendEndpoint',this.value)" placeholder="${esc(btMeta.endpointPh)}"></div>
-      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.keyLabel}</label><input style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendKey)}" oninput="app.set('newBackendKey',this.value)" placeholder="${esc(btMeta.keyPh)}"></div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">${btMeta.keyLabel}</label><input type="password" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" value="${esc(s.newBackendKey)}" oninput="app.set('newBackendKey',this.value)" placeholder="${editing?'leave blank to keep the stored key':esc(btMeta.keyPh)}"></div>
       <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Model strength</label><select onchange="app.set('newBackendTier',this.value)" style="width:100%;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:14px;box-sizing:border-box;background:#fff"><option value="1" ${s.newBackendTier==='1'?'selected':''}>Light — small/fast/cheap</option><option value="2" ${s.newBackendTier==='2'?'selected':''}>Balanced</option><option value="3" ${s.newBackendTier==='3'?'selected':''}>Strong — best quality</option></select><div style="font-size:11px;color:#9CA3AF;margin-top:4px">Auto-routing sends hard requests to the strongest backend.</div></div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px"><input type="checkbox" ${s.newBackendInBoundary?'checked':''} onchange="app.toggleNewBackendBoundary()"><span style="font-size:13px;color:#374151">This endpoint is inside my network boundary</span></label>
-      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">Add inference endpoint</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px"><button onclick="app.closeAddBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.addBackend()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">${editing?'Save changes':'Add inference endpoint'}</button></div>
     </div></div>`;
 }
 
@@ -605,7 +641,7 @@ function newKeyModal(){
           <div style="display:flex;gap:6px;flex-wrap:wrap">${(s.backends||[]).map(b=>{const on=s.newKeyBackends.includes(b.name);return `<div onclick="app.toggleKeyBackend('${esc(b.name)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(b.name)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No inference endpoints yet</span>'}</div>
         </div>
         <div><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:5px">Allowed models <span style="color:#9CA3AF;font-weight:400">— blank = all</span></label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${modelOptions.filter(m=>m.value!=='auto'&&!m.value.startsWith('auto:')).map(m=>{const on=s.newKeyModels.includes(m.value);return `<div onclick="app.toggleKeyModel('${esc(m.value)}')" style="padding:5px 11px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${esc(m.value)}</div>`;}).join('')||'<span style="font-size:12px;color:#9CA3AF">No models yet</span>'}</div>
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button onclick="app.closeNewKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Cancel</button><button onclick="app.saveKey()" style="padding:7px 14px;border-radius:6px;font-size:13.5px;font-weight:500;background:#3B82F6;color:#fff;border:none;cursor:pointer">${s.editingKeyId?'Save changes':'Create key'}</button></div>
@@ -643,11 +679,76 @@ function deleteConfirmModal(){
 }
 
 /* ---------- Cache & compression — two tabs, per inference endpoint (FEAT-011) ---------- */
+/* ---------- Deployment (live self-host status + setup checklist) ---------- */
+function deploymentView(){
+  const d=window.__deployment;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Deployment</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:700px;line-height:1.6">You're running Precepta <strong>inside your own network</strong>. This is your live sovereignty status and setup checklist. Every ✓ below is a real check against the running system — not a placeholder.</div>`;
+  if(!d) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Checking deployment status…</div>`;
+  const egressOk = d.egress && d.egress.verified;
+  const stat=(label,ok,detail)=>`<div style="flex:1;min-width:170px;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:${ok?'#059669':'#DC2626'};flex:none"></span><span style="font-size:12.5px;font-weight:600">${label}</span></div><div style="font-size:11px;color:#9CA3AF;margin-top:6px">${detail}</div></div>`;
+  const statusStrip=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px">
+    ${stat('Running in-boundary', d.running, 'the control plane is up on your machine')}
+    ${stat(egressOk?'Internet egress: BLOCKED':'Internet egress: '+((d.egress||{}).result||'unknown').toUpperCase(), egressOk, egressOk?'verified by an outbound probe':'the control plane can reach the internet — check your network lock')}
+    ${stat('Helper models in-boundary', d.models_in_boundary, d.in_boundary_endpoints+' of '+d.endpoints+' endpoints inside your boundary')}
+    ${stat('Sovereign Mode', d.sovereign, d.sovereign?'in-boundary-only routing enforced':'off — an owner can enable it in Policies')}
+  </div>`;
+  const keys=(window.__keys||[]).length;
+  const extraEndpoints=(d.endpoints||0)>1;   // beyond the always-present local ollama
+  const item=(done,title,action,btn)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
+    <div style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${done?'#ECFDF5':'#F3F4F6'};color:${done?'#059669':'#9CA3AF'}">${done?'✓':'○'}</span><span style="font-size:13px;font-weight:${done?'500':'600'};color:${done?'#6B7280':'#111827'}">${title}</span></div>
+    ${done?'<span style="font-size:11px;color:#9CA3AF">done</span>':`<button onclick="${action}" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">${btn}</button>`}
+  </div>`;
+  const checklist=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:8px 18px 14px;margin-bottom:20px">
+    <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;padding:12px 0 4px">Setup checklist</div>
+    ${item(d.running,'Deployed in your network',"",'')}
+    ${item(egressOk,'Internet egress locked & verified',"app.setScreen('policies')",'Review')}
+    ${item(extraEndpoints,'Add your inference endpoints',"app.setScreen('modelplane')",'Inference plane →')}
+    ${item(keys>0,'Issue an API key for your apps',"app.setScreen('keys')",'Keys & budgets →')}
+    ${item(false,'Generate the sovereignty attestation',"app.openAttestation()",'Generate →')}
+  </div>`;
+  // Copyable, step-by-step runbook — each command has its own Copy button.
+  const repo=(d.repo_url||'https://github.com/LiminaLabsAI/precepta.git');
+  const steps=[
+    {n:1,title:'Get the code',cmd:'git clone '+repo+' && cd precepta',
+     note:'Clone the Precepta repo onto the machine that will host it, then enter the folder.'},
+    {n:2,title:'Check the machine is ready',cmd:'./deploy/doctor.sh',
+     note:'A plain-English checklist (Docker · port 8000 free · .env). Each ✗ tells you the fix.'},
+    {n:3,title:'Set your details',cmd:'cp deploy/.env.example deploy/.env',
+     note:'Then open deploy/.env and fill the top three lines (ORG_NAME, ADMIN_EMAIL, PRECEPTA_PLATFORM_OWNERS). Leave the rest — they are the sovereign defaults.'},
+    {n:4,title:'Start it',cmd:'./deploy/up.sh',
+     note:'Builds the app, pulls the AI models onto your machine (one time), and starts everything locked off from the internet. Prints the Console URL when ready.'},
+    {n:5,title:'Prove it is sealed',cmd:'./deploy/smoke.sh',
+     note:'Runs a governed request, checks the real egress probe reports BLOCKED, and confirms the app container cannot reach the internet. Expect: SMOKE PASS.'},
+  ];
+  const codeBox=(id,cmd)=>`<div style="display:flex;align-items:center;gap:8px;background:#0B1220;border-radius:8px;padding:10px 12px;margin-top:8px">
+      <code style="flex:1;color:#E5E7EB;font-family:'JetBrains Mono',monospace;font-size:12.5px;overflow-x:auto;white-space:nowrap">$ ${esc(cmd)}</code>
+      <button onclick="app.copyStep(${id},this)" style="flex:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;background:#1F2937;color:#E5E7EB;border:1px solid #374151;cursor:pointer">Copy</button>
+    </div>`;
+  const stepsBlock=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:4px">Run it yourself — step by step</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:14px">Copy each command in order. The whole thing takes ~10 minutes on a fresh machine.</div>
+    ${steps.map(st=>`<div style="padding:10px 0;border-top:1px solid #F3F4F6">
+      <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#EFF6FF;color:#1D4ED8">${st.n}</span><span style="font-size:13px;font-weight:600">${esc(st.title)}</span></div>
+      ${codeBox(st.n, st.cmd)}
+      <div style="font-size:11.5px;color:#6B7280;margin-top:7px;line-height:1.5;max-width:640px">${esc(st.note)}</div>
+    </div>`).join('')}
+    <div style="padding:12px 0 2px;border-top:1px solid #F3F4F6;margin-top:6px"><span style="font-size:11.5px;color:#6B7280">Then open <strong>http://127.0.0.1:8000/console</strong>, sign in with your ADMIN_EMAIL, and click <em>Generate the sovereignty attestation</em> above.</span></div>
+  </div>`;
+  window.__runbookSteps = steps;   // for the whole-runbook copy button
+  const copy=`<div style="display:flex;align-items:center;gap:12px">
+    <button onclick="app.copyRunbook()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${state.runbookCopied?'✓ Copied':'Copy the whole runbook'}</button>
+    <span style="font-size:11px;color:#9CA3AF">all steps as one block, to hand to your IT team</span>
+  </div>`;
+  return head+statusStrip+checklist+stepsBlock+copy;
+}
+
 /* ---------- Workflow (read-only, from live config) ---------- */
 function workflowView(){
   const w=window.__workflow;
   const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Workflow</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:700px;line-height:1.6">How every request flows through the guardrail — the <strong>fixed governance rails</strong> plus your <strong>routing layer</strong>. Generated from your live config; read-only for now (editing arrives with the workflow builder).</div>`;
+    <div style="font-size:13px;color:#6B7280;margin-bottom:8px;max-width:700px;line-height:1.6">How every request flows through the guardrail — the <strong>fixed governance rails</strong> plus your <strong>routing layer</strong>. Generated from your live config; read-only for now (editing arrives with the workflow builder).</div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-bottom:20px;max-width:700px;line-height:1.55"><strong>Workflow vs Traces:</strong> this is the <em>design-time</em> view — the configured rules and rails, the same for every request. <strong>Traces</strong> is the <em>run-time</em> view — what actually happened to each individual request (which model, why, timings, blocks).</div>`;
   if(!w) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading workflow…</div>`;
   const tBadge=t=>{const bg={'pre-call':'#EFF6FF','during-call':'#FFFBEB','post-call':'#F0FDF4'}[t]||'#F3F4F6';const fg={'pre-call':'#1D4ED8','during-call':'#92400E','post-call':'#065F46'}[t]||'#6B7280';return `<span style="font-size:9.5px;font-weight:600;padding:1px 8px;border-radius:8px;background:${bg};color:${fg}">${esc(t||'')}</span>`;};
   const stages=w.stages||[];
@@ -682,7 +783,29 @@ function workflowView(){
   return head+railCard+routeCard+ctlCard;
 }
 
+/* ---------- lightweight, safe markdown (escape first, then add only our tags) ---------- */
+function mdRender(t){
+  if(t==null) return '';
+  let h=esc(String(t));
+  h=h.replace(/```([\s\S]*?)```/g,(m,c)=>`<pre style="background:#0F172A;color:#E2E8F0;padding:10px 12px;border-radius:8px;overflow-x:auto;font-size:12px;font-family:'JetBrains Mono',monospace;margin:6px 0">${c.replace(/^\n/,'')}</pre>`);
+  h=h.replace(/`([^`\n]+)`/g,'<code style="background:#F3F4F6;padding:1px 5px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12.5px">$1</code>');
+  h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  h=h.replace(/^\s*#{1,6}\s+(.+)$/gm,'<div style="font-weight:700;margin:8px 0 2px">$1</div>');
+  h=h.replace(/(?:^|\n)((?:\s*[-*]\s+.+(?:\n|$))+)/g,(m,b)=>`<ul style="margin:4px 0 4px 18px;padding:0">${b.trim().split(/\n/).map(l=>'<li>'+l.replace(/^\s*[-*]\s+/,'')+'</li>').join('')}</ul>`);
+  h=h.replace(/(?:^|\n)((?:\s*\d+\.\s+.+(?:\n|$))+)/g,(m,b)=>`<ol style="margin:4px 0 4px 18px;padding:0">${b.trim().split(/\n/).map(l=>'<li>'+l.replace(/^\s*\d+\.\s+/,'')+'</li>').join('')}</ol>`);
+  h=h.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  return h;
+}
 /* ---------- Traces ---------- */
+function fmtTime(iso){
+  if(!iso) return '—';
+  try{
+    const tz=((window.__org||{}).timezone)||'Asia/Kolkata';
+    const s=new Intl.DateTimeFormat('en-GB',{timeZone:tz,year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(iso));
+    return s+' '+(tz.split('/').pop()||tz);
+  }catch(e){ return iso; }
+}
 function traceColors(st){
   if(st==='blocked'||st==='failed') return {bg:'#FEF2F2',fg:'#991B1B',bar:'#DC2626'};
   if(st==='warn') return {bg:'#FFFBEB',fg:'#92400E',bar:'#D97706'};
@@ -770,7 +893,7 @@ function tracesView(){
           <div style="margin-left:126px;margin-top:4px;font-size:12px;line-height:1.4"><span style="font-weight:600;color:${c.fg}">${esc(s.decision)}</span>${s.inferred?' <span style="font-size:9px;font-weight:700;color:#92400E;background:#FFFBEB;padding:1px 6px;border-radius:8px">inferred</span>':''}</div>
         </div>${det}
       </div>`;}).join('');
-    checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Checkpoints</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
+    checkPane=`<div style="padding:10px 14px;border-bottom:1px solid #E5E7EB;font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;gap:8px"><span style="flex:none">Intelligent router traces</span><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${detail.request_id.slice(0,8)} · ${detail.total_ms}ms</span></div>${rows||'<div style="padding:16px;font-size:12px;color:#9CA3AF">No steps.</div>'}`;
   }
 
   // ── right: detail tabs (summary / route / messages / attributes) ──
@@ -786,7 +909,7 @@ function tracesView(){
     if(tab==='summary'){
       tabBody=`<div style="padding:16px 18px">
         ${row('Outcome',m.outcome, m.outcome==='allowed'?'#065F46':(m.outcome==='warn'?'#92400E':'#991B1B'))}
-        ${row('Duration',m.total_ms+'ms')}${row('Checkpoints',m.step_count)}
+        ${row('Duration',m.total_ms+'ms')}${row('Intelligent router traces',m.step_count)}
         ${row('Flagged',flagged,flagged?'#92400E':'#111827')}${row('Blocked/failed',failed,failed?'#991B1B':'#111827')}
         ${row('PII redacted',m.pii_redacted)}${row('Cost','$'+Number(m.cost_usd||0).toFixed(4))}
         ${row('Backend',m.backend||'—')}
@@ -813,8 +936,14 @@ function tracesView(){
         <div style="font-size:10.5px;color:#9CA3AF;line-height:1.5">Shown to admins only, in-boundary. PII in the request was redacted before any model saw it.</div>
       </div>`;
     } else {
-      const A=[['request_id',m.request_id],['ts',m.ts],['principal',m.principal],['role',m.role],['run_id',m.run_id||'—'],['workflow_id',m.workflow_id||'—'],['step_name',m.step_name||'—'],['agent_id',m.agent_id||'—'],['end_user',m.end_user||'—'],['backend',m.backend||'—'],['model',m.model||'—'],['outcome',m.outcome],['total_ms',m.total_ms],['pii_redacted',m.pii_redacted],['tokens_in',m.tokens_in],['tokens_out',m.tokens_out],['cost_usd',m.cost_usd]];
-      tabBody=`<div style="padding:14px 16px">${A.map(kv=>`<div style="display:flex;gap:10px;font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:104px;flex:none">${kv[0]}</span><span style="color:#111827;word-break:break-all">${esc(String(kv[1]))}</span></div>`).join('')}</div>`;
+      // Request attributes (always populated) vs Attribution (only for agent/tagged calls).
+      const req=[['request_id',m.request_id],['time',fmtTime(m.ts)],['principal',m.principal||'—'],['role',m.role||'—'],['backend',m.backend||'—'],['model',m.model||'—'],['outcome',m.outcome],['total_ms',m.total_ms+'ms'],['pii_redacted',m.pii_redacted],['tokens_in',m.tokens_in],['tokens_out',m.tokens_out],['cost_usd','$'+Number(m.cost_usd||0).toFixed(4)]];
+      const attrib=[['run_id',m.run_id],['workflow_id',m.workflow_id],['step_name',m.step_name],['agent_id',m.agent_id],['end_user',m.end_user]].filter(kv=>kv[1]);
+      const kvrow=kv=>`<div style="display:flex;gap:10px;font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 0;border-top:1px solid #F6F6F6"><span style="color:#9CA3AF;min-width:104px;flex:none">${kv[0]}</span><span style="color:#111827;word-break:break-all">${esc(String(kv[1]))}</span></div>`;
+      const attribBlock = attrib.length
+        ? `<div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 2px">Attribution</div>${attrib.map(kvrow).join('')}`
+        : `<div style="font-size:11px;color:#9CA3AF;margin-top:14px;padding-top:10px;border-top:1px solid #F3F4F6;line-height:1.5">No agent attribution — this was a direct user request. Run/workflow/agent IDs appear here when an agent or tagged caller made the request.</div>`;
+      tabBody=`<div style="padding:14px 16px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Request</div>${req.map(kvrow).join('')}${attribBlock}</div>`;
     }
   }
 
@@ -830,7 +959,7 @@ function tracesView(){
     <div id="trDetail" class="pc-scroll" style="width:${dw}px;flex:1;min-width:${dw}px;overflow-y:auto">${tabBar}${tabBody}</div>
    </div>
   </div>
-  <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a checkpoint to expand its details.</div>`;
+  <div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Drag the dividers to resize · scroll sideways to see all three panes · click a step to expand its details.</div>`;
   return head+kpis+bbPanel+threePane+learn;
 }
 function traceSummarySentence(d){
@@ -858,43 +987,36 @@ function savingsView(){
   const sel=(val,opts,handler)=>`<select onchange="${handler}" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;background:#fff">${opts.map(o=>`<option value="${o[0]}" ${o[0]===val?'selected':''}>${o[1]}</option>`).join('')}</select>`;
   const listCard=(header,sub,rowsHtml,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:14px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:14px">${header}</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${sub}</div></div>${rowsHtml||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference endpoints registered yet.</div>`}<div style="padding:12px 20px;border-top:1px dashed #E5E7EB;font-size:12px;color:#9CA3AF">${byo}</div></div>`;
   const card=(inner)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:20px;margin-bottom:16px">${inner}</div>`;
+  // Two sections (matching the design): a compact "Default" selector for
+  // router-picked requests (model: auto), then a per-model override table with
+  // friendly names. "Smart router (auto-decide)" is a real strategy — the system
+  // picks exact vs. semantic vs. skip per request (app/cache.py::decide_smart).
+  const EP_META={ollama:{name:'Ollama',desc:'Local (in-boundary)'},vllm:{name:'vLLM cluster',desc:'On-prem GPU (in-boundary)'},neysa:{name:'Neysa',desc:'Sovereign cloud'},hf:{name:'Hugging Face endpoint',desc:'Dedicated inference endpoint'}};
+  const epMeta=(ep,label)=>{ for(const k in EP_META){ if(ep===k||ep.indexOf(k)===0) return EP_META[k]; } return {name:label||ep,desc:ep}; };
+  const defCard=(title,sub,control)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:16px"><div><div style="font-weight:600;font-size:14px">${title}</div><div style="font-size:11.5px;color:#9CA3AF;margin-top:2px;max-width:440px;line-height:1.5">${sub}</div></div>${control}</div>`;
+  const modelCard=(title,sub,rows,byo)=>`<div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><div style="padding:16px 20px;border-bottom:1px solid #E5E7EB"><div style="font-weight:600;font-size:15px">${title}</div><div style="font-size:12px;color:#9CA3AF;margin-top:3px;line-height:1.5;max-width:620px">${sub}</div></div>${rows||`<div style="padding:14px 20px;font-size:12px;color:#9CA3AF">No inference models registered yet.</div>`}<div style="padding:13px 20px;border-top:1px dashed #E5E7EB;font-size:12.5px;color:#9CA3AF">+ ${byo} — coming soon</div></div>`;
+  const modelRow=(e,val,opts,handler)=>{const m=epMeta(e.endpoint,e.label);return `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:14px;font-weight:600">${esc(m.name)}</div><div style="font-size:12px;color:#9CA3AF;margin-top:2px">${esc(m.desc)}</div></div>${sel(val,opts,handler)}</div>`;};
   let body;
   if(tab==='cache'){
     const cs=auto.cache_stats||{};
-    const exactOn=!!auto.cache_enabled, semOn=auto.cache_enabled&&auto.cache_strategy==='semantic';
-    const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
-    const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Response cache — Smart router default</div>
-       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
-      rowline('Exact-match cache','Reuses a previous answer only when the request is identical. On by default.', sw(exactOn,`app.setFeature('auto',{cache_enabled:${exactOn?'false':'true'},cache_strategy:'exact'})`))+
-      rowline('Semantic cache','Reuses a similar (not identical) answer. Off by default — it can confidently serve a wrong match.', sw(semOn,`app.setFeature('auto',{cache_enabled:true,cache_strategy:'${semOn?'exact':'semantic'}'})`))+
-      statsRow+
-      `<div style="font-size:10.5px;color:#9CA3AF;margin-top:8px">Visible only to admins — the user just gets an answer.</div>
-       <a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;display:inline-block;margin-top:8px;color:#2563EB">View cache.hit events in Audit log →</a>`);
-    const rows=models.map(e=>{
-      const val=!e.cache_enabled?'off':(e.cache_strategy||'exact');
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['exact','Exact match'],['semantic','Semantic'],['off','Off']],`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`)}</div>`;
-    }).join('');
-    body=defaults+listCard('Cache strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own cache algorithm — coming soon')+
-      `<div style="margin-top:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button></div>
-       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Cost reads $0 on free local endpoints — real dollars accrue against a priced one.</div>`;
+    const statsRow=(cs.entries||cs.hits)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(cs.hits||0,'Cache hits')}${statBig(cs.tokens_saved||0,'Tokens saved')}${statBig('$'+(cs.cost_saved_usd||0).toFixed(4),'Saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No cache activity yet.</div>`;
+    const opts=[['smart','Smart router (auto-decide)'],['exact','Exact match'],['semantic','Semantic'],['off','Skip']];
+    const cval=e=>!e.cache_enabled?'off':(e.cache_strategy||'smart');
+    const def=defCard('Default cache strategy','Applies to requests the Smart router routes (model: auto).',sel(cval(auto),opts,`app.setCacheStrategy('auto',this.value)`));
+    const rows=models.map(e=>modelRow(e,cval(e),opts,`app.setCacheStrategy('${esc(e.endpoint)}',this.value)`)).join('');
+    body=def+modelCard('Cache strategy by inference model','Overrides the defaults above per model. "Smart router" lets the system decide exact vs. semantic vs. skip, per request.',rows,'Bring your own cache algorithm')+statsRow+
+      `<div style="margin-top:14px;display:flex;align-items:center;gap:14px"><button onclick="app.clearCache()" style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">Clear all cache</button><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('cache.hit')" style="font-size:12px;color:#2563EB">View cache.hit events in Audit log →</a></div>
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Only <strong>deterministic</strong> (temperature 0) requests are cached; <strong>sensitive</strong> ones never are. Admin-only view. Cost reads $0 on free local endpoints.</div>`;
   } else {
     const ms=auto.compression_stats||{};
-    const aggrOn=auto.compression_enabled&&auto.compression_mode==='aggressive';
-    const statsRow=(ms.requests_compressed)?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid #F3F4F6;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
-    const defaults=card(
-      `<div style="font-weight:600;font-size:14px;margin-bottom:2px">Prompt compression — Smart router default</div>
-       <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">Applies to router-decided (auto) requests. Per-endpoint overrides are below.</div>`+
-      rowline('Baseline trimming','Cuts filler without changing meaning — cannot make an answer worse. Always on.', `<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:12px;background:#ECFDF5;color:#065F46;flex:none">Always on</span>`)+
-      rowline('Cost-saving mode','Shortens more aggressively (lossy). Opt-in — the caller is notified whenever it is applied.', sw(aggrOn,`app.setFeature('auto',{compression_enabled:true,compression_mode:'${aggrOn?'baseline':'aggressive'}'})`))+
-      statsRow+
-      `<a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;display:inline-block;margin-top:12px;color:#2563EB">View compression events in Audit log →</a>`);
-    const rows=models.map(e=>{
-      const val=!e.compression_enabled?'off':(e.compression_mode||'baseline');
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${esc(e.label)}</div><div style="font-size:11px;color:#9CA3AF;margin-top:1px;font-family:'JetBrains Mono',monospace">${esc(e.endpoint)}</div></div>${sel(val,[['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']],`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)}</div>`;
-    }).join('');
-    body=defaults+listCard('Compression strategy by inference endpoint','Overrides the Smart router default per endpoint.',rows,'+ Bring your own compression algorithm — coming soon')+
-      `<div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:640px;line-height:1.55"><strong>Baseline</strong> is quality-safe (whitespace only). <strong>Aggressive</strong> also trims filler (lossy) — the caller sees it and an admin is alerted, never a silent change. Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
+    const statsRow=(ms.requests_compressed)?`<div style="margin-top:16px;display:flex;gap:24px">${statBig(ms.requests_compressed||0,'Requests compressed')}${statBig(ms.tokens_saved||0,'Tokens saved')}</div>`:`<div style="margin-top:12px;font-size:11.5px;color:#9CA3AF">No compression activity yet.</div>`;
+    const opts=[['smart','Smart router (auto-decide)'],['baseline','Baseline (safe)'],['aggressive','Aggressive'],['off','Off']];
+    const cval=e=>!e.compression_enabled?'off':(e.compression_mode||'smart');
+    const def=defCard('Default compression strategy','Applies to requests the Smart router routes (model: auto).',sel(cval(auto),opts,`app.setCompressionMode('auto',this.value)`));
+    const rows=models.map(e=>modelRow(e,cval(e),opts,`app.setCompressionMode('${esc(e.endpoint)}',this.value)`)).join('');
+    body=def+modelCard('Compression strategy by inference model','Overrides the defaults above per model. "Smart router" lets the system decide skip vs. baseline vs. aggressive, per request.',rows,'Bring your own compression algorithm')+statsRow+
+      `<div style="margin-top:14px"><a href="#" onclick="event.preventDefault();app.goToAuditFiltered('compression')" style="font-size:12px;color:#2563EB">View compression events in Audit log →</a></div>
+       <div style="font-size:11px;color:#9CA3AF;margin-top:12px;max-width:660px;line-height:1.55">Real semantic compression (LLMLingua) + bring-your-own are on the roadmap (FEAT-011 v2).</div>`;
   }
   return h1+tabs+body;
 }
@@ -1017,7 +1139,7 @@ function newPolicyModal(){
   const effDesc=(effectOptions.find(o=>o.value===s.newPolicyEffect)||{}).desc||'';
   const keys=(window.__keys||[]).filter(k=>k.active!==false).map(k=>({value:k.name,label:k.name}));
   const backs=s.backends.map(b=>({value:b.name,label:b.name}));
-  const models=modelOptions.filter(m=>!m.value.startsWith('auto:')).map(m=>({value:m.value,label:m.value}));
+  const models=modelOptions.filter(m=>m.value!=='auto'&&!m.value.startsWith('auto:')).map(m=>({value:m.value,label:m.value}));
   const anyScope = s.newPolicyScopeKeys.length||s.newPolicyScopeBackends.length||s.newPolicyScopeModels.length;
   return `<div onclick="app.closeNewPolicy()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px">
     <div onclick="event.stopPropagation()" class="pc-scroll" style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -1045,11 +1167,7 @@ function newPolicyModal(){
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><i data-lucide="lock" style="width:13px;height:13px;color:#3B82F6"></i><span style="font-size:12px;font-weight:600;color:#374151">Conditions</span><span style="font-size:11px;color:#9CA3AF">(saved — leave blank to skip)</span></div>
         <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL allowlist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlAllow)}" oninput="app.set('newPolicyUrlAllow',this.value)" placeholder="vllm-cluster.internal, neysa.ai"></div>
         <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">URL blocklist (comma-separated)</label><input style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyUrlBlock)}" oninput="app.set('newPolicyUrlBlock',this.value)" placeholder="openai.com, anthropic.com"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max tokens / day</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxTokens)}" oninput="app.set('newPolicyMaxTokens',this.value)" placeholder="50000"></div>
-          <div><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour</label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCalls)}" oninput="app.set('newPolicyMaxCalls',this.value)" placeholder="120"></div>
-        </div>
-        <div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max daily cost (USD)</label><input type="number" step="0.01" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCost)}" oninput="app.set('newPolicyMaxCost',this.value)" placeholder="5.00"></div>
+        <div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;margin-bottom:4px">Max calls / hour <span style="font-weight:400;text-transform:none;color:#9CA3AF">— rate limit (per-app spend/token budgets live on the API key)</span></label><input type="number" style="width:100%;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:12.5px;box-sizing:border-box" value="${esc(s.newPolicyMaxCalls)}" oninput="app.set('newPolicyMaxCalls',this.value)" placeholder="120"></div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${s.newPolicyPii?'checked':''} onchange="app.toggleNewPolicyPii()"><span style="font-size:12.5px;color:#374151">Filter PII in output (emails, phone numbers, card numbers)</span></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${s.newPolicyDataTag?'checked':''} onchange="app.toggleNewPolicyDataTag()"><span style="font-size:12.5px;color:#374151">Require a data-classification tag on the request</span></label>
       </div>
@@ -1118,8 +1236,7 @@ function auditView(){
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${chips}</div>
     <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#F9FAFB">${['Time','Actor','Event','Backend','Outcome','Hash'].map(t=>th(t)).join('')}</tr></thead>
-      <tbody>${empty ? `<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">${loaded?'No audit events'+(s.auditEventFilter!=='all'?' for this filter':' yet — run a request in the Playground')+'.':'Loading…'}</td></tr>` : rows}</tbody></table></div>
-    ${s.attestationOpen?attestationModal():''}`;
+      <tbody>${empty ? `<tr><td colspan="6" style="padding:20px 16px;color:#9CA3AF;font-size:13px">${loaded?'No audit events'+(s.auditEventFilter!=='all'?' for this filter':' yet — run a request in the Playground')+'.':'Loading…'}</td></tr>` : rows}</tbody></table></div>`;
 }
 
 function attestationModal(){
@@ -1152,16 +1269,17 @@ const SUGGESTED = [
 ];
 function playgroundView(){
   const s=state;
+  const SUGG=(s.suggestions&&s.suggestions.length)?s.suggestions:SUGGESTED;   // dynamic follow-ups when available
   const empty=`<div style="flex:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:16px">
     <div style="font-weight:700;font-size:24px">Ask preceptaai anything</div>
     <div style="font-size:13px;color:#6B7280;max-width:440px;line-height:1.5">Routed to an in-boundary backend, checked against policy, and written to the tamper-evident audit log — automatically.</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-      ${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
+      ${SUGG.map((p,i)=>`<button onclick="app.sendSuggested(${i})" style="padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}
     </div>
   </div>`;
   const msgs=s.messages.map((m,mi)=>`<div style="align-self:${m.align};max-width:78%">
     <div style="font-size:11px;color:#9CA3AF;margin-bottom:4px;text-align:${m.textAlign}">${m.who}</div>
-    <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${esc(m.text)}</div>
+    <div style="padding:12px 14px;background:${m.bg};color:${m.color};font-size:13.5px;line-height:1.55;border-radius:12px">${m.hasMeta?mdRender(m.text):esc(m.text)}</div>
     ${m.hasMeta?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaBackendBg};color:${m.metaBackendColor}">${esc(m.metaBackend)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaLatency)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:#F3F4F6;color:#6B7280">${esc(m.metaCost)}</span><span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;background:${m.metaPolicyBg};color:${m.metaPolicyColor}">${esc(m.metaPolicy)}</span>${m.traceId?`<span style="display:inline-flex;gap:2px;margin-left:2px">${m.feedback==='up'?'<span title="marked helpful" style="font-size:12px">👍</span>':`<button title="helpful — teach the router" onclick="app.rateMessage(${mi},1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👍</button>`}${m.feedback==='down'?'<span title="marked unhelpful" style="font-size:12px">👎</span>':`<button title="unhelpful — teach the router" onclick="app.rateMessage(${mi},-1)" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:.5;padding:0 2px">👎</button>`}</span>`:''}</div>`:''}
   </div>`).join('');
   const modelSel = modelOptions.length ? modelOptions.map(mo=>`<option value="${esc(mo.value)}" ${mo.value===s.chatModel?'selected':''}>${esc(mo.label)}</option>`).join('') : `<option value="">No inference endpoints — add one first</option>`;
@@ -1173,11 +1291,11 @@ function playgroundView(){
         ${s.messages.length?`<button onclick="app.newChat()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer"><i data-lucide="plus" style="width:14px;height:14px"></i>New chat</button>`:''}
       </div>
     </div>
-    <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}</div>
-    ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGGESTED.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
+    <div id="pgScroll" class="pc-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:24px 0">${s.messages.length?msgs:empty}${s.chatPending?`<div style="align-self:flex-start;max-width:78%"><div style="font-size:11px;color:#9CA3AF;margin-bottom:4px">preceptaai</div><div style="display:flex;align-items:center;gap:8px;background:#F3F4F6;color:#6B7280;padding:10px 14px;border-radius:10px;font-size:13px"><i data-lucide="loader" class="spin" style="width:14px;height:14px"></i>Thinking… <span style="color:#9CA3AF">(a local model's first reply can take ~20–30s while it warms up)</span></div></div>`:''}</div>
+    ${s.messages.length?`<div style="display:flex;align-items:center;gap:6px;padding-top:10px;overflow-x:auto"><span style="font-size:11px;color:#9CA3AF;flex:none">Try:</span>${SUGG.map((p,i)=>`<button onclick="app.sendSuggested(${i})" title="${esc(p)}" style="flex:none;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 11px;border-radius:14px;font-size:12px;background:#F9FAFB;color:#374151;border:1px solid #E5E7EB;cursor:pointer">${esc(p)}</button>`).join('')}</div>`:''}
     <div style="border-top:1px solid #E5E7EB;display:flex;padding:16px 0 0;gap:10px">
       <input id="chatInput" style="flex:1;padding:10px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px" placeholder="Message preceptaai…" value="${esc(s.chatInput)}" oninput="app.set('chatInput',this.value)" onkeydown="app.handleChatKey(event)">
-      <button onclick="app.sendMessage()" style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:pointer">Send</button>
+      <button onclick="app.sendMessage()" ${s.chatPending?'disabled':''} style="padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;background:#3B82F6;color:#fff;border:none;cursor:${s.chatPending?'not-allowed':'pointer'};opacity:${s.chatPending?'0.5':'1'}">Send</button>
     </div>
   </div>`;
 }
@@ -1186,7 +1304,7 @@ function playgroundView(){
 function settingsModal(){
   const s=state;
   const me = window.__me || {};
-  const tabDefs = me.platform_owner ? settingsTabDefs.concat([{key:'router', label:'Router'}]) : settingsTabDefs;
+  const tabDefs = me.platform_owner ? settingsTabDefs.concat([{key:'router', label:'Router'},{key:'egress', label:'Egress'}]) : settingsTabDefs;
   const tabs=tabDefs.map(t=>{const a=s.settingsTab===t.key;return `<div onclick="app.setSettingsTab('${t.key}')" style="padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:${a?'#EFF6FF':'transparent'};color:${a?'#1D4ED8':'#6B7280'};margin-bottom:2px">${t.label}</div>`;}).join('');
   const o = window.__org || {};
   const rowKV=(k,v,sub)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500">${k}</div>${sub?`<div style="font-size:11px;color:#9CA3AF">${sub}</div>`:''}</div><span style="font-size:12px;color:#6B7280">${v}</span></div>`;
@@ -1231,24 +1349,47 @@ function settingsModal(){
     if(!r){ pane=`<div style="font-size:12px;color:#9CA3AF;padding:12px 0">Loading router configuration…</div>`; }
     else {
       const be = r.router_backend;
-      const card=(id,title,desc)=>{const on=be===id;return `<div onclick="app.setRouterBackend('${id}')" style="flex:1;cursor:pointer;border:1.5px solid ${on?'#2563EB':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:600;color:${on?'#1D4ED8':'#111827'}">${on?'● ':'○ '}${title}</div><div style="font-size:11px;color:#6B7280;margin-top:3px;line-height:1.45">${desc}</div></div>`;};
-      const keyStatus = r.hf_key_set
-        ? `<span style="color:#065F46;font-weight:500">✓ key stored</span> — enter a new value to replace it`
-        : `<span style="color:#9CA3AF">no key stored</span>`;
+      const ep = (state.routerHfEndpoint!==undefined?state.routerHfEndpoint:(r.hf_endpoint||''));
+      const mdl = (state.routerHfModel!==undefined?state.routerHfModel:(r.hf_model||''));
+      const card=(id,title,desc,onClick)=>{const on=be===id;return `<div onclick="${onClick}" style="flex:1;cursor:pointer;border:1.5px solid ${on?'#2563EB':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};border-radius:8px;padding:12px 14px"><div style="font-size:13px;font-weight:600;color:${on?'#1D4ED8':'#111827'}">${on?'● ':'○ '}${title}</div><div style="font-size:11px;color:#6B7280;margin-top:3px;line-height:1.45">${desc}</div></div>`;};
+      const keyStatus = r.hf_key_set ? `<span style="color:#065F46;font-weight:500">✓ key stored</span> — leave blank to keep it` : `<span style="color:#9CA3AF">no key stored yet</span>`;
+      const fld=(label,val,handler,ph)=>`<div style="margin-bottom:10px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px">${label}</label><input value="${esc(val)}" oninput="${handler}" placeholder="${esc(ph)}" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"></div>`;
       pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">The router uses a small model to read each request's goal (cost / speed / quality). That model runs <strong>inside your network</strong> — the router never sends prompts to Precepta. Choose where it runs. <span style="color:#9CA3AF">Platform-owner only.</span></div>
-        <div style="display:flex;gap:10px;margin-bottom:16px">
-          ${card('ollama','Ollama (local)','The local model. Free, no key. Best for dev and small installs.')}
-          ${card('hf','Precepta HF endpoint','A dedicated HF endpoint deployed in your boundary, with a Precepta-owned key.')}
+        <div style="display:flex;gap:10px;margin-bottom:18px">
+          ${card('ollama','Ollama (local)','The local model. Free, no key. Best for dev and small installs.',"app.setRouterBackend('ollama')")}
+          ${card('hf','Precepta HF endpoint','A dedicated HF endpoint deployed in your boundary, with a Precepta-owned key.',"app.useHfRouter()")}
         </div>
-        <div style="font-size:12px;font-weight:600;color:#374151;margin:4px 0 2px">Precepta in-boundary HF endpoint</div>
-        ${editRow('Endpoint URL','__router_hf_endpoint', r.hf_endpoint, 'http://hf.internal:8080/v1', null, true)}
-        ${editRow('Model (optional)','__router_hf_model', r.hf_model, 'llama-3.1-8b-instruct', null, true)}
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6">
-          <div style="font-size:13px;font-weight:500">Precepta key<div style="font-size:11px;color:#9CA3AF;font-weight:400">${keyStatus}</div></div>
-          <div style="display:flex;gap:6px"><input type="password" value="${esc(s.routerKeyInput)}" oninput="app.onRouterKeyInput(this.value)" placeholder="paste key" style="width:180px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"><button onclick="app.saveRouterKey()" ${s.routerKeyInput?'':'disabled'} style="padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;background:${s.routerKeyInput?'#2563EB':'#E5E7EB'};color:${s.routerKeyInput?'#fff':'#9CA3AF'};border:none;cursor:${s.routerKeyInput?'pointer':'default'}">Save key</button></div>
+        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px">Precepta in-boundary HF endpoint</div>
+          ${fld('Endpoint URL',ep,"app.setQuiet('routerHfEndpoint',this.value)",'http://hf.internal:8080/v1')}
+          ${fld('Model (optional)',mdl,"app.setQuiet('routerHfModel',this.value)",'llama-3.1-8b-instruct')}
+          <div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px">Precepta key <span style="font-weight:400;font-size:11px;color:#9CA3AF">(${keyStatus})</span></label><input type="password" value="${esc(s.routerKeyInput||'')}" oninput="app.setQuiet('routerKeyInput',this.value)" placeholder="paste key" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"></div>
+          <button onclick="app.saveHfRouter()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Save &amp; use HF endpoint</button>
         </div>
-        <div style="font-size:11px;color:#9CA3AF;padding:8px 0;line-height:1.5">The key is written to the secret store and never returned by the API — the Console only ever shows whether one is set. Selecting <strong>Precepta HF endpoint</strong> requires both an endpoint and a key.</div>`;
+        <div style="font-size:11px;color:#9CA3AF;padding:10px 0 0;line-height:1.5">The key is written to the secret store and never returned by the API. This saves the endpoint, model and key and switches the router to it in one step. Leave the key blank to keep the one already stored.</div>`;
     }
+  } else if(s.settingsTab==='egress'){
+    const eg = window.__egress;
+    const hosts = eg ? (eg.hosts||[]) : null;
+    const list = hosts===null ? `<div style="font-size:12px;color:#9CA3AF;padding:10px 0">Loading…</div>`
+      : (hosts.length ? hosts.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #F3F4F6"><div><div style="font-size:13px;font-weight:500;font-family:'JetBrains Mono',monospace">${esc(h.host)}</div><div style="font-size:11px;color:#9CA3AF">approved by ${esc(h.added_by||'—')}${h.note?' · '+esc(h.note):''}</div></div><button onclick="app.removeEgressHost('${esc(h.host)}')" style="font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #FECACA;background:#fff;color:#991B1B;cursor:pointer">Revoke</button></div>`).join('')
+        : `<div style="font-size:12px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 12px">Fully sealed — no host is approved, so nothing can leave your network. This is the strongest posture.</div>`);
+    // Registered cloud endpoints whose host isn't approved yet — approve in one
+    // click, using the host from the URL you entered in the Inference plane.
+    const cloudEps=(s.backends||[]).filter(b=>b.egressApprovable);
+    const fromEndpoints = cloudEps.length ? `<div style="border:1px solid #BFDBFE;background:#F8FAFF;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:8px">From your registered endpoints</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:10px;line-height:1.5">These cloud endpoints you added in the Inference plane aren't reachable yet — approve each host (taken straight from the URL you entered) in one click.</div>
+        ${cloudEps.map(b=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid #E5E7EB"><div><div style="font-size:12.5px;font-weight:500">${esc(b.name)} <span style="font-size:11px;color:#9CA3AF;font-family:'JetBrains Mono',monospace">${esc(b.host)}</span></div></div><button onclick="app.approveBackendEgress('${esc(b.name)}')" style="font-size:12px;padding:4px 11px;border-radius:6px;border:none;background:#2563EB;color:#fff;cursor:pointer">Approve host</button></div>`).join('')}
+      </div>` : '';
+    pane=`<div style="font-size:12px;color:#6B7280;margin-bottom:14px;line-height:1.55">By default Precepta is <strong>fully sealed</strong> — the app has no way to reach the internet. To use a cloud inference endpoint (e.g. a Hugging Face or Neysa host), approve its host here. Precepta will then reach <strong>only</strong> the hosts you approve, and the attestation records exactly which ones. <span style="color:#9CA3AF">Platform-owner only.</span></div>
+      ${fromEndpoints}
+      <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px">Approved egress hosts</div>
+        ${list}
+        <div style="display:flex;gap:6px;margin-top:14px"><input id="egHostIn" placeholder="huggingface.co" style="flex:1;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace"><input id="egNoteIn" placeholder="note (optional)" style="width:150px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px"><button onclick="app.addEgressHost()" style="padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:#2563EB;color:#fff;border:none;cursor:pointer">Approve</button></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;line-height:1.5">Approving a host changes your posture from <strong>sealed</strong> to <strong>restricted</strong> (only named hosts reachable). Subdomains are covered — approving <code>huggingface.co</code> also allows <code>api.huggingface.co</code>. Every approve/revoke is written to the tamper-evident audit log. <br><br>Note: in the pilot's sealed network the app also needs a network path to reach an approved host — see <code>deploy/README.md</code> → "Restricted egress".</div>`;
   } else {
     // members — only the real signed-in account is known to the backend today
     const name=esc(me.name||me.subject||'—'), email=esc(me.subject||''), role=esc(me.role||'user');
@@ -1271,17 +1412,31 @@ function settingsModal(){
     </div></div>`;
 }
 
-/* ---------- Copilot (honest coming-soon) ---------- */
+/* ---------- Copilot (grounded, in-boundary) ---------- */
 function copilotFab(){
+  const msgs=state.copilotMsgs||[];
+  const STARTERS=['Is Sovereign Mode on?','How many endpoints do I have?','Is internet egress blocked?','How does routing decide a target?'];
+  const bubbles = msgs.map(m=>{
+    if(m.role==='user'){
+      return `<div style="align-self:flex-end;max-width:82%;background:#111827;color:#fff;padding:8px 11px;border-radius:12px 12px 4px 12px;font-size:12.5px;line-height:1.5">${esc(m.text)}</div>`;
+    }
+    return `<div style="align-self:flex-start;max-width:88%;background:#F9FAFB;border:1px solid #F3F4F6;color:#111827;padding:9px 11px;border-radius:12px 12px 12px 4px;font-size:12.5px;line-height:1.6">${mdRender(m.text)}${m.model?`<div style="margin-top:6px;font-size:10px;color:#9CA3AF;display:flex;align-items:center;gap:4px"><i data-lucide="shield-check" style="width:11px;height:11px;color:#059669"></i>Answered in-boundary · ${esc(m.model)}</div>`:''}</div>`;
+  }).join('');
+  const empty = msgs.length===0 ? `<div style="color:#6B7280;font-size:12.5px;line-height:1.6">Ask me about your endpoints, keys, policies, cache, egress, or how sovereignty is enforced — I answer only from your live deployment state.</div>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">${STARTERS.map(s=>`<button onclick="app.copilotAsk('${s.replace(/'/g,"\\'")}')" style="text-align:left;background:#F9FAFB;border:1px solid #EEF0F3;border-radius:8px;padding:7px 10px;font-size:12px;color:#374151;cursor:pointer">${esc(s)}</button>`).join('')}</div>`:'';
   return `<div onclick="app.toggleCopilot()" style="position:fixed;right:24px;bottom:24px;width:52px;height:52px;border-radius:50%;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.25);z-index:55"><i data-lucide="${state.copilotOpen?'x':'sparkles'}" style="width:20px;height:20px"></i></div>
-  ${state.copilotOpen?`<div style="position:fixed;right:24px;bottom:88px;width:360px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);z-index:55;overflow:hidden">
+  ${state.copilotOpen?`<div style="position:fixed;right:24px;bottom:88px;width:380px;max-height:70vh;display:flex;flex-direction:column;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);z-index:55;overflow:hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #F3F4F6">
-      <div style="display:flex;align-items:center;gap:8px"><i data-lucide="sparkles" style="width:15px;height:15px;color:#3B82F6"></i><div style="font-weight:600;font-size:13.5px">Precepta Copilot</div></div>
+      <div style="display:flex;align-items:center;gap:8px"><i data-lucide="sparkles" style="width:15px;height:15px;color:#3B82F6"></i><div><div style="font-weight:600;font-size:13.5px">Precepta Copilot</div><div style="font-size:10.5px;color:#059669;display:flex;align-items:center;gap:3px;margin-top:1px"><i data-lucide="shield-check" style="width:10px;height:10px"></i>Grounded · in-boundary</div></div></div>
       <button onclick="app.toggleCopilot()" style="background:transparent;border:none;color:#6B7280;cursor:pointer;padding:2px"><i data-lucide="x" style="width:16px;height:16px"></i></button>
     </div>
-    <div style="padding:20px 16px;text-align:center">
-      <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#FFFBEB;color:#92400E">Coming soon</span>
-      <div style="font-size:12.5px;color:#6B7280;margin-top:12px;line-height:1.6">An in-console assistant that answers questions about your inference endpoints, keys and policies. It isn't wired to a model yet — so it stays quiet rather than making up answers.</div>
+    <div id="copilot-body" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
+      ${empty}${bubbles}
+      ${state.copilotBusy?`<div style="align-self:flex-start;color:#9CA3AF;font-size:12px;display:flex;align-items:center;gap:6px"><i data-lucide="loader" style="width:13px;height:13px" class="spin"></i>Thinking…</div>`:''}
+    </div>
+    <div style="border-top:1px solid #F3F4F6;padding:10px;display:flex;gap:8px;align-items:flex-end">
+      <textarea id="copilot-input" rows="1" onkeydown="app.copilotKey(event)" placeholder="Ask about your deployment…" style="flex:1;resize:none;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;outline:none;max-height:80px"></textarea>
+      <button onclick="app.copilotSend()" ${state.copilotBusy?'disabled':''} style="background:#111827;color:#fff;border:none;border-radius:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;opacity:${state.copilotBusy?'0.5':'1'}"><i data-lucide="arrow-up" style="width:16px;height:16px"></i></button>
     </div>
   </div>`:''}`;
 }
@@ -1291,6 +1446,7 @@ function contentFor(){
   switch(state.screen){
     case 'onboarding': return onboardingView();
     case 'overview': return overviewView();
+    case 'deployment': return deploymentView();
     case 'workflow': return workflowView();
     case 'traces': return tracesView();
     case 'modelplane': return modelPlaneView();
@@ -1312,6 +1468,7 @@ function render(){
       <div class="pc-scroll" style="flex:1;overflow-y:auto;padding:28px 32px 80px;background:#fff">${contentFor()}</div>
     </div>
     ${state.settingsOpen?settingsModal():''}
+    ${state.attestationOpen?attestationModal():''}
     ${copilotFab()}
   </div>`;
   if(window.lucide) lucide.createIcons();
@@ -1356,7 +1513,7 @@ render();
     if(d && d.backends){
       state.backends = d.backends.map(b=>({
         name:b.backend, model:b.model, location:b.in_boundary?"Intent within boundary":"Intent crosses boundary",
-        inBoundary:b.in_boundary,
+        inBoundary:b.in_boundary, host:b.host||"", baseUrl:b.base_url||"", tier:b.tier||1, hasKey:!!b.has_key, egressApproved:!!b.egress_approved, egressApprovable:!!b.egress_approvable,
         gpu:(b.vram && b.vram!=="—")?b.vram:"—",
         latency:(b.latency_ms!=null)?b.latency_ms+"ms":"—",
         status:b.status==="healthy"?"healthy":"down",
@@ -1364,9 +1521,17 @@ render();
         priceMissing:b.price_missing, priceSource:b.price_source,
       }));
       modelOptions.length = 0;
-      d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model, label:b.backend+" / "+b.model}));
+      // Auto = the Smart router picks a healthy, in-boundary target — the safe default.
+      modelOptions.push({value:"auto", label:"Auto — Smart router (recommended)"});
+      d.backends.forEach(b=>modelOptions.push({value:b.backend+"/"+b.model,
+        label:b.backend+" / "+b.model+(b.status!=='healthy'?' — unreachable':'')}));
       if(d.backends.length){ modelOptions.push({value:"auto:cheapest", label:"auto : cheapest"}); modelOptions.push({value:"auto:best-quality", label:"auto : best-quality"}); }
-      if(!state.chatModel && d.backends[0]) state.chatModel = d.backends[0].backend+"/"+d.backends[0].model;
+      // Default to a healthy in-boundary backend; if none is reachable, use Auto
+      // (never default to an unreachable cloud endpoint — that made the Playground hang).
+      if(!state.chatModel){
+        const healthy=d.backends.find(b=>b.status==='healthy' && b.in_boundary!==false);
+        state.chatModel = healthy ? (healthy.backend+"/"+healthy.model) : "auto";
+      }
       render();
     }
   }
@@ -1438,12 +1603,14 @@ render();
   // Playground → real governed inference
   function sendText(text){
     text=(text||"").trim(); if(!text) return;
-    if(!state.chatModel){ return; }
+    if(!state.chatModel){ state.chatModel="auto"; }
+    if(state.chatPending) return;                       // one in-flight request at a time
     state.messages.push({who:"You",text,align:"flex-end",textAlign:"right",bg:"#3B82F6",color:"#fff",hasMeta:false});
-    state.chatInput=""; render();
+    state.chatInput=""; state.chatPending=true; render();
     fetch("/v1/chat/completions",{method:"POST",headers:hdr,body:JSON.stringify({
       model:state.chatModel, messages:[{role:"user",content:text}], max_tokens:200})})
     .then(async r=>{
+      state.chatPending=false;
       const d=await r.json(); const p=d.precepta||{}; let reply;
       if(r.status!==200){
         reply={who:"preceptaai",text:(d.error&&d.error.message)||"blocked",align:"flex-start",textAlign:"left",
@@ -1459,11 +1626,15 @@ render();
           traceId:p.trace_id||null,feedback:null};
       }
       state.messages.push(reply); render(); loadAuditLog(); loadStats();
+      if(r.status===200 && reply.text){            // dynamic, relevant follow-ups (in-boundary, fail-soft)
+        fetch("/v1/suggest",{method:"POST",headers:hdr,body:JSON.stringify({context:reply.text})})
+          .then(x=>x.json()).then(sd=>{ if(sd && Array.isArray(sd.suggestions) && sd.suggestions.length){ state.suggestions=sd.suggestions; render(); } }).catch(()=>{});
+      }
     })
-    .catch(e=>{ state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
+    .catch(e=>{ state.chatPending=false; state.messages.push({who:"preceptaai",text:"error: "+e,align:"flex-start",textAlign:"left",bg:"#FEF2F2",color:"#991B1B",hasMeta:false}); render(); });
   }
   app.sendMessage = function(){ const el=document.getElementById("chatInput"); sendText(el ? el.value : state.chatInput); };
-  app.sendSuggested = function(i){ sendText(SUGGESTED[i]); };
+  app.sendSuggested = function(i){ const L=(state.suggestions&&state.suggestions.length)?state.suggestions:SUGGESTED; sendText(L[i]); };
   app.rateMessage = function(mi,rating){
     const m=state.messages[mi]; if(!m||!m.traceId) return;
     m.feedback = rating>0?'up':'down'; render();      // optimistic
@@ -1488,9 +1659,7 @@ render();
     const c={};
     if(s.newPolicyUrlAllow.trim()) c.url_allowlist=s.newPolicyUrlAllow.split(",").map(x=>x.trim()).filter(Boolean);
     if(s.newPolicyUrlBlock.trim()) c.url_blocklist=s.newPolicyUrlBlock.split(",").map(x=>x.trim()).filter(Boolean);
-    if(s.newPolicyMaxTokens) c.max_tokens_per_day=parseInt(s.newPolicyMaxTokens);
     if(s.newPolicyMaxCalls) c.max_calls_per_hour=parseInt(s.newPolicyMaxCalls);
-    if(s.newPolicyMaxCost) c.max_daily_cost_usd=parseFloat(s.newPolicyMaxCost);
     if(s.newPolicyPii) c.pii_filter_output=true;
     if(s.newPolicyDataTag) c.require_data_tag=true;
     const scope={};
@@ -1513,7 +1682,14 @@ render();
       model:(state.infraModel||"").trim(), in_boundary:true})})
     .then(async r=>{
       const d=await r.json();
-      if(r.ok){ state.connectionStatus = d.healthy ? "success" : "unreachable"; await loadInfra(); }
+      if(r.ok){
+        state.connectionStatus = d.healthy ? "success" : "unreachable";
+        state.connReason = "";
+        await loadInfra();
+        if(!d.healthy){                       // get the honest 'why' from a real probe
+          try{ const t=await (await fetch("/v1/backends/"+encodeURIComponent(provider)+"/test",{method:"POST",headers:hdr})).json(); state.connReason=t.reason||""; }catch(e){}
+        }
+      }
       else { state.connectionStatus="idle"; alert("Registration failed: "+((d.error&&d.error.message)||r.status)); }
       render();
     }).catch(e=>{ state.connectionStatus="idle"; render(); alert("error: "+e); });
@@ -1528,7 +1704,17 @@ render();
   };
 
   app.addBackend = function(){
-    const s=state; if(!s.newBackendName.trim() && !s.newBackendEndpoint.trim()){ s.addBackendOpen=false; render(); return; }
+    const s=state;
+    if(s.editingBackend){                       // EDIT an existing endpoint (PUT)
+      const provider=s.editingBackend;
+      const body={base_url:s.newBackendEndpoint, model:s.newBackendModel,
+                  in_boundary:s.newBackendInBoundary, tier:Number(s.newBackendTier)||2};
+      if((s.newBackendKey||'').trim()) body.api_key=s.newBackendKey.trim();   // blank → keep stored key
+      fetch("/v1/backends/"+encodeURIComponent(provider),{method:"PUT",headers:hdr,body:JSON.stringify(body)})
+        .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Save failed: "+((d.error&&d.error.message)||r.status)); return; } s.addBackendOpen=false; s.editingBackend=null; if(s.testResults) delete s.testResults[provider]; loadInfra(); });
+      return;
+    }
+    if(!s.newBackendName.trim() && !s.newBackendEndpoint.trim()){ s.addBackendOpen=false; render(); return; }
     const type = PROVIDER_OF[s.newBackendType] || s.newBackendType;
     // Identity = a slug of the Name (BUG-001) so multiple backends of the same
     // provider type coexist; falls back to the type when no name is given.
@@ -1539,10 +1725,31 @@ render();
       model:s.newBackendModel, in_boundary:s.newBackendInBoundary, tier:Number(s.newBackendTier)||2})})
     .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Failed: "+((d.error&&d.error.message)||r.status)); } s.addBackendOpen=false; loadInfra(); });
   };
+  app.deleteBackend = function(provider){
+    if(!confirm("Remove the endpoint '"+provider+"'? This can't be undone.")) return;
+    fetch("/v1/backends/"+encodeURIComponent(provider),{method:"DELETE",headers:hdr})
+      .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Delete failed: "+((d.error&&d.error.message)||r.status)); } if(state.testResults) delete state.testResults[provider]; loadInfra(); });
+  };
   app.toggleBackendBoundary = function(provider, wasIn){
     fetch("/v1/backends/"+encodeURIComponent(provider)+"/boundary",{method:"POST",headers:hdr,
       body:JSON.stringify({in_boundary: !wasIn})})
       .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Failed: "+((d.error&&d.error.message)||r.status)); } loadInfra(); });
+  };
+  app.testBackend = function(provider){
+    state.testResults = state.testResults || {};
+    state.testResults[provider] = {busy:true}; render();
+    fetch("/v1/backends/"+encodeURIComponent(provider)+"/test",{method:"POST",headers:hdr})
+      .then(r=>r.json())
+      .then(d=>{ state.testResults[provider]={busy:false,reachable:!!d.reachable,reason:d.reason||d.status||"",host:d.host||"",approvable:!!d.approvable}; render(); loadInfra(); })
+      .catch(e=>{ state.testResults[provider]={busy:false,reachable:false,reason:"Test failed: "+e}; render(); });
+  };
+  app.approveBackendEgress = function(provider){
+    // Approve THIS endpoint's host (taken from the URL you registered), then re-test.
+    state.testResults = state.testResults || {};
+    state.testResults[provider] = Object.assign({}, state.testResults[provider], {busy:true}); render();
+    fetch("/v1/backends/"+encodeURIComponent(provider)+"/approve-egress",{method:"POST",headers:hdr})
+      .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Approve failed: "+((d.error&&d.error.message)||r.status)); state.testResults[provider].busy=false; render(); return; } if(app.loadEgress) app.loadEgress(); app.testBackend(provider); })
+      .catch(e=>{ state.testResults[provider]={busy:false,reachable:false,reason:"Approve failed: "+e}; render(); });
   };
   app.openPriceEdit = function(name, model, pin, pout){ state.priceEditFor={name,model,pin,pout}; render(); };
   app.closePriceEdit = function(){ state.priceEditFor=null; render(); };
@@ -1601,15 +1808,35 @@ render();
       .then(async r=>{ const d=await r.json(); if(r.ok){ window.__router=d; render(); }
         else alert("Router config: "+((d.error&&d.error.message)||r.status)); });
   };
-  app.setRouterBackend = function(b){
-    const r=window.__router||{};
-    if(b==='hf' && !(r.hf_endpoint && r.hf_key_set)){ alert("Add the HF endpoint and key below first, then switch to it."); return; }
-    app.saveRouterConfig({router_backend:b});
+  app.loadEgress = async function(){ const d=await getJSON("/v1/egress"); if(d && !d.error){ window.__egress=d; render(); } };
+  app.addEgressHost = function(){
+    const host=(document.getElementById('egHostIn')||{}).value||'';
+    const note=(document.getElementById('egNoteIn')||{}).value||'';
+    if(!host.trim()) return;
+    fetch("/v1/egress",{method:"POST",headers:hdr,body:JSON.stringify({host:host.trim(),note:note.trim()})})
+      .then(async r=>{ const d=await r.json(); if(!r.ok){ alert("Approve failed: "+((d.error&&d.error.message)||r.status)); } app.loadEgress(); loadInfra(); });
   };
-  app.onRouterKeyInput = function(v){ state.routerKeyInput=v; render(); };
-  app.saveRouterKey = function(){
-    const v=state.routerKeyInput; if(!v) return;
-    state.routerKeyInput=''; app.saveRouterConfig({hf_key:v});
+  app.removeEgressHost = function(host){
+    fetch("/v1/egress/"+encodeURIComponent(host),{method:"DELETE",headers:hdr})
+      .then(async r=>{ if(!r.ok){ const d=await r.json().catch(()=>({})); alert("Revoke failed: "+((d.error&&d.error.message)||r.status)); } app.loadEgress(); loadInfra(); });
+  };
+  app.setQuiet = function(k,v){ state[k]=v; };   // update state without re-rendering (keeps input focus)
+  app.setRouterBackend = function(b){ app.saveRouterConfig({router_backend:b}); };  // Ollama always OK
+  app.useHfRouter = function(){
+    const r=window.__router||{};
+    if(r.hf_endpoint && r.hf_key_set){ app.saveRouterConfig({router_backend:'hf'}); }
+    else { alert("Fill in the endpoint and key below, then click 'Save & use HF endpoint'."); }
+  };
+  app.saveHfRouter = function(){
+    const r=window.__router||{};
+    const ep=((state.routerHfEndpoint!==undefined?state.routerHfEndpoint:r.hf_endpoint)||'').trim();
+    const mdl=((state.routerHfModel!==undefined?state.routerHfModel:r.hf_model)||'');
+    const key=((state.routerKeyInput)||'').trim();
+    if(!ep){ alert("Enter the in-boundary HF endpoint URL first."); return; }
+    const patch={router_backend:'hf', hf_endpoint:ep, hf_model:mdl};
+    if(key) patch.hf_key=key;                    // blank = keep the stored key
+    state.routerKeyInput='';
+    app.saveRouterConfig(patch);                 // atomic: save endpoint+model+key AND switch
   };
 
   // Google/OIDC-aware sign-in: real SSO redirect when configured, else dev login
@@ -1631,6 +1858,7 @@ render();
     if(sc==="savings"){ loadFeatures(); }
     if(sc==="traces"){ loadOrg(); loadTraces(); loadBillback(); }
     if(sc==="workflow"){ loadWorkflow(); }
+    if(sc==="deployment"){ loadDeployment(); loadInfra(); loadKeys(); }
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
@@ -1646,6 +1874,20 @@ render();
   async function loadFeatures(){ const d=await getJSON("/v1/features"); if(d && Array.isArray(d.endpoints)){ window.__features=d; render(); } }
   async function loadTraces(){ const d=await getJSON("/v1/traces"); if(d){ window.__traces=d; const ts=d.traces||[]; if(ts.length && !state.selectedTrace){ app.selectTrace(ts[0].request_id); } else { render(); } } }
   async function loadWorkflow(){ const d=await getJSON("/v1/workflow"); if(d && !d.error){ window.__workflow=d; render(); } }
+  async function loadDeployment(){ const d=await getJSON("/v1/deployment"); if(d && !d.error){ window.__deployment=d; render(); } }
+  app.copyStep = function(n, btn){
+    const steps=window.__runbookSteps||[];
+    const st=steps.find(x=>x.n===n); if(!st) return;
+    const done=()=>{ if(btn){ const t=btn.textContent; btn.textContent='✓ Copied'; setTimeout(()=>{try{btn.textContent=t;}catch(e){}},1500); } };
+    if(navigator.clipboard){ navigator.clipboard.writeText(st.cmd).then(done).catch(()=>{}); }
+  };
+  app.copyRunbook = function(){
+    const steps=window.__runbookSteps||[];
+    const txt=["# Run Precepta inside your network"]
+      .concat(steps.map(st=>st.cmd))
+      .concat(["# then open http://127.0.0.1:8000/console → sign in → Deployment → Generate attestation"]).join("\n");
+    if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{ state.runbookCopied=true; render(); setTimeout(()=>{state.runbookCopied=false;render();},2000); }).catch(()=>{}); }
+  };
   async function loadBillback(){ const d=await getJSON("/v1/billback"); if(d && !d.error){ window.__billback=d; render(); } }
   app.selectTrace = function(rid){ state.selectedTrace=rid; state.traceExpanded=null; window.__traceDetail=null; render(); getJSON("/v1/traces/"+encodeURIComponent(rid)).then(d=>{ if(d && !d.error){ window.__traceDetail=d; render(); } }); };
   app.setTraceTab = function(t){ state.traceTab=t; render(); };

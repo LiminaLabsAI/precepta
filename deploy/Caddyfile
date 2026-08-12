@@ -1,0 +1,6 @@
+# Front door for the Console. The app itself has NO internet route (internal
+# network); this proxy is the only inbound path host -> app. It forwards plain
+# HTTP and does nothing else — your prompts never flow outward through it.
+:8000 {
+	reverse_proxy app:8000
+}

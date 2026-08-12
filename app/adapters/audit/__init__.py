@@ -15,11 +15,37 @@ def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
 
 
+_DDL = """
+CREATE TABLE IF NOT EXISTS audit_log (
+    id                 TEXT PRIMARY KEY,
+    timestamp          TEXT,
+    workflow_id        TEXT,
+    run_id             TEXT,
+    step_name          TEXT,
+    action_type        TEXT,
+    policy_id          TEXT,
+    policy_name        TEXT,
+    decision           TEXT,
+    reason             TEXT,
+    context_url        TEXT,
+    tokens_requested   INTEGER,
+    pii_detected_count INTEGER,
+    execution_blocked  INTEGER
+)
+"""
+
+
+def ensure_table() -> None:
+    with get_conn() as conn:
+        conn.execute(_DDL)
+
+
 class SqliteAudit:
     def append_check(self, ctx: PolicyCheckContext, decision: Decision, *,
                      tokens: int | None, pii_count: int, blocked: bool) -> str:
         aid = uuid.uuid4().hex
         actor = ctx.principal.subject if ctx.principal else "anonymous"
+        ensure_table()
         with get_conn() as conn:
             conn.execute(
                 "INSERT INTO audit_log (id,timestamp,workflow_id,run_id,step_name,"

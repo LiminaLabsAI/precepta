@@ -17,7 +17,7 @@ class FakeBE:
         self.default_model = model
         self.base_url = "http://x/v1"
         self._h = healthy
-    def health(self): return self._h
+    def health(self, timeout: float = 3.0): return self._h
 
 
 def test_parse_prometheus():

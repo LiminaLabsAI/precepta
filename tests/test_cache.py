@@ -29,13 +29,14 @@ def test_cache_key_depends_on_content():
 def test_is_cacheable_per_endpoint():
     _reset()
     try:
-        assert cache.is_cacheable({"temperature": 0}, False, AUTO) is False   # off by default
-        features.set_config(AUTO, {"cache_enabled": True})
+        # smart caching is ON by default (the product default)
         assert cache.is_cacheable({"temperature": 0}, False, AUTO) is True
         assert cache.is_cacheable({"temperature": 0}, True, AUTO) is False     # sensitive never
         assert cache.is_cacheable({"temperature": 0.7}, False, AUTO) is False  # non-deterministic
-        # a DIFFERENT endpoint is still off — config is per-endpoint
+        # turning it OFF is per-endpoint — one endpoint off, AUTO stays on
+        features.set_config("ollama", {"cache_enabled": False})
         assert cache.is_cacheable({"temperature": 0}, False, "ollama") is False
+        assert cache.is_cacheable({"temperature": 0}, False, AUTO) is True
     finally:
         _reset()
 

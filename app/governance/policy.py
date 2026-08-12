@@ -13,11 +13,30 @@ from ..db import get_conn
 from ..ports import Decision, PolicyCheckContext
 
 
-# ── policy scope (FEAT-002) ─────────────────────────────────────────────
+# ── policy table + scope (FEAT-002) ─────────────────────────────────────
+_DDL = """
+CREATE TABLE IF NOT EXISTS governance_policies (
+    id              TEXT PRIMARY KEY,
+    name            TEXT,
+    description     TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    action_type     TEXT,
+    effect          TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    scope_json      TEXT NOT NULL DEFAULT '{}',
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT,
+    updated_at      TEXT
+)
+"""
+
+
 def _ensure_scope_column() -> None:
+    """Ensure the policy table exists (fresh DB) and has scope_json (older DB)."""
     with get_conn() as conn:
+        conn.execute(_DDL)                       # fresh DB → full table incl. scope_json
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(governance_policies)")}
-        if "scope_json" not in cols:
+        if "scope_json" not in cols:             # pre-FEAT-002 DB → add the column
             conn.execute("ALTER TABLE governance_policies "
                          "ADD COLUMN scope_json TEXT NOT NULL DEFAULT '{}'")
 
@@ -91,10 +110,9 @@ def _violation(cond: dict, ctx: PolicyCheckContext, usage) -> str | None:
     block = cond.get("url_blocklist")
     if ctx.url and block and any(b in ctx.url for b in block):
         return f"url {ctx.url!r} matches blocklist"
-    max_tok = int(cond.get("max_tokens_per_day", 0) or 0)
-    if max_tok > 0 and ctx.tokens_requested:
-        if usage.tokens_used_today(ctx) + ctx.tokens_requested > max_tok:
-            return f"daily token cap {max_tok} exceeded"
+    # NOTE: a per-day *token* budget lives on the API KEY (token_cap_daily), not
+    # here — a policy condition would duplicate it. Policies keep the rate limit
+    # (calls/hour) and governance checks below.
     if cond.get("require_data_tag") and not ctx.has_data_tag:
         return "missing required data-classification tag"
     max_calls = int(cond.get("max_calls_per_hour", 0) or 0)

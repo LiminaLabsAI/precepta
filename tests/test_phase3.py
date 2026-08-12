@@ -63,12 +63,12 @@ def test_evaluate_block_on_missing_data_tag():
 
 
 def test_evaluate_most_restrictive_block_beats_warn():
-    ctx = PolicyCheckContext(action_type="chat.completion", tokens_requested=100)
+    ctx = PolicyCheckContext(action_type="chat.completion", has_data_tag=False)
     policies = [
         {"id": 1, "effect": "warn", "conditions": {"max_calls_per_hour": 1}},
-        {"id": 2, "effect": "block", "conditions": {"max_tokens_per_day": 50}},
+        {"id": 2, "effect": "block", "conditions": {"require_data_tag": True}},
     ]
-    assert evaluate(ctx, policies, FakeUsage(tokens=0, calls=5)).effect == "block"
+    assert evaluate(ctx, policies, FakeUsage(calls=5)).effect == "block"
 
 
 def test_evaluate_warn():
