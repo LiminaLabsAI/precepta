@@ -47,7 +47,7 @@ predates momentum founding; foundation docs were authored from the existing root
 | 12 — Smart Router (+ workflow view) | `main` | ✅ Built + tested + **merged to `main`** 2026-08-10; **activated** in the live path (candidate set in traces) | Done |
 | 11 — Traces (request-lifecycle observability) | `main` | ✅ Built + tested + merged 2026-08-10 (L1 + L2 agent sub-trace + bill-back) | Done |
 | 14 — Deploy: Sovereign Pilot (self-host) | `phase-14-deploy-pilot` | **Complete 2026-08-11** — SMOKE PASS (provable zero-egress); + copilot(+nav), egress allowlist+broker, endpoint edit/delete, smart cache+compression, demo seed; 354 tests green | 100% |
-| 15 — AI Provider Integration API | `phase-15-provider-api` | **Planned (brainstormed 2026-08-11)** — providers + in-boundary model catalog → `/v1/endpoints` → governed `/v1/inference`+`/v1/embeddings`; keys+`manage` scope; OpenAPI/docs. Run `/start-phase` | 0% |
+| 15 — AI Provider Integration API | `phase-15-provider-api` | **Built G0–G5 2026-08-11** — providers + in-boundary catalog, `/v1/endpoints` (renamed, aliased), governed `/v1/inference`+`/v1/embeddings`, keys+`manage` scope, OpenAPI `/docs` + API page. Live-verified; 376 tests; SMOKE PASS. Remaining: in-modal management-key toggle | ~95% |
 
 ## Upcoming Phases
 

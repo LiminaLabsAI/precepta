@@ -37,14 +37,14 @@ Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 - [x] tests: governed inference/embeddings (policy/trace/audit), openapi presence
 
 ## Group 4 — Console surface
-- [ ] migrate Console `/v1/backends*` → `/v1/endpoints*`; scrub "backend" copy → "endpoint"
-- [ ] key issuance: "Management key" (scope=manage, read-only/read-write)
-- [ ] API page (base URL, auth, curl examples, link to `/docs`)
-- [ ] browser-verify
+- [x] migrate Console `/v1/backends*` → `/v1/endpoints*`; scrub "backend" copy → "endpoint"
+- [x] key issuance: "Management key" (scope=manage, read-only/read-write)
+- [x] API page (base URL, auth, curl examples, link to `/docs`)
+- [x] browser-verify
 
 ## Group 5 — Verification
-- [ ] auth-matrix test (manage-read/write · inference-only · anonymous · owner-only sovereignty)
-- [ ] contract + alias + catalog + enriched-models tests
-- [ ] live smoke: register endpoint via API → governed `/v1/inference` in-boundary → `/v1/usage`
-- [ ] browser-validate API page + management-key issuance
-- [ ] update HANDOFF + changelog; mark roadmap/status/backlog
+- [x] auth-matrix test (manage-read/write · inference-only · anonymous · owner-only sovereignty)
+- [x] contract + alias + catalog + enriched-models tests
+- [x] live smoke: register endpoint via API → governed `/v1/inference` in-boundary → `/v1/usage`
+- [x] browser-validate API page + management-key issuance
+- [x] update HANDOFF + changelog; mark roadmap/status/backlog

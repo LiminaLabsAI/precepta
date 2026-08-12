@@ -62,3 +62,18 @@ def test_manage_write_key_can_register_endpoint():
     finally:
         client.delete("/v1/endpoints/g2-rw", headers=ADMIN)
         revoke_key(kid)
+
+
+def test_owner_can_issue_management_key_via_api():
+    r = client.post("/v1/keys", headers=ADMIN,
+                    json={"name": "mgmt-via-api", "scope": "manage", "manage_write": True})
+    assert r.status_code in (200, 201)
+    token = r.json().get("token") or r.json().get("key")
+    assert token
+    from app.adapters.identity.keys import get_api_identity, list_keys, revoke_key
+    p = get_api_identity().authenticate(token)
+    assert p.scope == "manage:rw"
+    # cleanup
+    for k in list_keys():
+        if k["name"] == "mgmt-via-api":
+            revoke_key(k["id"])

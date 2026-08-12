@@ -1108,6 +1108,13 @@ def create_app() -> FastAPI:
                 {"error": {"message": "name required", "type": "invalid_request_error"}},
                 status_code=400)
         role = "user"   # keys are app-level credentials — admin is human-only (Console/SSO)
+        # Phase 15: a management key drives the management API (scope=manage). Only a
+        # platform owner may mint one (a management key must not be able to mint more).
+        scope = "manage" if str(b.get("scope", "")).lower() == "manage" else "inference"
+        manage_write = bool(b.get("manage_write"))
+        if scope == "manage" and not is_platform_owner(principal):
+            return _api_errors.forbidden("only a platform owner may issue a management key",
+                                         code="owner_only")
         team = (b.get("team") or "").strip()
         # expiry (FEAT-001): default 90 days; 0/None/"never" = never expires
         exp_raw = b.get("expires_in_days", 90)
@@ -1122,7 +1129,8 @@ def create_app() -> FastAPI:
             cost_cap_daily=b.get("cost_cap_daily") or 0,
             cost_cap_monthly=b.get("cost_cap_monthly") or 0,
             token_cap_daily=b.get("token_cap_daily") or 0,
-            token_cap_monthly=b.get("token_cap_monthly") or 0)
+            token_cap_monthly=b.get("token_cap_monthly") or 0,
+            scope=scope, manage_write=manage_write)
         # the plaintext key is returned exactly once
         return JSONResponse({"id": kid, "name": name, "role": role, "team": team,
                              "key": token, "expires_in_days": expires_in_days}, status_code=201)
