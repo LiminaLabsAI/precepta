@@ -69,11 +69,17 @@ def ensure_tables() -> None:
 
 # ── per-endpoint gating ───────────────────────────────────────────────────
 def is_cacheable(kw: dict, sensitive: bool, endpoint: str) -> bool:
-    """Deterministic + non-sensitive + this endpoint has caching on."""
+    """Deterministic + non-sensitive + this endpoint has caching on.
+
+    Deterministic = temperature 0 **or unset**. Most callers (and the Playground)
+    omit `temperature`; treating unset as cacheable is what makes "cache on"
+    actually reuse identical prompts. A caller who explicitly asks for
+    variability (temperature > 0) opts out — we never serve a stale answer then.
+    """
     if sensitive or not features.cache_on(endpoint):
         return False
     temp = kw.get("temperature")
-    return temp == 0 or temp == 0.0
+    return temp is None or temp == 0 or temp == 0.0
 
 
 # ── keying ────────────────────────────────────────────────────────────────

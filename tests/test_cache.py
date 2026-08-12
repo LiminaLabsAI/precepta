@@ -31,8 +31,10 @@ def test_is_cacheable_per_endpoint():
     try:
         # smart caching is ON by default (the product default)
         assert cache.is_cacheable({"temperature": 0}, False, AUTO) is True
+        assert cache.is_cacheable({}, False, AUTO) is True                     # unset temp = cacheable (the common case)
+        assert cache.is_cacheable({"temperature": None}, False, AUTO) is True  # explicit None = unset
         assert cache.is_cacheable({"temperature": 0}, True, AUTO) is False     # sensitive never
-        assert cache.is_cacheable({"temperature": 0.7}, False, AUTO) is False  # non-deterministic
+        assert cache.is_cacheable({"temperature": 0.7}, False, AUTO) is False  # caller opted into variability
         # turning it OFF is per-endpoint — one endpoint off, AUTO stays on
         features.set_config("ollama", {"cache_enabled": False})
         assert cache.is_cacheable({"temperature": 0}, False, "ollama") is False
