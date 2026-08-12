@@ -1507,7 +1507,15 @@ def create_app() -> FastAPI:
     @app.post("/v1/chat/completions", openapi_extra=_INFER_REQBODY,
               responses={200: {"content": {"application/json": {"example": _INFER_EXAMPLE}}}})
     async def chat_completions(request: Request) -> JSONResponse:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"error": {"message": "request body must be a JSON object",
+                           "type": "invalid_request_error", "code": "invalid_body"}},
+                status_code=400)
         model_str = body.get("model") or org.get("default_model")
         messages = body.get("messages") or []
         reg = get_registry()
@@ -1529,6 +1537,14 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": {"message": f"role {principal.role!r} may not run chat.completion",
                            "type": "forbidden"}}, status_code=403)
+
+        # ── request-shape validation (OpenAI-compat): a missing/empty `messages`
+        # is a client error (400), not a backend failure surfaced as 502. ──
+        if not isinstance(messages, list) or not messages:
+            return JSONResponse(
+                {"error": {"message": "'messages' is required and must be a non-empty array",
+                           "type": "invalid_request_error", "code": "missing_messages"}},
+                status_code=400)
 
         # ── per-key cost caps + scope (FEAT-001) — only for key-authenticated callers ──
         from .adapters.identity import keys as _keys
