@@ -186,6 +186,9 @@ async def governed_chat(
                          tokens_out=saved.get("tokens_saved", 0))
             return 200, result
 
+    # cache status for the response envelope: "miss" (cache on, no prior answer —
+    # this one gets stored) vs "skipped" (temp>0, sensitive, or off for this endpoint).
+    cache_status = "miss" if cacheable else "skipped"
     if tr is not None:
         tr.step("cache",
                 "Miss — calling the model" if cacheable else "Skipped",
@@ -319,6 +322,7 @@ async def governed_chat(
         "audit_id": aid,
         "pii_redacted": pii,
         "injection_detected": False,
+        "cache": cache_status,                             # "miss" | "skipped" (hit returns earlier)
         "principal": principal.subject,
         "role": principal.role,
     }
