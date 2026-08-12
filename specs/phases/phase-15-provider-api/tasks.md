@@ -23,11 +23,11 @@ Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 - [x] tests: shapes, filters, no-network/in-boundary
 
 ## Group 2 — Endpoints resource + enriched models
-- [ ] `GET/POST /v1/endpoints`, `GET/PUT/DELETE /v1/endpoints/{id}`, `/test`, `/approve-egress`
-- [ ] `/v1/backends*` aliases → same handlers (back-compat)
-- [ ] pagination + consistent status codes
-- [ ] enrich `GET /v1/models` (mode/context/pricing/capabilities/health via catalog_lookup)
-- [ ] tests: CRUD via contract, alias back-compat, models enrichment (honest unknown)
+- [x] `GET/POST /v1/endpoints`, `GET/PUT/DELETE /v1/endpoints/{id}`, `/test`, `/approve-egress`
+- [x] `/v1/backends*` aliases → same handlers (back-compat)
+- [x] pagination + consistent status codes
+- [x] enrich `GET /v1/models` (mode/context/pricing/capabilities/health via catalog_lookup)
+- [x] tests: CRUD via contract, alias back-compat, models enrichment (honest unknown)
 
 ## Group 3 — Governed inference/embeddings + OpenAPI/docs
 - [ ] `POST /v1/inference` (governed) + `/v1/chat/completions` alias → one handler

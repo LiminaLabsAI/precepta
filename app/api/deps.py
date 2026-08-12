@@ -26,7 +26,7 @@ def require_auth(principal: Principal | None) -> "None | object":
 
 def require_manage(principal: Principal | None, *, write: bool):
     """Gate a management operation. Returns a JSONResponse to short-circuit, or None."""
-    if principal is None:
+    if principal is None or getattr(principal, "subject", "") in ("", "anonymous"):
         return unauthorized()
     role = getattr(principal, "role", "") or ""
     scope = getattr(principal, "scope", "inference") or "inference"

@@ -474,6 +474,7 @@ def create_app() -> FastAPI:
                 outcome="applied", metadata={"host": _eg.host_of(host)})
         return JSONResponse({"ok": True, "removed": removed})
 
+    @app.post("/v1/endpoints/{provider}/test", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/test")
     def test_backend(provider: str, request: Request) -> JSONResponse:
         """Really probe a registered backend and explain the result honestly —
@@ -520,6 +521,7 @@ def create_app() -> FastAPI:
                              "reason": reason, "host": host,
                              "approvable": is_approvable(base_url)})
 
+    @app.post("/v1/endpoints/{provider}/approve-egress", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/approve-egress")
     def approve_backend_egress(provider: str, request: Request) -> JSONResponse:
         """Approve THIS registered endpoint's host for egress — the host comes
@@ -951,6 +953,8 @@ def create_app() -> FastAPI:
                          "cap_month": key.get("cost_cap_monthly") or 0})
         return JSONResponse({"usage": rows})
 
+    @app.post("/v1/endpoints", tags=["endpoints"], status_code=201,
+              summary="Register an inference endpoint (provider connection)")
     @app.post("/v1/backends")
     async def register_backend(request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -987,6 +991,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "healthy": backend.health()}, status_code=201)
 
+    @app.put("/v1/endpoints/{provider}", tags=["endpoints"], summary="Edit an inference endpoint")
     @app.put("/v1/backends/{provider}")
     async def update_backend(provider: str, request: Request) -> JSONResponse:
         """Edit a registered endpoint in place (URL, model, key, tier, boundary).
@@ -1029,6 +1034,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True, "provider": provider, "tier": tier,
                              "in_boundary": in_boundary, "healthy": backend.health()})
 
+    @app.post("/v1/endpoints/{provider}/boundary", tags=["endpoints"])
     @app.post("/v1/backends/{provider}/boundary")
     async def set_backend_boundary(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -1048,6 +1054,7 @@ def create_app() -> FastAPI:
                                 status_code=404)
         return JSONResponse({"ok": True, "provider": provider, "in_boundary": in_boundary})
 
+    @app.delete("/v1/endpoints/{provider}", tags=["endpoints"], summary="Remove an inference endpoint")
     @app.delete("/v1/backends/{provider}")
     def remove_backend(provider: str, request: Request) -> JSONResponse:
         principal, err = _resolve_principal(request)
@@ -1368,15 +1375,52 @@ def create_app() -> FastAPI:
         from fastapi.staticfiles import StaticFiles
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-    @app.get("/v1/models")
+    def _endpoints_enriched() -> list[dict]:
+        """Live inference endpoints, enriched from the in-boundary catalog
+        (mode/context/capabilities — honest None/'unknown' when unmatched) plus
+        real pricing (TD-001) + real health."""
+        out = []
+        for b in infra_snapshot(get_registry()):
+            model = b.get("model", "")
+            cat = _catalog.catalog_lookup(b["backend"], model) or {}
+            caps = cat.get("capabilities") or {}
+            out.append({
+                "id": b["backend"],
+                "model": model,
+                "mode": cat.get("mode", "unknown"),
+                "in_boundary": b["in_boundary"],
+                "status": b["status"],
+                "host": b.get("host", ""),
+                "max_input_tokens": cat.get("max_input_tokens"),
+                "max_output_tokens": cat.get("max_output_tokens"),
+                "pricing": {"input_per_1m": b.get("price_input_per_1m"),
+                            "output_per_1m": b.get("price_output_per_1m"),
+                            "source": b.get("price_source", "")},
+                "capabilities": {"streaming": caps.get("streaming"),
+                                 "function_calling": caps.get("function_calling"),
+                                 "vision": caps.get("vision")},
+                "catalog_matched": bool(cat),
+            })
+        return out
+
+    @app.get("/v1/models", tags=["catalog"],
+             summary="Your live inference endpoints (OpenAI-compatible + enriched)")
     def list_models() -> dict:
-        reg = get_registry()
-        data = [
-            {"id": f"{name}/*", "object": "model", "owned_by": name,
-             "in_boundary": be.in_boundary}
-            for name, be in sorted(reg.items())
-        ]
+        data = [{"id": (f"{e['id']}/{e['model']}" if e["model"] else e["id"]),
+                 "object": "model", "owned_by": e["id"], **e}
+                for e in _endpoints_enriched()]
         return {"object": "list", "data": data}
+
+    @app.get("/v1/endpoints", tags=["endpoints"],
+             summary="List your configured inference endpoints (enriched + health)")
+    def list_endpoints_ep(request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_manage(principal, write=False)
+        if gerr is not None:
+            return gerr
+        return {"object": "list", "data": _endpoints_enriched()}
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> JSONResponse:
