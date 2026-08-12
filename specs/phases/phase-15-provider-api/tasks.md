@@ -9,12 +9,12 @@ name: provider-api
 Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 
 ## Group 0 — Contract foundations
-- [ ] `app/api/schemas.py` — Pydantic models (Provider, ProviderConfigField, CatalogModel, Endpoint, ModelInfo, Inference req/resp, Embeddings req/resp)
-- [ ] `app/api/errors.py` — standard error envelope + helper
-- [ ] `manage` scope on keys — store column(s), `issue_key` param, authenticate → principal
-- [ ] `app/api/deps.py` — `require_manage(write=…)` dependency; sovereignty stays owner-only
-- [ ] `app/data/model_catalog.json` + `app/catalog.py` — curated in-boundary catalog + `catalog_lookup` + optional LiteLLM import stub
-- [ ] tests: manage-scope authenticate + require_manage matrix; catalog_lookup hit/miss
+- [x] `app/api/schemas.py` — Pydantic models (Provider, ProviderConfigField, CatalogModel, Endpoint, ModelInfo, Inference req/resp, Embeddings req/resp)
+- [x] `app/api/errors.py` — standard error envelope + helper
+- [x] `manage` scope on keys — store column(s), `issue_key` param, authenticate → principal
+- [x] `app/api/deps.py` — `require_manage(write=…)` dependency; sovereignty stays owner-only
+- [x] `app/data/model_catalog.json` + `app/catalog.py` — curated in-boundary catalog + `catalog_lookup` + optional LiteLLM import stub
+- [x] tests: manage-scope authenticate + require_manage matrix; catalog_lookup hit/miss
 
 ## Group 1 — Providers + catalog endpoints
 - [ ] `GET /v1/providers` (types + config_schema)

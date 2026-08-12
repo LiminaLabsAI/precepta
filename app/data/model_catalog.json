@@ -1,0 +1,15 @@
+{
+  "_note": "Curated, in-boundary model catalog (Phase 15). Capabilities/context are best-known reference values; costs are per 1M tokens, null when not publicly known. Local endpoints are free. This ships with Precepta — no external call at runtime. Extend via a vendored LiteLLM import (build-time, optional).",
+  "models": [
+    {"id": "llama3.2:3b", "provider": "ollama", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": 0.0, "output_cost_per_1m": 0.0, "capabilities": {"streaming": true, "function_calling": false, "vision": false}},
+    {"id": "llama3.1:8b", "provider": "ollama", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": 0.0, "output_cost_per_1m": 0.0, "capabilities": {"streaming": true, "function_calling": true, "vision": false}},
+    {"id": "qwen2.5:7b", "provider": "ollama", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": 0.0, "output_cost_per_1m": 0.0, "capabilities": {"streaming": true, "function_calling": true, "vision": false}},
+    {"id": "nomic-embed-text", "provider": "ollama", "mode": "embedding", "max_input_tokens": 8192, "max_output_tokens": null, "input_cost_per_1m": 0.0, "output_cost_per_1m": 0.0, "capabilities": {"streaming": false, "function_calling": false, "vision": false}},
+    {"id": "meta-llama/Llama-3.1-8B-Instruct", "provider": "hf", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": null, "output_cost_per_1m": null, "capabilities": {"streaming": true, "function_calling": true, "vision": false}},
+    {"id": "google/gemma-2-9b-it", "provider": "hf", "mode": "chat", "max_input_tokens": 8192, "max_output_tokens": 8192, "input_cost_per_1m": null, "output_cost_per_1m": null, "capabilities": {"streaming": true, "function_calling": false, "vision": false}},
+    {"id": "BAAI/bge-small-en-v1.5", "provider": "hf", "mode": "embedding", "max_input_tokens": 512, "max_output_tokens": null, "input_cost_per_1m": null, "output_cost_per_1m": null, "capabilities": {"streaming": false, "function_calling": false, "vision": false}},
+    {"id": "mistral-large-2411", "provider": "vllm", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": null, "output_cost_per_1m": null, "capabilities": {"streaming": true, "function_calling": true, "vision": false}},
+    {"id": "qwen2-72b", "provider": "neysa", "mode": "chat", "max_input_tokens": 131072, "max_output_tokens": 8192, "input_cost_per_1m": 0.30, "output_cost_per_1m": 0.30, "capabilities": {"streaming": true, "function_calling": true, "vision": false}},
+    {"id": "gpt-4o-mini", "provider": "openai-compatible", "mode": "chat", "max_input_tokens": 128000, "max_output_tokens": 16384, "input_cost_per_1m": 0.15, "output_cost_per_1m": 0.60, "capabilities": {"streaming": true, "function_calling": true, "vision": true}}
+  ]
+}
