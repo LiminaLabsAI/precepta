@@ -154,7 +154,11 @@ const nav = [
   // Screen + /v1/workflow endpoint are kept; uncomment to restore.
   // {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
-  {key:'catalog',label:'Model catalog',icon:'layers'},
+  // Model catalog hidden from the menu — redundant with the Inference plane for a
+  // sovereign install (you connect a few endpoints, not browse 3000 cloud models).
+  // The catalog API + data are KEPT: they enrich /v1/models (capabilities/pricing)
+  // and power the model-picker in "Add inference endpoint". Uncomment to restore.
+  // {key:'catalog',label:'Model catalog',icon:'layers'},
   {key:'api',label:'API',icon:'code'},
   // Audit & Attestation hidden from the menu per request — still reachable via the
   // Traces "Generate attestation" button; uncomment to restore.
