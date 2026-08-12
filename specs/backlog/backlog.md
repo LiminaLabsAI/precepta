@@ -53,6 +53,7 @@ type: Backlog
 | FEAT-016 | **Bill-back** — show each team/app exactly what it cost (internal chargeback view) | P2 | **resolved 2026-08-10** | 11 | Competitor parity (LiteLLM chargeback). Lives in the Traces/observability surface. |
 | FEAT-018 | **Auto-provision users** from the company directory (SCIM) | P2 | open | deploy | Competitor parity. Enterprise access; scope at deploy. |
 | FEAT-021 | **Workflow builder** — editable canvas → writes resolver config, validation-gated; governance rails fixed | P2 | planned (outline) | 13 | Compose/edit routing. Validation: no orphan intents; every intent reaches an allowed target; no rule fights a sovereignty policy. Full brainstorm when its turn comes. |
+| FEAT-022 | **AI Provider Integration API** — governed provider-integration surface: `GET /v1/providers` + in-boundary model **catalog** (`/v1/catalog/models`: capabilities/context/pricing) → register an **inference endpoint** (`/v1/endpoints`, renames `/v1/backends` +alias) → governed **`/v1/inference` + `/v1/embeddings`** (`/v1/chat/completions` kept as OpenAI-compat alias); auth = keys + **`manage` scope** (sovereignty owner-only); typed OpenAPI at `/docs` + in-product API page | P1 | **planned (brainstormed 2026-08-11)** | 15 | Brainstormed → `specs/phases/phase-15-provider-api/`. Reframed off generic CRUD onto AI-provider integration (LiteLLM-style catalog). Vocabulary: drops "backend"→endpoint, "chat"→inference. Deferred: SDKs, webhooks, GraphQL, Terraform, per-key rate-limit. |
 
 ## Tech Debt
 
