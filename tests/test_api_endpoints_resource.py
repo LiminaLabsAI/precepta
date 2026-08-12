@@ -112,6 +112,21 @@ def test_smart_router_is_a_listed_model():
     assert "auto:cheapest" in ids and "auto:best-quality" in ids
 
 
+def test_chat_missing_messages_is_400_not_502():
+    # A malformed chat request must be a client error (OpenAI-compat), never a
+    # backend failure surfaced as 502.
+    for bad in ({}, {"model": "auto"}, {"model": "auto", "messages": []}):
+        r = client.post("/v1/chat/completions", headers=ADMIN, json=bad)
+        assert r.status_code == 400, (bad, r.status_code, r.text)
+        assert r.json()["error"]["type"] == "invalid_request_error"
+    # the /v1/inference alias shares the same guard
+    assert client.post("/v1/inference", headers=ADMIN, json={}).status_code == 400
+    # a non-object JSON body is also a 400 (not a 500)
+    r = client.post("/v1/chat/completions",
+                    headers={**ADMIN, "Content-Type": "application/json"}, content="[1,2,3]")
+    assert r.status_code == 400
+
+
 def test_openapi_shows_request_bodies():
     p = client.get("/openapi.json").json()["paths"]
     for path in ("/v1/chat/completions", "/v1/embeddings", "/v1/moderations"):
