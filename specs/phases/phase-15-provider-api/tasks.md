@@ -30,11 +30,11 @@ Legend: `[ ]` todo · `[/]` in progress · `[x]` done
 - [x] tests: CRUD via contract, alias back-compat, models enrichment (honest unknown)
 
 ## Group 3 — Governed inference/embeddings + OpenAPI/docs
-- [ ] `POST /v1/inference` (governed) + `/v1/chat/completions` alias → one handler
-- [ ] `POST /v1/embeddings` (governed; in-boundary embedding model)
-- [ ] OpenAPI: tags, summaries, Bearer security scheme; enable `/docs` + `/openapi.json`
-- [ ] `docs/api/README.md` — auth + flow + runnable curl examples
-- [ ] tests: governed inference/embeddings (policy/trace/audit), openapi presence
+- [x] `POST /v1/inference` (governed) + `/v1/chat/completions` alias → one handler
+- [x] `POST /v1/embeddings` (governed; in-boundary embedding model)
+- [x] OpenAPI: tags, summaries, Bearer security scheme; enable `/docs` + `/openapi.json`
+- [x] `docs/api/README.md` — auth + flow + runnable curl examples
+- [x] tests: governed inference/embeddings (policy/trace/audit), openapi presence
 
 ## Group 4 — Console surface
 - [ ] migrate Console `/v1/backends*` → `/v1/endpoints*`; scrub "backend" copy → "endpoint"

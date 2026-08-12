@@ -1422,6 +1422,8 @@ def create_app() -> FastAPI:
             return gerr
         return {"object": "list", "data": _endpoints_enriched()}
 
+    @app.post("/v1/inference", tags=["inference"],
+              summary="Governed inference (OpenAI-compatible)")
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> JSONResponse:
         body = await request.json()
@@ -1623,6 +1625,64 @@ def create_app() -> FastAPI:
             return _sse_response(payload)
         return JSONResponse(payload, status_code=status)
 
+    @app.post("/v1/embeddings", tags=["inference"],
+              summary="Governed embeddings (in-boundary; PII-redacted, audited)")
+    async def embeddings_ep(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        inp = body.get("input")
+        items = [inp] if isinstance(inp, str) else (inp if isinstance(inp, list) else None)
+        if not items:
+            return _api_errors.invalid_request("'input' (string or list of strings) is required")
+        from .governance.firewall import scrub_input
+        from .cache import _EMBED_MODEL
+        base = os.environ.get(
+            "PRECEPTA_OLLAMA_URL", f"http://127.0.0.1:{get_settings().ollama_port}").rstrip("/")
+        actor = getattr(principal, "subject", "") or "anonymous"
+
+        def _embed(text: str):
+            try:
+                r = httpx.post(base + "/api/embeddings", timeout=15.0,
+                               json={"model": _EMBED_MODEL, "prompt": text or ""})
+                r.raise_for_status()
+                v = r.json().get("embedding")
+                return v if isinstance(v, list) and v else None
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                return None
+
+        data, pii_total, tok = [], 0, 0
+        for i, raw in enumerate(items):
+            scrubbed, pii, injection = scrub_input(str(raw))   # governance: redact + detect
+            if injection:
+                get_chain().append(event_type="embeddings", actor=actor, resource="embeddings",
+                                   action="blocked", outcome="blocked",
+                                   metadata={"reason": "prompt-injection"})
+                return _api_errors.forbidden(
+                    "input blocked by the firewall (prompt-injection detected)",
+                    code="firewall_block")
+            vec = _embed(scrubbed)
+            if vec is None:
+                return _api_errors.error_json(
+                    503, "unavailable",
+                    "no in-boundary embedding model is reachable", code="embeddings_unavailable")
+            data.append({"object": "embedding", "index": i, "embedding": vec})
+            pii_total += pii
+            tok += max(1, len(scrubbed) // 4)
+        get_chain().append(event_type="embeddings", actor=actor, resource="embeddings",
+                           action="served", outcome="allowed",
+                           metadata={"count": len(data), "pii_redacted": pii_total})
+        return JSONResponse({
+            "object": "list", "data": data, "model": f"ollama/{_EMBED_MODEL}",
+            "usage": {"prompt_tokens": tok, "total_tokens": tok},
+            "precepta": {"backend_used": "ollama", "in_boundary": True,
+                         "policy_decision": "allow", "pii_redacted": pii_total},
+        })
+
     # Seed the pricing source-of-truth once (idempotent) so known backends have real prices.
     try:
         from . import pricing
@@ -1630,6 +1690,22 @@ def create_app() -> FastAPI:
     except Exception:  # pragma: no cover - never block app boot on seeding
         pass
 
+    # Curated OpenAPI: advertise the Bearer security scheme so /docs shows "Authorize".
+    from fastapi.openapi.utils import get_openapi
+
+    def _custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version,
+                             summary=app.summary, routes=app.routes)
+        comps = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+        comps["bearerAuth"] = {"type": "http", "scheme": "bearer",
+                               "description": "A Precepta API key (inference or management scope)."}
+        schema["security"] = [{"bearerAuth": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = _custom_openapi
     return app
 
 
