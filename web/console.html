@@ -89,6 +89,7 @@ const state = {
 
   chatModel:'', chatInput:'', messages:[], chatPending:false, testResults:{},
   catalog:null, catalogFilters:{model:'',provider:'',mode:'',fc:false,vision:false}, catalogPage:1, catalogBusy:false,
+  apiTab:'curl',
   copilotQuery:'',
 };
 
@@ -159,7 +160,8 @@ const nav = [
   // The catalog API + data are KEPT: they enrich /v1/models (capabilities/pricing)
   // and power the model-picker in "Add inference endpoint". Uncomment to restore.
   // {key:'catalog',label:'Model catalog',icon:'layers'},
-  {key:'api',label:'API',icon:'code'},
+  // API is not its own tab — it lives inside the Deployment screen (how to run
+  // it AND how to call it belong together).
   // Audit & Attestation hidden from the menu per request — still reachable via the
   // Traces "Generate attestation" button; uncomment to restore.
   // {key:'audit',label:'Audit & Attestation',icon:'file-check'},
@@ -197,6 +199,7 @@ const app = {
   set(k,v){ state[k]=v; },
   onSelect(k,v){ state[k]=v; render(); },
   setScreen(s){ state.screen=s; state.profileMenuOpen=false; render(); },
+  setApiTab(t){ state.apiTab=t; render(); },
   goToPolicies(){ state.screen='policies'; render(); },
   goToAuditFiltered(f){ state.screen='audit'; state.auditEventFilter=f; render(); },
   skipOnboarding(){ state.screen='overview'; render(); },
@@ -747,7 +750,8 @@ function deploymentView(){
     <button onclick="app.copyRunbook()" style="padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">${state.runbookCopied?'✓ Copied':'Copy the whole runbook'}</button>
     <span style="font-size:11px;color:#9CA3AF">all steps as one block, to hand to your IT team</span>
   </div>`;
-  return head+statusStrip+checklist+stepsBlock+copy;
+  const base=(location.origin||'http://127.0.0.1:8000');
+  return head+statusStrip+checklist+stepsBlock+copy+`<div style="height:20px"></div>`+apiSection(base);
 }
 
 /* ---------- Model catalog (LiteLLM-style browser) ---------- */
@@ -794,34 +798,38 @@ function catalogView(){
   return head+filters+`<div class="pc-scroll" style="border:1px solid #E5E7EB;border-radius:8px;overflow:auto;max-height:62vh"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:920px"><thead><tr>${th('Model')}${th('Provider')}${th('Mode')}${th('Max input','right')}${th('Max output','right')}${th('Input $/1M','right')}${th('Output $/1M','right')}${th('Capabilities')}</tr></thead><tbody>${rows}</tbody></table></div>`+pager;
 }
 
-/* ---------- API (integrator surface) ---------- */
-function apiView(){
-  const base=(location.origin||'http://127.0.0.1:8000');
-  const ep=(m,p,d)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid #F3F4F6"><span style="flex:none;font-size:10.5px;font-weight:700;width:52px;color:#1D4ED8">${m}</span><code style="flex:none;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#111827">${esc(p)}</code><span style="font-size:12px;color:#9CA3AF">${d}</span></div>`;
-  const code=(t)=>`<div style="position:relative;background:#0B1220;border-radius:8px;padding:12px 14px;margin:8px 0;overflow-x:auto"><button onclick="app.copyText(this,\`${t.replace(/`/g,'\\`').replace(/\\/g,'\\\\')}\`)" style="position:absolute;top:8px;right:8px;font-size:11px;padding:3px 9px;border-radius:6px;background:#1F2937;color:#E5E7EB;border:1px solid #374151;cursor:pointer">Copy</button><pre style="margin:0;color:#E5E7EB;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;white-space:pre">${esc(t)}</pre></div>`;
-  return `<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">API</h1>
-    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:720px;line-height:1.6">Run Precepta as code — discover providers, register inference endpoints, and drive <strong>governed</strong> inference &amp; embeddings. Everything is sovereign: nothing leaves your boundary. Full interactive schema at <a href="/docs" target="_blank">/docs</a>.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px"><div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Base URL</div><code style="font-family:'JetBrains Mono',monospace;font-size:13px">${esc(base)}</code></div>
-      <div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px"><div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Auth</div><code style="font-family:'JetBrains Mono',monospace;font-size:12.5px">Authorization: Bearer &lt;api-key&gt;</code><div style="font-size:11.5px;color:#9CA3AF;margin-top:6px">Inference key → call models. Management key → configure the platform (issue one in Keys &amp; budgets). Sovereignty stays owner-only.</div></div>
+/* ---------- API section (lives inside Deployment) ---------- */
+function apiCode(t){
+  return `<div style="position:relative;background:#0B1220;border-radius:8px;padding:12px 14px;overflow-x:auto"><button onclick="app.copyText(this,\`${t.replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)" style="position:absolute;top:8px;right:8px;font-size:11px;padding:3px 9px;border-radius:6px;background:#1F2937;color:#E5E7EB;border:1px solid #374151;cursor:pointer">Copy</button><pre style="margin:0;color:#E5E7EB;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word">${esc(t)}</pre></div>`;
+}
+function apiSection(base){
+  const tab=state.apiTab||'curl';
+  const ep=(m,p,d)=>`<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #F3F4F6"><span style="flex:none;font-size:10px;font-weight:700;width:46px;color:#1D4ED8">${m}</span><code style="flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:#111827">${esc(p)}</code><span style="font-size:11.5px;color:#9CA3AF">${d}</span></div>`;
+  const tb=(k,l)=>`<div onclick="app.setApiTab('${k}')" style="padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;border-bottom:2px solid ${tab===k?'#2563EB':'transparent'};color:${tab===k?'#111827':'#6B7280'}">${l}</div>`;
+  const samples={
+    curl:`curl -sX POST ${base}/v1/inference \\\n  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"hello"}]}'`,
+    python:`import requests\nr = requests.post("${base}/v1/inference",\n  headers={"Authorization": "Bearer " + KEY},\n  json={"model": "auto",\n        "messages": [{"role": "user", "content": "hello"}]})\nprint(r.json()["choices"][0]["message"]["content"])`,
+    openai:`# pip install openai — point it at Precepta; your prompts stay in-boundary\nfrom openai import OpenAI\nclient = OpenAI(base_url="${base}/v1", api_key=KEY)\nresp = client.chat.completions.create(\n  model="auto",\n  messages=[{"role": "user", "content": "hello"}])\nprint(resp.choices[0].message.content)`,
+  };
+  return `<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px 20px;margin-bottom:20px">
+    <div style="font-weight:600;font-size:15px;margin-bottom:2px">Use the API</div>
+    <div style="font-size:12.5px;color:#6B7280;margin-bottom:14px;max-width:660px;line-height:1.55">Call your governed, sovereign gateway from any app — nothing leaves your boundary. It's OpenAI-compatible, so any OpenAI SDK works by just changing the base URL.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:220px;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px;padding:10px 12px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Base URL</div><code style="font-family:'JetBrains Mono',monospace;font-size:12.5px">${esc(base)}</code></div>
+      <div style="flex:1;min-width:220px;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px;padding:10px 12px"><div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Auth</div><code style="font-family:'JetBrains Mono',monospace;font-size:12px">Authorization: Bearer &lt;key&gt;</code></div>
     </div>
-    <div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 20px;margin-bottom:20px">
-      <div style="font-weight:600;font-size:14px;margin-bottom:8px">Endpoints</div>
-      ${ep('GET','/v1/providers','provider types + connect-config')}
-      ${ep('GET','/v1/catalog/models','model catalog — capabilities/context/pricing')}
-      ${ep('POST','/v1/endpoints','register an inference endpoint')}
-      ${ep('GET','/v1/endpoints','your endpoints — enriched + health')}
-      ${ep('POST','/v1/inference','governed inference (OpenAI-shaped)')}
-      ${ep('POST','/v1/embeddings','governed embeddings (in-boundary)')}
-      ${ep('GET','/v1/usage','spend by key/team')}
-      ${ep('GET','/v1/traces','the governed journey per request')}
-    </div>
-    <div style="font-weight:600;font-size:14px;margin-bottom:4px">Quickstart</div>
-    <div style="font-size:12px;color:#9CA3AF;margin-bottom:6px">Discover → register → run. <code>/v1/chat/completions</code> is a drop-in OpenAI-compat alias of <code>/v1/inference</code>.</div>
-    ${code(`curl -s ${base}/v1/providers -H "Authorization: Bearer $KEY"`)}
-    ${code(`curl -s -X POST ${base}/v1/inference -H "Authorization: Bearer $KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"hello"}]}'`)}
-    ${code(`curl -s -X POST ${base}/v1/embeddings -H "Authorization: Bearer $KEY" \\\n  -H "Content-Type: application/json" -d '{"model":"auto","input":["embed me"]}'`)}
-    <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px">See the full guide in <code>docs/api/README.md</code> and the live schema at <a href="/docs" target="_blank">/docs</a>.</div>`;
+    <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Quickstart — one call</div>
+    <div style="display:flex;gap:2px;border-bottom:1px solid #E5E7EB;margin-bottom:8px">${tb('curl','curl')}${tb('python','Python')}${tb('openai','OpenAI SDK')}</div>
+    ${apiCode(samples[tab])}
+    <div style="font-size:11px;color:#9CA3AF;margin-top:8px"><code>/v1/chat/completions</code> is a drop-in alias of <code>/v1/inference</code>. Get a key in <a href="#" onclick="event.preventDefault();app.setScreen('keys')">Keys &amp; budgets</a>.</div>
+    <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 4px">Endpoints</div>
+    ${ep('POST','/v1/inference','governed inference (OpenAI-shaped)')}
+    ${ep('POST','/v1/embeddings','governed embeddings (in-boundary)')}
+    ${ep('GET','/v1/endpoints','your inference endpoints — enriched + health')}
+    ${ep('GET','/v1/catalog/models','model catalog — capabilities/context/pricing')}
+    ${ep('GET','/v1/usage · /v1/traces','spend + the governed journey')}
+    <div style="font-size:11.5px;color:#9CA3AF;margin-top:10px">Full interactive schema at <a href="/docs" target="_blank">/docs</a> · guide in <code>docs/api/README.md</code>.</div>
+  </div>`;
 }
 
 /* ---------- Workflow (read-only, from live config) ---------- */
@@ -1531,7 +1539,6 @@ function contentFor(){
     case 'workflow': return workflowView();
     case 'traces': return tracesView();
     case 'catalog': return catalogView();
-    case 'api': return apiView();
     case 'modelplane': return modelPlaneView();
     case 'keys': return keysView();
     case 'savings': return savingsView();
