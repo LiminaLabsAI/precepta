@@ -913,17 +913,49 @@ def create_app() -> FastAPI:
             return _api_errors.not_found(f"unknown provider type '{provider}'")
         return p
 
-    @app.get("/v1/catalog/models", tags=["catalog"],
-             summary="Curated, in-boundary model catalog (capabilities/context/pricing)")
-    def catalog_models_ep(request: Request, provider: str | None = None,
-                          mode: str | None = None):
+    @app.get("/v1/catalog/providers", tags=["catalog"],
+             summary="Providers in the browsable catalog, with model counts")
+    def catalog_providers_ep(request: Request):
         principal, err = _resolve_principal(request)
         if err is not None:
             return err
         gerr = _api_deps.require_auth(principal)
         if gerr is not None:
             return gerr
-        return {"object": "list", "data": _catalog.list_models(provider=provider, mode=mode)}
+        return {"object": "list", "data": _catalog.catalog_providers()}
+
+    @app.get("/v1/catalog/models", tags=["catalog"],
+             summary="In-boundary model catalog (LiteLLM-style: filter + paginate)")
+    def catalog_models_ep(request: Request, provider: str | None = None,
+                          mode: str | None = None, model: str | None = None,
+                          supports_vision: bool | None = None,
+                          supports_function_calling: bool | None = None,
+                          supports_reasoning: bool | None = None,
+                          page: int = 1, page_size: int = 100):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        return _catalog.query_models(
+            provider=provider, mode=mode, model=model, supports_vision=supports_vision,
+            supports_function_calling=supports_function_calling,
+            supports_reasoning=supports_reasoning, page=page, page_size=page_size)
+
+    @app.get("/v1/catalog/models/{model_id:path}", tags=["catalog"],
+             summary="A single catalog model by id")
+    def catalog_model_ep(model_id: str, request: Request):
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_auth(principal)
+        if gerr is not None:
+            return gerr
+        m = _catalog.get_model(model_id)
+        if m is None:
+            return _api_errors.not_found(f"unknown model '{model_id}'")
+        return m
 
     @app.get("/v1/compression/stats")
     def compression_stats(request: Request) -> JSONResponse:

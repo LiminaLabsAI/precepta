@@ -69,8 +69,25 @@ management route, or a read-only key writing) · `404` = unknown resource.
 Point any OpenAI SDK at `<base>/v1` with a Precepta key. `/v1/chat/completions`
 and `/v1/models` keep working unchanged; `/v1/inference` is the branded alias.
 
+## Model catalog (browse 3000+ models, in-boundary)
+LiteLLM-style catalog — filter + paginate, no external call at runtime.
+```bash
+# filter by provider / mode / capability / substring; paginate
+curl -s "$BASE/v1/catalog/models?provider=openai&mode=chat&supports_vision=true&page=1&page_size=50" -H "Authorization: Bearer $KEY"
+# providers with model counts (for a filter dropdown)
+curl -s $BASE/v1/catalog/providers -H "Authorization: Bearer $KEY"
+# a single model
+curl -s $BASE/v1/catalog/models/gpt-4o-mini -H "Authorization: Bearer $KEY"
+```
+Query params: `provider`, `mode`, `model` (substring), `supports_function_calling`,
+`supports_vision`, `supports_reasoning`, `page`, `page_size` (≤500). Response:
+`{ data:[…], total_count, has_more, page, page_size }`. Browse it in the Console
+under **Model catalog**.
+
 ## Notes
-- The model catalog is **curated and in-boundary** — no external call at runtime.
-  Live-endpoint capabilities are matched to it best-effort (honest `unknown` when
-  a model isn't in the catalog).
+- The model catalog ships **in-boundary**: a vendored snapshot of BerriAI/litellm's
+  `model_prices_and_context_window.json` (MIT-licensed reference data), merged with
+  Precepta's curated entries — **no external call at runtime**. Live-endpoint
+  capabilities are matched to it best-effort (honest `unknown` when a model isn't
+  in the catalog).
 - `/v1/backends*` remain as back-compat aliases of `/v1/endpoints*`.

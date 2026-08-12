@@ -88,6 +88,7 @@ const state = {
   settingsOpen:false, settingsTab:'general', routerKeyInput:'',
 
   chatModel:'', chatInput:'', messages:[], chatPending:false, testResults:{},
+  catalog:null, catalogFilters:{model:'',provider:'',mode:'',fc:false,vision:false}, catalogPage:1, catalogBusy:false,
   copilotQuery:'',
 };
 
@@ -153,6 +154,7 @@ const nav = [
   // Screen + /v1/workflow endpoint are kept; uncomment to restore.
   // {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
+  {key:'catalog',label:'Model catalog',icon:'layers'},
   {key:'api',label:'API',icon:'code'},
   // Audit & Attestation hidden from the menu per request — still reachable via the
   // Traces "Generate attestation" button; uncomment to restore.
@@ -742,6 +744,50 @@ function deploymentView(){
     <span style="font-size:11px;color:#9CA3AF">all steps as one block, to hand to your IT team</span>
   </div>`;
   return head+statusStrip+checklist+stepsBlock+copy;
+}
+
+/* ---------- Model catalog (LiteLLM-style browser) ---------- */
+function catalogView(){
+  const f=state.catalogFilters, c=state.catalog;
+  const provs=window.__catalogProviders||[];
+  const cost=v=>v==null?'<span style="color:#D1D5DB">—</span>':('$'+Number(v).toFixed(2));
+  const ctx=v=>v==null?'<span style="color:#D1D5DB">—</span>':Number(v).toLocaleString();
+  const badge=(on,label,bg,fg)=>on?`<span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:9px;background:${bg};color:${fg};margin-right:4px">${label}</span>`:'';
+  const modeBadge=m=>{const col={chat:['#EFF6FF','#1D4ED8'],embedding:['#F0FDF4','#065F46'],image_generation:['#FEF3C7','#92400E'],audio_transcription:['#FDF2F8','#9D174B'],rerank:['#F5F3FF','#6D28D9']}[m]||['#F3F4F6','#6B7280'];return `<span style="font-size:10.5px;font-weight:500;padding:1px 8px;border-radius:9px;background:${col[0]};color:${col[1]}">${esc(m)}</span>`;};
+  const inp=(ph,val,handler)=>`<input value="${esc(val||'')}" oninput="${handler}" placeholder="${ph}" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px">`;
+  const provOpts=`<option value="">All providers (${provs.length})</option>`+provs.map(p=>`<option value="${esc(p.provider)}" ${p.provider===f.provider?'selected':''}>${esc(p.provider)} (${p.model_count})</option>`).join('');
+  const modeOpts=['','chat','embedding','image_generation','audio_transcription','rerank'].map(m=>`<option value="${m}" ${m===f.mode?'selected':''}>${m?esc(m):'All modes'}</option>`).join('');
+  const chip=(on,label,handler)=>`<button onclick="${handler}" style="font-size:12px;padding:5px 11px;border-radius:16px;cursor:pointer;border:1px solid ${on?'#93C5FD':'#E5E7EB'};background:${on?'#EFF6FF':'#fff'};color:${on?'#1D4ED8':'#374151'}">${label}</button>`;
+  const filters=`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px">
+    <div style="flex:1;min-width:220px;position:relative"><i data-lucide="search" style="width:14px;height:14px;color:#9CA3AF;position:absolute;left:10px;top:9px"></i><input value="${esc(f.model)}" oninput="app.setCatalogFilter('model',this.value)" placeholder="Search models…" style="width:100%;box-sizing:border-box;padding:7px 10px 7px 30px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px"></div>
+    <select onchange="app.setCatalogFilter('provider',this.value)" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;background:#fff;max-width:220px">${provOpts}</select>
+    <select onchange="app.setCatalogFilter('mode',this.value)" style="padding:7px 10px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px;background:#fff">${modeOpts}</select>
+    ${chip(f.fc,'Function calling',"app.setCatalogFilter('fc',!state.catalogFilters.fc)")}
+    ${chip(f.vision,'Vision',"app.setCatalogFilter('vision',!state.catalogFilters.vision)")}
+  </div>`;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">Model catalog</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:16px;max-width:720px;line-height:1.6">Browse ${c?c.total_count.toLocaleString():'thousands of'} models across ${provs.length||'100+'} providers — context window, price and capabilities. Fully <strong>in-boundary</strong> (a vendored snapshot; no external call). Pick one, then register it under <a href="#" onclick="event.preventDefault();app.setScreen('modelplane')">Inference plane</a>.</div>`;
+  if(!c) return head+filters+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Loading catalog…</div>`;
+  const th=(t,al)=>`<th style="text-align:${al||'left'};padding:9px 12px;font-size:10.5px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:#F9FAFB;white-space:nowrap">${t}</th>`;
+  const rows=c.data.map(m=>`<tr style="border-top:1px solid #F3F4F6">
+    <td style="padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500">${esc(m.id)}</td>
+    <td style="padding:9px 12px;font-size:12.5px;color:#374151">${esc(m.provider)}</td>
+    <td style="padding:9px 12px">${modeBadge(m.mode)}</td>
+    <td style="padding:9px 12px;text-align:right;font-size:12.5px">${ctx(m.max_input_tokens)}</td>
+    <td style="padding:9px 12px;text-align:right;font-size:12.5px">${ctx(m.max_output_tokens)}</td>
+    <td style="padding:9px 12px;text-align:right;font-size:12.5px;font-family:'JetBrains Mono',monospace">${cost(m.input_cost_per_1m)}</td>
+    <td style="padding:9px 12px;text-align:right;font-size:12.5px;font-family:'JetBrains Mono',monospace">${cost(m.output_cost_per_1m)}</td>
+    <td style="padding:9px 12px;white-space:nowrap">${badge(m.supports_function_calling,'FC','#EFF6FF','#1D4ED8')}${badge(m.supports_vision,'Vision','#F0FDF4','#065F46')}${badge(m.supports_reasoning,'Reason','#F5F3FF','#6D28D9')}${badge(m.supports_prompt_caching,'Cache','#FFF7ED','#9A3412')}</td>
+  </tr>`).join('')||`<tr><td colspan="8" style="padding:20px 12px;color:#9CA3AF;font-size:13px">No models match these filters.</td></tr>`;
+  const from=(c.page-1)*c.page_size+1, to=Math.min(c.page*c.page_size,c.total_count);
+  const pager=`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+    <span style="font-size:12px;color:#6B7280">${c.total_count?`${from.toLocaleString()}–${to.toLocaleString()} of ${c.total_count.toLocaleString()}`:'0 results'}</span>
+    <div style="display:flex;gap:6px">
+      <button onclick="app.catalogGoPage(-1)" ${c.page<=1?'disabled':''} style="font-size:12px;padding:5px 11px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;cursor:${c.page<=1?'not-allowed':'pointer'};opacity:${c.page<=1?.5:1}">Prev</button>
+      <span style="font-size:12px;color:#6B7280;padding:5px 4px">Page ${c.page}</span>
+      <button onclick="app.catalogGoPage(1)" ${c.has_more?'':'disabled'} style="font-size:12px;padding:5px 11px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;cursor:${c.has_more?'pointer':'not-allowed'};opacity:${c.has_more?1:.5}">Next</button>
+    </div></div>`;
+  return head+filters+`<div class="pc-scroll" style="border:1px solid #E5E7EB;border-radius:8px;overflow:auto;max-height:62vh"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:920px"><thead><tr>${th('Model')}${th('Provider')}${th('Mode')}${th('Max input','right')}${th('Max output','right')}${th('Input $/1M','right')}${th('Output $/1M','right')}${th('Capabilities')}</tr></thead><tbody>${rows}</tbody></table></div>`+pager;
 }
 
 /* ---------- API (integrator surface) ---------- */
@@ -1480,6 +1526,7 @@ function contentFor(){
     case 'deployment': return deploymentView();
     case 'workflow': return workflowView();
     case 'traces': return tracesView();
+    case 'catalog': return catalogView();
     case 'api': return apiView();
     case 'modelplane': return modelPlaneView();
     case 'keys': return keysView();
@@ -1891,6 +1938,33 @@ render();
     if(sc==="traces"){ loadOrg(); loadTraces(); loadBillback(); }
     if(sc==="workflow"){ loadWorkflow(); }
     if(sc==="deployment"){ loadDeployment(); loadInfra(); loadKeys(); }
+    if(sc==="catalog"){ app.loadCatalog(); }
+  };
+  app.loadCatalog = async function(reset){
+    if(reset){ state.catalogPage=1; }
+    if(!window.__catalogProviders){ const pv=await getJSON("/v1/catalog/providers"); if(pv&&pv.data){ window.__catalogProviders=pv.data; } }
+    const f=state.catalogFilters, q=new URLSearchParams();
+    q.set("page",state.catalogPage); q.set("page_size","50");
+    if(f.model) q.set("model",f.model);
+    if(f.provider) q.set("provider",f.provider);
+    if(f.mode) q.set("mode",f.mode);
+    if(f.fc) q.set("supports_function_calling","true");
+    if(f.vision) q.set("supports_vision","true");
+    state.catalogBusy=true;
+    const d=await getJSON("/v1/catalog/models?"+q.toString());
+    state.catalogBusy=false;
+    if(d && d.data){ state.catalog=d; render(); }
+  };
+  let _catTimer=null;
+  app.setCatalogFilter = function(k,v){
+    state.catalogFilters[k]=v; state.catalogPage=1;
+    if(k==="model"){ clearTimeout(_catTimer); _catTimer=setTimeout(()=>app.loadCatalog(),250); }
+    else app.loadCatalog();
+  };
+  app.catalogGoPage = function(delta){
+    const c=state.catalog; if(!c) return;
+    if(delta<0 && c.page<=1) return; if(delta>0 && !c.has_more) return;
+    state.catalogPage=Math.max(1,c.page+delta); app.loadCatalog();
   };
   async function loadAuthz(){
     const roles=await getJSON("/v1/authz/roles"); if(roles && roles.roles){ window.__authzRoles=roles.roles; render(); }
