@@ -1,0 +1,49 @@
+# Render Blueprint — hosted DEMO of the Precepta Console (no terminal needed).
+#
+# WHY THIS EXISTS: serverless hosts (Vercel/Netlify) can't run Precepta — it needs
+# a writable database on disk, which they don't provide ("unable to open database
+# file"). Render runs the container with a real persistent disk, from a web
+# dashboard. This is a RELAXED-sovereignty demo: the in-boundary Ollama models and
+# the zero-egress broker are NOT part of this single-service deploy, so live
+# Playground inference is limited — but sign-in, keys, policies, audit, the model
+# catalog and the whole Console UI work. For the FULL sovereign stack (local models
+# + zero-egress), use the docker-compose VM path in deploy/ instead.
+#
+# HOW TO USE (all in the Render dashboard):
+#   1. render.com → New → Blueprint → connect this GitHub repo → Apply.
+#   2. When prompted, paste the 3 secret env vars (marked sync:false below):
+#        OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, PRECEPTA_ADMIN_EMAILS
+#   3. Service → Settings → Custom Domains → add console.preceptaai.com, then set
+#      the CNAME it shows you at your DNS provider. Render issues TLS automatically.
+#   4. In Google Cloud → your OAuth client, keep the Authorized redirect URI:
+#        https://console.preceptaai.com/auth/sso/callback
+#
+services:
+  - type: web
+    name: precepta-console
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    plan: starter                 # required for a persistent disk (~$7/mo)
+    healthCheckPath: /health
+    disk:
+      name: precepta-data         # the writable DB lives here (survives deploys)
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PRECEPTA_DB
+        value: /data/preceptaai.db
+      - key: PRECEPTA_SOVEREIGN
+        value: "false"            # no in-boundary models on this managed host
+      - key: ORG_NAME
+        value: Precepta
+      - key: OIDC_ISSUER
+        value: https://accounts.google.com
+      - key: OIDC_REDIRECT
+        value: https://console.preceptaai.com/auth/sso/callback
+      - key: OIDC_CLIENT_ID
+        sync: false               # paste in the Render dashboard (not stored in git)
+      - key: OIDC_CLIENT_SECRET
+        sync: false               # paste in the Render dashboard (not stored in git)
+      - key: PRECEPTA_ADMIN_EMAILS
+        sync: false               # paste in the Render dashboard (your email)
