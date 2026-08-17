@@ -17,9 +17,9 @@ phase: 17
 - [x] Console License screen (nav item, activate + plan/days/state) — 3 states render
 
 ## Group 2 — Heartbeat client + disclosure
-- [ ] Metadata-only heartbeat body → daily POST to `{PRECEPTA_LICENSE_URL}/license/heartbeat` (fail-soft)
-- [ ] Auto-approve the license host in egress + disclose in the attestation
-- [ ] Store last-heartbeat + server-reported plan (propagate plan changes)
+- [x] Metadata-only `heartbeat_body()` + `heartbeat_once(poster)` → POST `{PRECEPTA_LICENSE_URL}/license/heartbeat` (fail-soft; no-op when unlicensed)
+- [x] Lazy egress auto-approve (`seed_license_egress`, only when licensed) + attestation `licensing` disclosure
+- [x] Store last-heartbeat + server-reported plan (`record_heartbeat_result`)
 
 ## Group 3 — Enforcement (flag-gated)
 - [ ] `PRECEPTA_LICENSE_ENFORCE` (default off): expired/unlicensed → new inference 403 (read-only); grace warns

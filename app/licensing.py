@@ -157,3 +157,47 @@ def status(now: _dt.datetime | None = None) -> dict:
 def enforcing() -> bool:
     """Enforcement is OFF by default so local/dev is never broken; production opts in."""
     return os.environ.get("PRECEPTA_LICENSE_ENFORCE", "0").lower() in ("1", "true", "yes", "on")
+
+
+# ── heartbeat client (metadata only, disclosed, only when licensed) ─────────
+def license_url() -> str:
+    return os.environ.get("PRECEPTA_LICENSE_URL", "https://console.preceptaai.com").rstrip("/")
+
+
+def heartbeat_body() -> dict | None:
+    """The metadata-only payload — or None if unlicensed (then we don't phone home).
+    NEVER contains prompts or customer data — just license/install identity."""
+    from . import __version__
+    p = current()
+    if p is None:
+        return None
+    return {"license_id": p.get("license_id"), "install_id": install_id(),
+            "plan": p.get("plan"), "seats": p.get("seats") or 1, "version": __version__}
+
+
+async def heartbeat_once(*, poster=None) -> dict:
+    """Send one metadata-only heartbeat to the vendor. Fail-soft. No-op (and no
+    egress) when unlicensed — so an unlicensed/local box never phones home."""
+    body = heartbeat_body()
+    if body is None:
+        return {"skipped": "unlicensed"}
+    # open egress to the license host only now (a license is active), then send
+    try:
+        from .sovereign.egress import seed_license_egress, sync_allowfile
+        seed_license_egress()
+        sync_allowfile()
+    except Exception:
+        pass
+    url = license_url() + "/license/heartbeat"
+    try:
+        if poster is not None:
+            resp = await poster(url, body)
+        else:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(url, json=body)
+                resp = r.json()
+        record_heartbeat_result((resp or {}).get("plan"))
+        return {"ok": True, "server": resp}
+    except Exception as exc:                       # never break the app on a license ping
+        return {"ok": False, "error": type(exc).__name__}

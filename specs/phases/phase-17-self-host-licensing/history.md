@@ -49,3 +49,18 @@ on bad key, audited). Console **License** nav item + `licenseView()` (status car
 activate form) + `loadLicense()`/`app.activateLicense`. 8 tests; 3 UI states render.
 
 ---
+### [DECISION] 2026-08-17 — Heartbeat only when licensed; scheduling is a deploy concern
+Topics: licensing, heartbeat, egress, sovereignty
+Affects-phases: phase-17-self-host-licensing
+Affects-specs: none
+Detail: `app.licensing.heartbeat_once` sends a metadata-only body (license_id,
+install_id, plan, seats, version) to `{PRECEPTA_LICENSE_URL}/license/heartbeat`,
+fail-soft. It is a **no-op when unlicensed** and opens egress to the license host
+(`seed_license_egress`, added_by=system:license) ONLY then — so an unlicensed/
+local box never phones home and stays sealed. The attestation now discloses the
+licensing heartbeat (host + the 5 fields, contains_customer_data=false) separate
+from "customer data egress: none". Periodic cadence is a deployment concern (a
+systemd timer / cron calls it) — no always-on in-process loop, keeping the app
+simple and tests network-free. 4 tests.
+
+---

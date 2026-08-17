@@ -62,6 +62,34 @@ def _egress_result() -> dict:
             "posture": "restricted" if approved else "sealed"}
 
 
+def _licensing_disclosure() -> dict:
+    """Honest disclosure: customer prompts/data never leave (zero egress). When a
+    license is active, a SEPARATE metadata-only heartbeat (license id + status —
+    no customer data) is sent to the vendor. Disclosed here so the sovereignty
+    claim stays truthful."""
+    try:
+        from .. import licensing as _lic
+        st = _lic.status()
+        active = st.get("state") != "unlicensed"
+        host = ""
+        if active:
+            from .egress import host_of
+            host = host_of(_lic.license_url())
+        return {
+            "customer_data_egress": "none",     # prompts/data never leave the boundary
+            "license_active": active,
+            "heartbeat": {
+                "enabled": active,               # only phones home when licensed
+                "host": host,
+                "sends": ["license_id", "install_id", "plan", "seats", "version"],
+                "contains_customer_data": False,
+            },
+        }
+    except Exception:
+        return {"customer_data_egress": "none", "license_active": False,
+                "heartbeat": {"enabled": False}}
+
+
 def build_attestation(settings, registry) -> dict:
     from ..controls import sovereign_enabled
     sovereign = sovereign_enabled()          # effective (runtime-overridable) mode
@@ -88,6 +116,7 @@ def build_attestation(settings, registry) -> dict:
             "chain_verified": verified,
         },
         "egress_test": _egress_result(),   # a REAL outbound probe, not just the flag
+        "licensing": _licensing_disclosure(),
     }
     anchor = chain.head_hash()
     signature = hashlib.sha256(
