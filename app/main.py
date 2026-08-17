@@ -1381,12 +1381,35 @@ def create_app() -> FastAPI:
     @app.get("/auth/sso/callback")
     async def sso_callback(request: Request) -> JSONResponse:
         from .adapters.identity import sso
-        code = request.query_params.get("code")
-        if not sso.is_configured() or not code:
+        # Distinct, actionable errors — the old conflated message ("not configured
+        # or missing code") hid *which* step failed and which deployment served it.
+        # Google can redirect back with its own error (e.g. access_denied).
+        gerr = request.query_params.get("error")
+        if gerr:
             return JSONResponse(
-                {"error": {"message": "SSO not configured or missing code",
+                {"error": {"message": f"Google returned '{gerr}' — sign-in was not completed",
+                           "type": "unauthenticated"}}, status_code=401)
+        if not sso.is_configured():
+            # This is the deployment that received the callback (the redirect_uri host).
+            return JSONResponse(
+                {"error": {"message": "Google sign-in is not configured on THIS server. The "
+                           "OIDC_* env vars must be set on the deployment that owns your "
+                           "OIDC_REDIRECT host (e.g. console.preceptaai.com), not only where "
+                           "you clicked. Set them there and restart.",
                            "type": "not_configured"}}, status_code=400)
-        principal = await sso.exchange_code(code)
+        code = request.query_params.get("code")
+        if not code:
+            return JSONResponse(
+                {"error": {"message": "missing authorization code in the callback",
+                           "type": "invalid_request"}}, status_code=400)
+        try:
+            principal = await sso.exchange_code(code)
+        except Exception as exc:      # noqa: BLE001 — surface the real failure to the operator
+            return JSONResponse(
+                {"error": {"message": "could not reach Google to complete sign-in "
+                           f"({type(exc).__name__}). On a sovereign deployment, approve egress "
+                           "to Google and run the restricted-egress overlay (Deployment → Egress).",
+                           "type": "unavailable"}}, status_code=502)
         if principal is None:
             return JSONResponse(
                 {"error": {"message": "SSO login failed", "type": "unauthenticated"}},
