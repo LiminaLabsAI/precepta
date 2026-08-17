@@ -303,13 +303,25 @@ window.app = app;
 /* ============================ SCREENS ============================ */
 
 function loginScreen(){
+  const sso = window.__sso;                 // {configured, issuer, redirect} — loaded by loadSso()
+  const known = sso !== undefined && sso !== null;
+  const configured = !!(sso && sso.configured);
+  // Google button: enabled while status is loading (optimistic) or configured;
+  // disabled + honest note once we know it's NOT configured (no silent fake login).
+  const googleBtn = (!known || configured)
+    ? `<button class="gbtn" onclick="app.signIn()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">
+        <i data-lucide="chrome" style="width:16px;height:16px"></i> Sign in with Google
+      </button>`
+    : `<button disabled title="Google sign-in isn't configured on this deployment" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:500;background:#F9FAFB;color:#9CA3AF;border:1px solid #E5E7EB;cursor:not-allowed">
+        <i data-lucide="chrome" style="width:16px;height:16px"></i> Sign in with Google
+      </button>
+      <div style="font-size:11px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:9px 11px;margin-top:12px;line-height:1.5;text-align:left">Google sign-in isn't configured on this deployment yet. Set <code>OIDC_ISSUER</code>, <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code> and approve egress to Google, then restart. (Deployment → Egress.)</div>
+      <button onclick="app.continueLocal()" style="width:100%;margin-top:14px;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;background:#111827;color:#fff;border:none;cursor:pointer">Continue as local admin</button>`;
   return `<div style="height:100%;display:flex;align-items:center;justify-content:center">
     <div style="width:340px;text-align:center">
       <img src="${LOGO}" alt="preceptaai" style="height:44px;width:auto;margin-bottom:12px" onerror="this.style.display='none'">
       <div style="font-size:13px;color:#6B7280;margin-bottom:28px">Sign in to your governance console</div>
-      <button class="gbtn" onclick="app.signIn()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:500;background:#fff;color:#111827;border:1px solid #E5E7EB;cursor:pointer">
-        <i data-lucide="chrome" style="width:16px;height:16px"></i> Sign in with Google
-      </button>
+      ${googleBtn}
       <div style="font-size:11px;color:#9CA3AF;margin-top:16px">Login proves who you are. What you can do is set by your role — ask an admin if you need access.</div>
     </div>
   </div>`;
@@ -2061,13 +2073,18 @@ render();
     app.saveRouterConfig(patch);                 // atomic: save endpoint+model+key AND switch
   };
 
-  // Google/OIDC-aware sign-in: real SSO redirect when configured, else dev login
+  // Google/OIDC sign-in: real SSO redirect when configured. When NOT configured
+  // we do NOT pretend to sign in with Google — we mark status and re-render so the
+  // login screen shows the honest "not configured" note + explicit local entry.
   app.signIn = function(){
-    fetch("/auth/sso/login").then(r=>r.json()).then(d=>{
-      if(d && d.authorize_url){ window.location = d.authorize_url; }
-      else { state.isLoggedIn=true; render(); loadAll(); }
-    }).catch(()=>{ state.isLoggedIn=true; render(); loadAll(); });
+    fetch("/auth/sso/login").then(r=>r.json().then(d=>({ok:r.ok,d}))).then(({ok,d})=>{
+      if(ok && d && d.authorize_url){ window.location = d.authorize_url; return; }
+      window.__sso = Object.assign({}, window.__sso, {configured:false}); render();  // honest state
+    }).catch(()=>{ window.__sso = Object.assign({}, window.__sso, {configured:false}); render(); });
   };
+  // Explicit local-admin entry (self-host / pilot default) — clearly labelled, never
+  // disguised as Google. Only offered when Google SSO is not configured.
+  app.continueLocal = function(){ state.isLoggedIn=true; render(); loadAll(); };
 
   // Load per-screen data on navigation
   const _setScreen = app.setScreen;
