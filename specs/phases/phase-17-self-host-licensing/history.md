@@ -75,3 +75,15 @@ inference. Console + `/v1/license` + `/v1/models` (read paths) stay available =
 read-only, not bricked. Default OFF → local/dev unaffected. 3 tests.
 
 ---
+### [NOTE] 2026-08-17 — Group 4: verification — Phase 17 complete
+Topics: verification, licensing, self-host
+Affects-phases: phase-17-self-host-licensing
+Affects-specs: none
+Detail: 21 licensing tests across G0–G3; **425 total green**. App image rebuilt
+with `cryptography` (boots clean); SMOKE PASS (sovereignty intact). Live: License
+screen served; activate a trial key → active/14-days-left/subject; bad key → 400;
+local inference NOT license-blocked (enforce off — local unaffected). Self-host
+licensing loop done: activate → verify locally → status → (heartbeat mechanism) →
+flag-gated read-only enforcement.
+
+---

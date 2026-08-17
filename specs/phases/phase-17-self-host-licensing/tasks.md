@@ -26,5 +26,5 @@ phase: 17
 - [x] Console/audit/models read paths unaffected; off = no effect (local unchanged) — 3 tests
 
 ## Group 4 — Verification
-- [ ] Unit + integration (activate, status, heartbeat, enforcement on/off)
-- [ ] Full `./run.sh test`; rebuild image; SMOKE PASS; local works with no key
+- [x] Unit + integration (activate, status, heartbeat, enforcement on/off) — 21 licensing tests
+- [x] Full suite 425 green; image rebuilt with cryptography; SMOKE PASS; local works with no key (enforce off) + activation live-verified
