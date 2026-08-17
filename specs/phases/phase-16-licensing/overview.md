@@ -1,8 +1,9 @@
 ---
-type: PhaseOverview
+type: Phase
 phase: 16
 name: Licensing v1 (vendor side) — onboarding, login capture, key issuance & visibility
-status: planned
+status: in-progress
+tags: [licensing, onboarding, ed25519, signed-keys, google-oauth, heartbeat, sovereignty, vendor-service]
 ---
 
 # Phase 16 — Licensing v1 (vendor side): onboarding, login capture, key issuance & visibility

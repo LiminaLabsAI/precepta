@@ -73,3 +73,66 @@ model — the control plane self-hosts on the customer's box; the central domain
 an onboarding/licensing front door — is what this phase implements.
 
 ---
+### [DECISION] 2026-08-17 — Ed25519 signed keys via `cryptography`; dev keypair committed
+Topics: licensing, ed25519, dependencies
+Affects-phases: phase-16-licensing, phase-17
+Affects-specs: none
+Detail: Group 0 built `licensing/core` (issue/verify/status) on Ed25519 from the
+`cryptography` lib — asymmetric so the vendor signs (private, env
+`LICENSE_SIGNING_KEY`) and any holder of the public key verifies offline (what
+lets a sovereign self-host validate without phoning home). `cryptography` is
+scoped to `licensing/requirements.txt` (not the app image; the app adds it in
+Phase 17). A clearly-labelled dev-only keypair is committed in `licensing/keys.py`
+so tests/local work; production overrides via env. Token format:
+`b64url(canonical_json).b64url(sig)`. Trial=15d, grace=3d. 5 tests pass.
+
+---
+### [NOTE] 2026-08-17 — Group 1: vendor backend (onboard/heartbeat/admin) built
+Topics: licensing, backend, onboarding, heartbeat, admin
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: `licensing/` FastAPI service — `POST /onboard` (server-verifies the Google
+ID token via `google.py` [injectable; default = Google tokeninfo over httpx, no new
+dep], records the login, issues/returns a 15-day trial signed key + install steps);
+`POST /license/heartbeat` (whitelists install_id/license_id/plan/seats/version —
+**drops any customer-data field**, e.g. a stray `prompt`); admin (bearer
+`LICENSE_ADMIN_TOKEN`): list logins/licenses/installs, change plan (re-issues a
+valid key), revoke; a minimal HTML admin dashboard. Own SQLite DB (`LICENSE_DB`,
+gitignored). 5 service tests; 407 total green.
+
+---
+### [NOTE] 2026-08-17 — Group 2: onboarding site built
+Topics: onboarding, google-sign-in, static-site
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: `licensing/site/index.html` — a self-contained "Get Precepta" page served
+at `GET /`: hero, Google Sign-In (GIS client library, client id from
+`/onboard/config`), and on credential → `POST /onboard` → renders the license key
++ copy-paste install steps with copy buttons. Honest states (loading / signed-in /
+not-configured / no-JS). Live-smoked via uvicorn. 2 tests.
+
+---
+### [NOTE] 2026-08-17 — Group 3: docs + deploy wiring
+Topics: docs, deploy, transparency, licensing
+Affects-phases: phase-16-licensing, phase-17
+Affects-specs: none
+Detail: `docs/licensing.md` (two-surface split; hybrid signed-key + disclosed
+metadata heartbeat; exact heartbeat payload; trial→grace→read-only enforced in
+P17; transparency) + `licensing/README.md` (run/config/deploy: needs a writable
+disk — not serverless; keypair-gen command verified; endpoint table;
+`PRECEPTA_LICENSE_URL` hook for the Phase 17 client).
+
+---
+### [NOTE] 2026-08-17 — Group 4: verification — Phase 16 (vendor side) complete
+Topics: verification, licensing, e2e
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: Full vendor E2E (test_licensing_e2e): two sign-ins recorded → two trial
+keys → two installs heartbeat in → admin sees them → upgrade to subscription
+re-issues a key that verifies → revoke reflects. 12 licensing tests; **410 total
+green**. Confirmed the sovereign core (`app/`, `web/`, `deploy/`) is UNCHANGED by
+this phase and SMOKE still PASSES. Vendor-side loop done: "see every login" +
+"issue/control keys". Self-host activation + heartbeat client + trial→read-only
+enforcement = Phase 17.
+
+---
