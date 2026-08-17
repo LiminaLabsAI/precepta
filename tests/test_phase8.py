@@ -107,6 +107,32 @@ def test_sso_authorize_url_is_google_auth_endpoint(monkeypatch):
     assert "/authorize?" not in url          # the old broken fallback is gone
 
 
+def test_sso_callback_surfaces_google_error():
+    # Google can redirect back with ?error=... — surface it, don't say "not configured".
+    r = client.get("/auth/sso/callback?error=access_denied", follow_redirects=False)
+    assert r.status_code == 401
+    assert "access_denied" in r.json()["error"]["message"]
+
+
+def test_sso_callback_not_configured_here_message():
+    # When THIS deployment has no OIDC, the message must point at the redirect host,
+    # not blame a "missing code".
+    r = client.get("/auth/sso/callback?code=abc", follow_redirects=False)
+    assert r.status_code == 400
+    msg = r.json()["error"]["message"].lower()
+    assert "not configured on this server" in msg
+
+
+def test_sso_callback_missing_code_when_configured(monkeypatch):
+    sso._discovery.clear()
+    monkeypatch.setenv("OIDC_ISSUER", "https://accounts.google.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "secret")
+    r = client.get("/auth/sso/callback", follow_redirects=False)  # configured, but no code
+    assert r.status_code == 400
+    assert "authorization code" in r.json()["error"]["message"].lower()
+
+
 def test_sso_principal_from_userinfo():
     p = sso.principal_from_userinfo(
         {"email": "a@corp.com", "name": "A", "precepta_role": "admin", "precepta_team": "sec"})
