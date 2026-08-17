@@ -141,10 +141,12 @@ def create_app() -> FastAPI:
         }
         return JSONResponse(payload, status_code=200 if ok else 503)
 
-    @app.get("/")
-    def root() -> RedirectResponse:
-        # The base URL opens the Console UI. API metadata lives at /api.
-        return RedirectResponse(url="/console")
+    @app.get("/", response_class=HTMLResponse)
+    def root() -> HTMLResponse:
+        # The Console IS the site — it's served on its own subdomain
+        # (console.<domain>), so the base URL opens it directly, no /console
+        # redirect. API metadata lives at /api; /console stays as an alias.
+        return _serve_console()
 
     @app.get("/api")
     def api_info() -> dict:
@@ -152,7 +154,7 @@ def create_app() -> FastAPI:
             "name": "preceptaai",
             "version": __version__,
             "sovereign_mode": _controls.sovereign_enabled(),
-            "console": "/console",
+            "console": "/",
             "docs": "/docs",
             "health": "/health",
         }
@@ -1389,7 +1391,7 @@ def create_app() -> FastAPI:
         # mint a session and hand it to the browser (in the URL fragment, not logged),
         # landing the signed-in Google user straight in the Console.
         session = create_session(principal)
-        return RedirectResponse(url=f"/console#s={session}", status_code=302)
+        return RedirectResponse(url=f"/#s={session}", status_code=302)
 
     @app.post("/auth/logout")
     def sso_logout(request: Request) -> JSONResponse:
@@ -1400,14 +1402,18 @@ def create_app() -> FastAPI:
         return JSONResponse({"ok": True})
 
     # ── Console (Phase 6) ───────────────────────────────────────────────
-    @app.get("/console", response_class=HTMLResponse)
-    def console() -> HTMLResponse:
+    def _serve_console() -> HTMLResponse:
         path = ROOT / "web" / "console.html"
         if not path.exists():
             return HTMLResponse("<h1>console.html not found</h1>", status_code=404)
         # no-store so the browser never serves a stale Console (which could show mock data)
         return HTMLResponse(path.read_text(encoding="utf-8"),
                             headers={"Cache-Control": "no-store, max-age=0"})
+
+    @app.get("/console", response_class=HTMLResponse)
+    def console() -> HTMLResponse:
+        # Kept as an alias for bookmarks / older links; the canonical path is "/".
+        return _serve_console()
 
     # Static assets for the Console (logo, etc.) — served from web/assets.
     assets_dir = ROOT / "web" / "assets"
