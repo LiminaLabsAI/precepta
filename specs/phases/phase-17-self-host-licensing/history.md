@@ -27,3 +27,15 @@ image, and it holds the admin surface). A cross-check test proves a key issued b
 image (deferred here from Phase 16).
 
 ---
+### [NOTE] 2026-08-17 — Group 0: app/licensing.py (verify/status/activate)
+Topics: licensing, self-host, ed25519
+Affects-phases: phase-17-self-host-licensing
+Affects-specs: none
+Detail: `app/licensing.py` — own Ed25519 verify + embedded public key
+(`PRECEPTA_LICENSE_PUBLIC_KEY`, default the committed dev key), `verify/status/
+activate/current`, stable `install_id`, single-row `app_license` store, and
+`enforcing()` (default OFF). Cross-check test confirms a `licensing.core`-issued
+key verifies here (app pubkey == vendor pubkey). `cryptography` added to the app
+requirements. 6 tests.
+
+---

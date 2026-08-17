@@ -6,11 +6,11 @@ phase: 17
 # Phase 17 — Tasks
 
 ## Group 0 — app/licensing.py (contract + store)
-- [ ] Embedded public key (`PRECEPTA_LICENSE_PUBLIC_KEY`, default committed) + own Ed25519 verify
-- [ ] `verify()`, `status()` (active|grace|expired|unlicensed), `activate()`, `current()`, stable `install_id`
-- [ ] Store activated key in the app DB
-- [ ] Cross-check test: `licensing.core`-issued key verifies in `app.licensing`; tampered/expired/unlicensed
-- [ ] Add `cryptography` to requirements.txt + deploy/Dockerfile
+- [x] Embedded public key (`PRECEPTA_LICENSE_PUBLIC_KEY`, default committed) + own Ed25519 verify
+- [x] `verify()`, `status()` (active|grace|expired|unlicensed), `activate()`, `current()`, stable `install_id`
+- [x] Store activated key in the app DB (single-row `app_license`)
+- [x] Cross-check test: `licensing.core`-issued key verifies in `app.licensing`; tampered/forged/expired/unlicensed (6 tests)
+- [x] Add `cryptography` to requirements.txt (Dockerfile installs from it)
 
 ## Group 1 — License API + Console
 - [ ] `GET /v1/license` (status) + `POST /v1/license/activate` (owner-gated)
