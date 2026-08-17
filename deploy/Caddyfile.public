@@ -1,0 +1,13 @@
+# Public demo front door — automatic HTTPS for your domain.
+#
+# Caddy provisions and renews a real Let's Encrypt certificate for
+# {$PUBLIC_DOMAIN} on its own, then reverse-proxies to the app. The app stays
+# internal-only (no direct internet); only this proxy faces the public internet,
+# exactly as in the sealed default — this just swaps the loopback:8000 front door
+# for a public HTTPS one.
+#
+# Requirements: DNS for PUBLIC_DOMAIN points at this host, and ports 80 + 443 are
+# open to the internet (Caddy needs 80 for the ACME challenge, 443 to serve).
+{$PUBLIC_DOMAIN} {
+	reverse_proxy app:8000
+}
