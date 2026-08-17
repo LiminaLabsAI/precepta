@@ -112,3 +112,14 @@ at `GET /`: hero, Google Sign-In (GIS client library, client id from
 not-configured / no-JS). Live-smoked via uvicorn. 2 tests.
 
 ---
+### [NOTE] 2026-08-17 — Group 3: docs + deploy wiring
+Topics: docs, deploy, transparency, licensing
+Affects-phases: phase-16-licensing, phase-17
+Affects-specs: none
+Detail: `docs/licensing.md` (two-surface split; hybrid signed-key + disclosed
+metadata heartbeat; exact heartbeat payload; trial→grace→read-only enforced in
+P17; transparency) + `licensing/README.md` (run/config/deploy: needs a writable
+disk — not serverless; keypair-gen command verified; endpoint table;
+`PRECEPTA_LICENSE_URL` hook for the Phase 17 client).
+
+---

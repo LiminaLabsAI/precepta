@@ -27,9 +27,9 @@ phase: 16
 - [x] States: loading / signed-in / not-configured / no-JS; served at `GET /` + `/onboard/config` for the client id
 
 ## Group 3 — Docs & deploy wiring
-- [ ] `docs/licensing.md` (model, exact heartbeat payload, trial→grace→read-only [P17], transparency)
-- [ ] Vendor-service deploy notes + `PRECEPTA_LICENSE_URL` convention
-- [ ] Cross-link onboarding/licensing (vendor) vs self-hosted control plane
+- [x] `docs/licensing.md` (model, exact heartbeat payload, trial→grace→read-only [P17], transparency)
+- [x] Vendor-service deploy notes (`licensing/README.md`) + `PRECEPTA_LICENSE_URL` convention + keypair-gen (verified)
+- [x] Cross-link onboarding/licensing (vendor) vs self-hosted control plane
 
 ## Group 4 — Verification
 - [ ] Unit + integration tests (onboard w/ mock Google verify, heartbeat, admin plan/revoke)
