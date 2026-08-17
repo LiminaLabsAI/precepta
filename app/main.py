@@ -1364,19 +1364,39 @@ def create_app() -> FastAPI:
         return JSONResponse(await handle(body, principal))
 
     # ── Enterprise SSO (Phase 8) — mechanism; needs real IdP config ─────
+    def _sso_redirect(request: Request) -> str:
+        """The OAuth callback URL to use for THIS request. If OIDC_REDIRECT is set
+        it wins (pin to a fixed public URL); otherwise derive it from the request
+        so sign-in returns to whatever host you used — localhost, the Render URL,
+        or your domain — with one image and no per-host config. Honours the
+        proxy's forwarded headers (the app sits behind Caddy)."""
+        env = os.environ.get("OIDC_REDIRECT", "").strip()
+        if env:
+            return env
+        h = request.headers
+        proto = h.get("x-forwarded-proto") or request.url.scheme or "http"
+        host = h.get("x-forwarded-host") or h.get("host") or request.url.netloc
+        return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}/auth/sso/callback"
+
     @app.get("/auth/sso/status")
-    def sso_status() -> JSONResponse:
+    def sso_status(request: Request) -> JSONResponse:
         from .adapters.identity import sso
-        return JSONResponse(sso.status())
+        st = sso.status()
+        if not os.environ.get("OIDC_REDIRECT", "").strip():
+            st["redirect"] = _sso_redirect(request)        # show what it will actually use
+            st["redirect_source"] = "derived-from-request"
+        else:
+            st["redirect_source"] = "OIDC_REDIRECT"
+        return JSONResponse(st)
 
     @app.get("/auth/sso/login")
-    def sso_login() -> JSONResponse:
+    def sso_login(request: Request) -> JSONResponse:
         from .adapters.identity import sso
         if not sso.is_configured():
             return JSONResponse(
                 {"error": {"message": "SSO not configured — set OIDC_* env vars",
                            "type": "not_configured"}}, status_code=400)
-        return JSONResponse({"authorize_url": sso.authorize_url()})
+        return JSONResponse({"authorize_url": sso.authorize_url(redirect=_sso_redirect(request))})
 
     @app.get("/auth/sso/callback")
     async def sso_callback(request: Request) -> JSONResponse:
@@ -1405,7 +1425,7 @@ def create_app() -> FastAPI:
         import logging
         _log = logging.getLogger("precepta.sso")
         try:
-            principal = await sso.exchange_code(code)
+            principal = await sso.exchange_code(code, redirect=_sso_redirect(request))
         except sso.SsoError as exc:          # actionable, already-phrased failure
             _log.warning("SSO exchange failed: %s", exc)
             return JSONResponse(
