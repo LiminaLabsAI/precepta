@@ -21,17 +21,20 @@ def test_health_ok():
     assert body["db"]["tables"] >= 15
 
 
-def test_root_redirects_to_console():
+def test_root_serves_console_directly():
+    # The Console is served on its own subdomain (console.<domain>), so "/" IS the
+    # Console — no /console redirect. /console stays as a back-compat alias.
     r = client.get("/", follow_redirects=False)
-    assert r.status_code in (307, 308)
-    assert r.headers["location"] == "/console"
+    assert r.status_code == 200
+    assert "function apiView(" in r.text            # it's the Console SPA, served inline
+    assert client.get("/console").status_code == 200  # alias still works
 
 
 def test_api_info():
     r = client.get("/api")
     assert r.status_code == 200
     assert r.json()["name"] == "preceptaai"
-    assert r.json()["console"] == "/console"
+    assert r.json()["console"] == "/"
 
 
 def test_settings_sovereign_by_default():
