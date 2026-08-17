@@ -1,0 +1,35 @@
+# Public demo front door OVERLAY — reach the Console at https://<PUBLIC_DOMAIN>
+# with an automatic TLS cert, instead of loopback 127.0.0.1:8000.
+#
+# Use it together with the base + egress overlays so the Console is publicly
+# reachable AND Google sign-in can reach Google:
+#
+#   PUBLIC_DOMAIN=console.preceptaai.com \
+#   docker compose -f deploy/docker-compose.yml \
+#                  -f deploy/docker-compose.egress.yml \
+#                  -f deploy/docker-compose.public.yml up -d --build
+#
+# Prerequisites (host-level, one time):
+#   • DNS: an A/AAAA record for PUBLIC_DOMAIN pointing at this machine's public IP.
+#   • Firewall: ports 80 and 443 open to the internet (Caddy needs 80 for the
+#     ACME challenge and 443 to serve). The old 127.0.0.1:8000 mapping stays too.
+#
+# Sovereignty note: this changes only the FRONT DOOR. The `app` container is still
+# internal-only with no direct internet route — the egress overlay's broker is the
+# single, filtered path out (used for Google OIDC). The proxy alone faces the
+# public internet, exactly as in the sealed default.
+services:
+  proxy:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.public:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # persist issued certs across restarts (avoid ACME rate limits)
+      - caddy_config:/config
+    environment:
+      PUBLIC_DOMAIN: "${PUBLIC_DOMAIN:-console.preceptaai.com}"
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
