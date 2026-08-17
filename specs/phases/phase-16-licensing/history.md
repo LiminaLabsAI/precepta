@@ -87,3 +87,17 @@ so tests/local work; production overrides via env. Token format:
 `b64url(canonical_json).b64url(sig)`. Trial=15d, grace=3d. 5 tests pass.
 
 ---
+### [NOTE] 2026-08-17 — Group 1: vendor backend (onboard/heartbeat/admin) built
+Topics: licensing, backend, onboarding, heartbeat, admin
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: `licensing/` FastAPI service — `POST /onboard` (server-verifies the Google
+ID token via `google.py` [injectable; default = Google tokeninfo over httpx, no new
+dep], records the login, issues/returns a 15-day trial signed key + install steps);
+`POST /license/heartbeat` (whitelists install_id/license_id/plan/seats/version —
+**drops any customer-data field**, e.g. a stray `prompt`); admin (bearer
+`LICENSE_ADMIN_TOKEN`): list logins/licenses/installs, change plan (re-issues a
+valid key), revoke; a minimal HTML admin dashboard. Own SQLite DB (`LICENSE_DB`,
+gitignored). 5 service tests; 407 total green.
+
+---

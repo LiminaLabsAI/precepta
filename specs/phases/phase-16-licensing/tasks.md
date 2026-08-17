@@ -15,11 +15,11 @@ phase: 16
 - [x] Tests: round-trip; tampered/forged/garbage rejected; trial active→grace→expired; subscription
 
 ## Group 1 — Vendor backend (parallel w/ 2)
-- [ ] `licensing/` FastAPI service + DB (logins, licenses, installs, heartbeats)
-- [ ] `POST /onboard` — verify Google ID token, record login, issue 15-day trial, return key + steps
-- [ ] `POST /license/heartbeat` — metadata-only upsert of an install; reject unexpected fields; return plan
-- [ ] Admin: `GET /admin/{logins,licenses,installs}` + plan-change (re-sign) + revoke
-- [ ] Admin dashboard HTML (owner-only) + config (`LICENSE_SIGNING_KEY`, `GOOGLE_CLIENT_ID`, `LICENSE_DB`)
+- [x] `licensing/` FastAPI service + DB (logins, licenses, installs)
+- [x] `POST /onboard` — verify Google ID token, record login, issue 15-day trial, return key + steps
+- [x] `POST /license/heartbeat` — metadata-only upsert (whitelist fields, drops customer data); return plan/state
+- [x] Admin: `GET /admin/{logins,licenses,installs}` + plan-change (re-sign) + revoke (bearer `LICENSE_ADMIN_TOKEN`)
+- [x] Admin dashboard HTML (owner-only) + config (`LICENSE_SIGNING_KEY`, `GOOGLE_CLIENT_ID`, `LICENSE_DB`)
 
 ## Group 2 — Onboarding site (parallel w/ 1)
 - [ ] Landing + GIS Google Sign-In (Console design language)
