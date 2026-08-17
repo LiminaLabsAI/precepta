@@ -36,6 +36,13 @@ python -c "from licensing import core; a,b=core.generate_keypair(); print('LICEN
 
 ## Deploy
 
+**Render (blueprint, no terminal):** the repo's `render.yaml` defines a
+`precepta-licensing` web service (Docker + a 1 GB disk at `/data`). Render → New →
+Blueprint → this repo → Apply → paste the secrets (`GOOGLE_CLIENT_ID`,
+`LICENSE_SIGNING_KEY`, `LICENSE_PUBLIC_KEY`, `LICENSE_ADMIN_TOKEN`). Then add
+`console.preceptaai.com` as a Custom Domain on that service and point DNS at it.
+
+
 Needs an **always-on host with a writable disk** for the SQLite DB (a small VM,
 Render/Railway with a volume, Fly, etc.) — **not** a static/serverless host.
 Serve it at your onboarding domain (e.g. `console.preceptaai.com`), set

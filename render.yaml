@@ -47,3 +47,37 @@ services:
         sync: false               # paste in the Render dashboard (not stored in git)
       - key: PRECEPTA_ADMIN_EMAILS
         sync: false               # paste in the Render dashboard (your email)
+
+  # ── Onboarding + licensing service (the vendor control server) ─────────────
+  # THIS is what belongs at console.preceptaai.com: the "Get Precepta" onboarding
+  # site + login capture + license issuance + admin + heartbeat receiver. It has
+  # a writable disk (SQLite) — which is why it can't run on Vercel/serverless.
+  # After deploy: add console.preceptaai.com as a Custom Domain on THIS service,
+  # set GOOGLE_CLIENT_ID + add that origin as an Authorized JS origin in Google,
+  # and set LICENSE_SIGNING_KEY + LICENSE_ADMIN_TOKEN as secrets. Admin dashboard
+  # at /admin. Generate a prod keypair:
+  #   python -c "from licensing import core; a,b=core.generate_keypair(); print(a); print(b)"
+  - type: web
+    name: precepta-licensing
+    runtime: docker
+    dockerfilePath: ./licensing/Dockerfile
+    dockerContext: .
+    plan: starter                 # required for a persistent disk (~$7/mo)
+    healthCheckPath: /health
+    disk:
+      name: licensing-data        # logins + licenses + installs (survives deploys)
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: LICENSE_DB
+        value: /data/licensing.db
+      - key: PRECEPTA_REPO_URL
+        value: https://github.com/LiminaLabsAI/precepta.git
+      - key: GOOGLE_CLIENT_ID
+        sync: false               # Web OAuth client id (public; also add JS origin in Google)
+      - key: LICENSE_SIGNING_KEY
+        sync: false               # base64url Ed25519 PRIVATE key — secret
+      - key: LICENSE_PUBLIC_KEY
+        sync: false               # matching public key (embed in the app for prod)
+      - key: LICENSE_ADMIN_TOKEN
+        sync: false               # bearer token for /admin — secret
