@@ -84,6 +84,29 @@ def test_sso_login_requires_config():
     assert r.status_code == 400
 
 
+def test_sso_google_uses_correct_endpoints_without_discovery():
+    # The sealed app can't reach Google's /.well-known; a known-good map must give
+    # the REAL Google endpoints so the authorize URL isn't the wrong /authorize (404).
+    sso._discovery.clear()
+    conf = sso.discover("https://accounts.google.com")
+    assert conf["authorization_endpoint"] == "https://accounts.google.com/o/oauth2/v2/auth"
+    assert conf["token_endpoint"] == "https://oauth2.googleapis.com/token"
+    assert conf["userinfo_endpoint"] == "https://openidconnect.googleapis.com/v1/userinfo"
+
+
+def test_sso_authorize_url_is_google_auth_endpoint(monkeypatch):
+    sso._discovery.clear()
+    monkeypatch.setenv("OIDC_ISSUER", "https://accounts.google.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("OIDC_REDIRECT", "https://console.preceptaai.com/auth/sso/callback")
+    url = sso.authorize_url()
+    assert url.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    assert "response_type=code" in url and "client_id=cid" in url
+    assert "redirect_uri=https%3A%2F%2Fconsole.preceptaai.com%2Fauth%2Fsso%2Fcallback" in url
+    assert "/authorize?" not in url          # the old broken fallback is gone
+
+
 def test_sso_principal_from_userinfo():
     p = sso.principal_from_userinfo(
         {"email": "a@corp.com", "name": "A", "precepta_role": "admin", "precepta_team": "sec"})

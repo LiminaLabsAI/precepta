@@ -40,11 +40,35 @@ def status() -> dict:
             "redirect": c["redirect"]}
 
 
+# Known-good OIDC endpoints for major providers. Used FIRST, so the authorize/
+# token/userinfo URLs are correct even when the sealed app cannot perform live
+# discovery (no egress yet). Google's `/.well-known` is unreachable from an
+# internal-only container, and the naive `issuer + /authorize` fallback is wrong
+# for Google (its real endpoints live under /o/oauth2/... and *.googleapis.com),
+# which produced a 404 on sign-in.
+_WELL_KNOWN = {
+    "accounts.google.com": {
+        "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_endpoint": "https://oauth2.googleapis.com/token",
+        "userinfo_endpoint": "https://openidconnect.googleapis.com/v1/userinfo",
+    },
+}
+
+
+def _issuer_host(issuer: str) -> str:
+    return issuer.split("://", 1)[-1].split("/", 1)[0].split(":")[0].lower()
+
+
 def discover(issuer: str) -> dict:
-    """Resolve the provider's endpoints via OIDC discovery (cached)."""
+    """Resolve the provider's endpoints — a known-good map first (so it works
+    without live discovery), then OIDC discovery, then a last-resort fallback."""
     issuer = issuer.rstrip("/")
     if issuer in _discovery:
         return _discovery[issuer]
+    known = _WELL_KNOWN.get(_issuer_host(issuer))
+    if known is not None:                       # correct endpoints, no network needed
+        _discovery[issuer] = known
+        return known
     try:
         r = httpx.get(issuer + "/.well-known/openid-configuration", timeout=5.0)
         d = r.json()
