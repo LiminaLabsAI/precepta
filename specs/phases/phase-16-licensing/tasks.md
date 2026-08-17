@@ -8,11 +8,11 @@ phase: 16
 > Mirrors `plan.md`. `[ ]` todo · `[/]` in-progress · `[x]` done.
 
 ## Group 0 — License contract + signing lib (blocks all)
-- [ ] Choose + record the signing primitive (Ed25519) and library
-- [ ] Define the signed-key payload (license_id, subject, plan, issued/expires, seats, key_version)
-- [ ] `licensing/core`: `issue()`, `verify()`, `status()` (active | grace | expired)
-- [ ] Keypair handling: private via env `LICENSE_SIGNING_KEY`; **commit the public key** for Phase 17
-- [ ] Tests: round-trip; tampered rejected; expired→expired; grace window
+- [x] Choose + record the signing primitive (Ed25519 via `cryptography`) and library
+- [x] Define the signed-key payload (license_id, subject, plan, issued/expires, seats, key_version)
+- [x] `licensing/core`: `issue()`, `verify()`, `status()` (active | grace | expired)
+- [x] Keypair handling: private via env `LICENSE_SIGNING_KEY`; **committed dev public key** for Phase 17 (`licensing/keys.py`)
+- [x] Tests: round-trip; tampered/forged/garbage rejected; trial active→grace→expired; subscription
 
 ## Group 1 — Vendor backend (parallel w/ 2)
 - [ ] `licensing/` FastAPI service + DB (logins, licenses, installs, heartbeats)

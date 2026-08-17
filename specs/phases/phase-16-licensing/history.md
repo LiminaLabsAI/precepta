@@ -73,3 +73,17 @@ model — the control plane self-hosts on the customer's box; the central domain
 an onboarding/licensing front door — is what this phase implements.
 
 ---
+### [DECISION] 2026-08-17 — Ed25519 signed keys via `cryptography`; dev keypair committed
+Topics: licensing, ed25519, dependencies
+Affects-phases: phase-16-licensing, phase-17
+Affects-specs: none
+Detail: Group 0 built `licensing/core` (issue/verify/status) on Ed25519 from the
+`cryptography` lib — asymmetric so the vendor signs (private, env
+`LICENSE_SIGNING_KEY`) and any holder of the public key verifies offline (what
+lets a sovereign self-host validate without phoning home). `cryptography` is
+scoped to `licensing/requirements.txt` (not the app image; the app adds it in
+Phase 17). A clearly-labelled dev-only keypair is committed in `licensing/keys.py`
+so tests/local work; production overrides via env. Token format:
+`b64url(canonical_json).b64url(sig)`. Trial=15d, grace=3d. 5 tests pass.
+
+---
