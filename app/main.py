@@ -110,6 +110,27 @@ def _resolve_principal(request: Request):
     return Principal("anonymous", "user", "Anonymous"), None
 
 
+def _license_gate() -> "JSONResponse | None":
+    """When licensing enforcement is ON (production opt-in) and the license is
+    expired/unlicensed, refuse NEW inference — the console + audit stay usable
+    (read-only). Off by default → local/dev is never affected. Grace → allowed."""
+    from . import licensing as _lic
+    if not _lic.enforcing():
+        return None
+    st = _lic.status()
+    if st.get("state") == "expired":
+        return JSONResponse(
+            {"error": {"message": "license expired — this deployment's trial/subscription has "
+                       "ended. Enter a valid key under License to resume inference; the console "
+                       "and audit stay available.", "type": "license_expired"}}, status_code=403)
+    if st.get("state") == "unlicensed":
+        return JSONResponse(
+            {"error": {"message": "no license activated — enter your key under License to enable "
+                       "inference. The console and audit stay available.",
+                       "type": "license_required"}}, status_code=403)
+    return None
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     # Fresh-DB bootstrap: ensure every table exists before serving, so a brand-new
@@ -392,6 +413,44 @@ def create_app() -> FastAPI:
         from .governance import sensitive as _s
         _s.unapprove(backend)
         return JSONResponse({"ok": True, "backend": backend})
+
+    # ── License (Phase 17): read status (admin) + owner-gated activation ──
+    @app.get("/v1/license")
+    def get_license_status(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_manage(principal, write=False)
+        if gerr is not None:
+            return gerr
+        from . import licensing as _lic
+        st = _lic.status()
+        st["enforce"] = _lic.enforcing()
+        st["can_edit"] = is_platform_owner(principal)
+        return JSONResponse(st)
+
+    @app.post("/v1/license/activate")
+    async def activate_license(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only — activating a "
+                                 "license changes the deployment's entitlement", "type": "forbidden"}},
+                                status_code=403)
+        b = await request.json()
+        from . import licensing as _lic
+        try:
+            _lic.activate(str(b.get("key", "")))
+        except _lic.InvalidLicense as exc:
+            return JSONResponse({"error": {"message": f"invalid license key: {exc}",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        get_chain().append(event_type="license.activate", actor=principal.subject,
+                           resource="license", action="activate", outcome="applied",
+                           metadata={"plan": _lic.status().get("plan")})
+        st = _lic.status()
+        st["enforce"] = _lic.enforcing()
+        return JSONResponse({"ok": True, **st})
 
     # ── Sovereignty controls: read state (admin) + owner-gated Sovereign Mode ──
     @app.get("/v1/controls")
@@ -1613,6 +1672,12 @@ def create_app() -> FastAPI:
                            "type": "invalid_request_error", "code": "missing_messages"}},
                 status_code=400)
 
+        # ── license gate (flag-gated; off by default) — refuse NEW inference when
+        # the trial/subscription has lapsed. Console + audit stay usable. ──
+        _lg = _license_gate()
+        if _lg is not None:
+            return _lg
+
         # ── per-key cost caps + scope (FEAT-001) — only for key-authenticated callers ──
         from .adapters.identity import keys as _keys
         from . import budgets as _budgets, metering as _metering
@@ -1816,6 +1881,9 @@ def create_app() -> FastAPI:
         items = [inp] if isinstance(inp, str) else (inp if isinstance(inp, list) else None)
         if not items:
             return _api_errors.invalid_request("'input' (string or list of strings) is required")
+        _lg = _license_gate()                      # flag-gated; off by default
+        if _lg is not None:
+            return _lg
         from .governance.firewall import scrub_input
         from .cache import _EMBED_MODEL
         base = os.environ.get(

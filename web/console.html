@@ -156,6 +156,7 @@ const nav = [
   // Screen + /v1/workflow endpoint are kept; uncomment to restore.
   // {key:'workflow',label:'Workflow',icon:'git-branch'},
   {key:'traces',label:'Traces',icon:'route'},
+  {key:'license',label:'License',icon:'badge-check'},
   // Model catalog hidden from the menu — redundant with the Inference plane for a
   // sovereign install (you connect a few endpoints, not browse 3000 cloud models).
   // The catalog API + data are KEPT: they enrich /v1/models (capabilities/pricing)
@@ -1699,6 +1700,44 @@ function copilotFab(){
   </div>`:''}`;
 }
 
+/* ---------- License (Phase 17) ---------- */
+function licenseView(){
+  const L=window.__license;
+  const head=`<h1 style="font-size:22px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em">License</h1>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:20px;max-width:680px;line-height:1.6">Your Precepta license — verified <strong>locally</strong> on this machine (no phone-home to validate). Get a key from the onboarding site, then paste it here to activate your trial or subscription.</div>`;
+  if(!L) return head+`<div style="font-size:12px;color:#9CA3AF;padding:16px 0">Checking license…</div>`;
+  const stateColor={active:['#ECFDF5','#065F46'],grace:['#FFFBEB','#B45309'],expired:['#FEF2F2','#991B1B'],unlicensed:['#F3F4F6','#6B7280']}[L.state]||['#F3F4F6','#6B7280'];
+  const label={active:'Active',grace:'Grace period',expired:'Expired',unlicensed:'Not activated'}[L.state]||L.state;
+  const dl=(L.days_left==null)?'':(L.days_left>=0?`${L.days_left} day${L.days_left===1?'':'s'} left`:`${-L.days_left} day${L.days_left===-1?'':'s'} past expiry`);
+  const planTxt=L.plan?({trial:'Free trial',subscription:'Subscription'}[L.plan]||L.plan):'—';
+  const kv=(k,v)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F3F4F6"><span style="font-size:12.5px;color:#6B7280">${k}</span><span style="font-size:12.5px;color:#111827;font-weight:500">${v}</span></div>`;
+  const enforceNote = L.enforce
+    ? `<div style="font-size:11.5px;color:#B45309;margin-top:10px">Enforcement is <strong>ON</strong> — once expired (after the grace period) new inference is refused until a valid key is entered. The console and audit stay available.</div>`
+    : `<div style="font-size:11.5px;color:#9CA3AF;margin-top:10px">Enforcement is <strong>off</strong> on this deployment (<code>PRECEPTA_LICENSE_ENFORCE</code>) — the app runs fully regardless of license. Turn it on for production installs.</div>`;
+  const card=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px 20px;margin-bottom:20px;max-width:560px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:12px;font-weight:600;padding:3px 11px;border-radius:12px;background:${stateColor[0]};color:${stateColor[1]}">${label}</span>
+      ${dl?`<span style="font-size:12px;color:#6B7280">${dl}</span>`:''}
+    </div>
+    ${kv('Plan',planTxt)}
+    ${L.subject?kv('Licensed to',esc(L.subject)):''}
+    ${L.license_id?kv('License id',`<code style="font-size:11px">${esc(L.license_id)}</code>`):''}
+    ${kv('Install id',`<code style="font-size:11px">${esc(L.install_id||'—')}</code>`)}
+    ${enforceNote}
+  </div>`;
+  const canEdit=L.can_edit;
+  const activate=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:18px 20px;max-width:560px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px">${L.state==='unlicensed'?'Activate a license':'Enter a new key'}</div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:12px">${canEdit?'Paste the key from the onboarding site — verified on this machine.':'Only the platform owner can activate a license.'}</div>
+    <textarea id="lickey" ${canEdit?'':'disabled'} placeholder="paste your license key…" style="width:100%;height:70px;border:1px solid #E5E7EB;border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+      <button ${canEdit?'':'disabled'} onclick="app.activateLicense()" style="padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;background:${canEdit?'#111827':'#E5E7EB'};color:${canEdit?'#fff':'#9CA3AF'};border:none;cursor:${canEdit?'pointer':'not-allowed'}">Activate</button>
+      <span id="licmsg" style="font-size:12px;color:#6B7280"></span>
+    </div>
+  </div>`;
+  return head+card+activate;
+}
+
 /* ---------- root render ---------- */
 function contentFor(){
   switch(state.screen){
@@ -1708,6 +1747,7 @@ function contentFor(){
     case 'api': return apiView();
     case 'workflow': return workflowView();
     case 'traces': return tracesView();
+    case 'license': return licenseView();
     case 'catalog': return catalogView();
     case 'modelplane': return modelPlaneView();
     case 'keys': return keysView();
@@ -1838,6 +1878,16 @@ render();
   };
   app.toggleNotif = function(){ state.notifOpen=!state.notifOpen; state.profileMenuOpen=false; if(state.notifOpen) loadNotifs(); render(); };
   async function loadSso(){ const d=await getJSON("/auth/sso/status"); if(d){ window.__sso=d; render(); } }
+  async function loadLicense(){ const d=await getJSON("/v1/license"); if(d){ window.__license=d; render(); } }
+  app.activateLicense = function(){
+    const el=document.getElementById("lickey"); const msg=document.getElementById("licmsg");
+    const key=(el&&el.value||"").trim(); if(!key){ if(msg){msg.textContent="Paste a key first.";} return; }
+    if(msg){msg.style.color="#6B7280";msg.textContent="Activating…";}
+    fetch("/v1/license/activate",{method:"POST",headers:hdr,body:JSON.stringify({key})})
+      .then(async r=>{ const d=await r.json().catch(()=>({}));
+        if(r.ok){ window.__license=Object.assign({},window.__license,d); if(msg){msg.style.color="#065F46";msg.textContent="✓ Activated.";} render(); }
+        else if(msg){ msg.style.color="#991B1B"; msg.textContent=(d.error&&d.error.message)||("Failed ("+r.status+")"); } });
+  };
   async function loadOrg(){ const d=await getJSON("/v1/settings"); if(d){ window.__org=d; render(); } }
   async function loadMe(){
     const d=await getJSON("/auth/me");
@@ -2122,6 +2172,7 @@ render();
     if(sc==="policies"){ loadPolicies(); loadInfra(); loadKeys(); loadApproved(); loadControls(); }
     if(sc==="savings"){ loadFeatures(); }
     if(sc==="traces"){ loadOrg(); loadTraces(); loadBillback(); }
+    if(sc==="license"){ loadLicense(); }
     if(sc==="workflow"){ loadWorkflow(); }
     if(sc==="deployment"){ loadDeployment(); loadInfra(); loadKeys(); }
     if(sc==="catalog"){ app.loadCatalog(); }
@@ -2210,7 +2261,7 @@ render();
   app.clearCache = function(){ fetch("/v1/cache/clear",{method:"POST",headers:hdr}).then(()=>loadFeatures()); };
 
   function loadAll(){
-    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved(); loadControls();
+    loadInfra(); loadPolicies(); loadStats(); loadAuditLog(); loadSso(); loadOrg(); loadMe(); loadSecurityFromAttestation(); loadNotifs(); loadUsage(); loadApproved(); loadControls(); loadLicense();
   }
   loadAll();
 })();

@@ -181,6 +181,22 @@ _GOOGLE_OIDC_HOSTS = (
 )
 
 
+def seed_license_egress() -> None:
+    """Approve the licensing host (`PRECEPTA_LICENSE_URL`) so the metadata-only
+    license heartbeat can reach the vendor. Called lazily — only when a license is
+    actually activated — so an unlicensed/local box stays sealed. Disclosed in the
+    attestation; added_by='system:license'."""
+    url = os.environ.get("PRECEPTA_LICENSE_URL", "https://console.preceptaai.com")
+    host = host_of(url)
+    if not host or is_internal_host(host):
+        return
+    try:
+        add_host(host, added_by="system:license",
+                 note="License heartbeat (metadata only — license id + status, no customer data)")
+    except ValueError:
+        pass
+
+
 def seed_oidc_egress() -> None:
     """Auto-approve Google's OIDC hosts when Google sign-in is configured.
 

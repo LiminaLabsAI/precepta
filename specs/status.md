@@ -49,6 +49,7 @@ predates momentum founding; foundation docs were authored from the existing root
 | 14 — Deploy: Sovereign Pilot (self-host) | `phase-14-deploy-pilot` | **Complete 2026-08-11** — SMOKE PASS (provable zero-egress); + copilot(+nav), egress allowlist+broker, endpoint edit/delete, smart cache+compression, demo seed; 354 tests green | 100% |
 | 15 — AI Provider Integration API | `phase-15-provider-api` | **Built G0–G5 2026-08-11** — providers + in-boundary catalog, `/v1/endpoints` (renamed, aliased), governed `/v1/inference`+`/v1/embeddings`, keys+`manage` scope, OpenAPI `/docs` + API page. Live-verified; 376 tests; SMOKE PASS. Remaining: in-modal management-key toggle | ~95% |
 | 16 — Licensing v1 (vendor side) | `phase-16-licensing` | **Complete 2026-08-17** — onboarding site + login capture + Ed25519 signed-key issuance + admin visibility + heartbeat receiver; 410 tests; sovereign app untouched. Self-host activation/enforcement = Phase 17. | 100% |
+| 17 — Self-host licensing (activation + heartbeat + enforcement) | `phase-17-self-host-licensing` | **Complete 2026-08-17** — app/licensing (local Ed25519 verify), License screen + activate, metadata heartbeat + attestation disclosure, flag-gated trial→read-only enforcement (off by default). 425 tests; SMOKE PASS. | 100% |
 
 ## Upcoming Phases
 
