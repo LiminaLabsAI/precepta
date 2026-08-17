@@ -88,21 +88,25 @@ def discover(issuer: str) -> dict:
     return conf
 
 
-def authorize_url(state: str = "precepta") -> str:
+def authorize_url(state: str = "precepta", redirect: str | None = None) -> str:
     c = _cfg()
     ep = discover(c["issuer"])["authorization_endpoint"]
     q = urlencode({"response_type": "code", "client_id": c["client_id"],
-                   "redirect_uri": c["redirect"], "scope": "openid email profile",
+                   "redirect_uri": redirect or c["redirect"], "scope": "openid email profile",
                    "state": state})
     return f"{ep}?{q}"
 
 
-async def exchange_code(code: str, *, http_post=None, http_get=None) -> Principal | None:
+async def exchange_code(code: str, *, redirect: str | None = None,
+                        http_post=None, http_get=None) -> Principal | None:
     """Exchange an auth code for tokens and return a Principal from userinfo.
 
+    `redirect` MUST match the redirect_uri used in the authorize step (OAuth
+    requires it) — pass the same per-request value the login used.
     `http_post`/`http_get` are injectable for testing without a live IdP.
     """
     c = _cfg()
+    red = redirect or c["redirect"]
     if http_post is not None and http_get is not None:      # test path
         tr = await http_post("token", data={"code": code})
         tok = tr.json()
@@ -117,7 +121,7 @@ async def exchange_code(code: str, *, http_post=None, http_get=None) -> Principa
         try:
             tr = await client.post(conf["token_endpoint"], data={
                 "grant_type": "authorization_code", "code": code,
-                "redirect_uri": c["redirect"], "client_id": c["client_id"],
+                "redirect_uri": red, "client_id": c["client_id"],
                 "client_secret": c["client_secret"]})
         except httpx.HTTPError as exc:
             raise SsoError(f"cannot reach Google's token endpoint ({type(exc).__name__}). "

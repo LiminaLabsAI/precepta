@@ -133,6 +133,34 @@ def test_sso_callback_missing_code_when_configured(monkeypatch):
     assert "authorization code" in r.json()["error"]["message"].lower()
 
 
+def test_sso_redirect_derived_from_request_when_unset(monkeypatch):
+    # No OIDC_REDIRECT → the callback URL is derived from the request host, so
+    # sign-in returns to the URL you used (local vs prod) — not a hardcoded domain.
+    sso._discovery.clear()
+    monkeypatch.delenv("OIDC_REDIRECT", raising=False)
+    monkeypatch.setenv("OIDC_ISSUER", "https://accounts.google.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "secret")
+    # status reflects the per-request redirect
+    st = client.get("/auth/sso/status").json()
+    assert st["redirect"] == "http://testserver/auth/sso/callback"
+    assert st["redirect_source"] == "derived-from-request"
+    # the authorize URL carries that same (request-derived) redirect_uri
+    url = client.get("/auth/sso/login").json()["authorize_url"]
+    assert "redirect_uri=http%3A%2F%2Ftestserver%2Fauth%2Fsso%2Fcallback" in url
+
+
+def test_sso_redirect_env_pins_when_set(monkeypatch):
+    sso._discovery.clear()
+    monkeypatch.setenv("OIDC_REDIRECT", "https://console.preceptaai.com/auth/sso/callback")
+    monkeypatch.setenv("OIDC_ISSUER", "https://accounts.google.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "secret")
+    st = client.get("/auth/sso/status").json()
+    assert st["redirect"] == "https://console.preceptaai.com/auth/sso/callback"
+    assert st["redirect_source"] == "OIDC_REDIRECT"
+
+
 def test_sso_exchange_raises_actionable_error_on_token_reject():
     # Google reports config errors (invalid_client, redirect_uri_mismatch, ...) at
     # the token step; exchange_code must raise a clear SsoError, not silently 500.
