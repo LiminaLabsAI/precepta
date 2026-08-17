@@ -758,7 +758,7 @@ function deploymentView(){
       ${codeBox(st.n, st.cmd)}
       <div style="font-size:11.5px;color:#6B7280;margin-top:7px;line-height:1.5;max-width:640px">${esc(st.note)}</div>
     </div>`).join('')}
-    <div style="padding:12px 0 2px;border-top:1px solid #F3F4F6;margin-top:6px"><span style="font-size:11.5px;color:#6B7280">Then open <strong>http://127.0.0.1:8000/console</strong>, sign in with your ADMIN_EMAIL, and click <em>Generate the sovereignty attestation</em> above.</span></div>
+    <div style="padding:12px 0 2px;border-top:1px solid #F3F4F6;margin-top:6px"><span style="font-size:11.5px;color:#6B7280">Then open <strong>http://127.0.0.1:8000/</strong>, sign in with your ADMIN_EMAIL, and click <em>Generate the sovereignty attestation</em> above.</span></div>
   </div>`;
   window.__runbookSteps = steps;   // for the whole-runbook copy button
   const copy=`<div style="display:flex;align-items:center;gap:12px">
@@ -771,7 +771,33 @@ function deploymentView(){
     <div style="font-size:12.5px;color:#6B7280;line-height:1.55;max-width:560px">OpenAI-compatible — point any SDK at <code style="font-family:'JetBrains Mono',monospace">${esc(base)}/v1</code> and set <code>model:"auto"</code> for the Smart Router. Full reference with curl · Python · TypeScript in the <strong>API</strong> tab.</div></div>
     <button onclick="app.setScreen('api')" style="flex:none;padding:9px 18px;border-radius:7px;font-size:13px;font-weight:600;background:#111827;color:#fff;border:none;cursor:pointer">Open API reference →</button>
   </div>`;
-  return head+statusStrip+checklist+stepsBlock+copy+`<div style="height:20px"></div>`+apiPointer;
+  // ── Sign in with Google (Enterprise SSO / OIDC) — setup, visible without .env ──
+  const sso=window.__sso;
+  const ssoConfigured=!!(sso && sso.configured);
+  const redirect=(sso && sso.redirect) || (base+'/auth/sso/callback');
+  const envBlock=[
+    'OIDC_ISSUER="https://accounts.google.com"',
+    'OIDC_CLIENT_ID="xxxx.apps.googleusercontent.com"',
+    'OIDC_CLIENT_SECRET="xxxx"',
+    'OIDC_REDIRECT="'+redirect+'"',
+    'PRECEPTA_ADMIN_EMAILS="you@yourcompany.com"'
+  ].join('\n');
+  const overlayCmd='docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.egress.yml up -d --build';
+  const ssoBadge=ssoConfigured
+    ? `<span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;background:#ECFDF5;color:#065F46">Configured${sso.issuer?': '+esc(sso.issuer):''}</span>`
+    : `<span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;background:#FFFBEB;color:#B45309">Not configured</span>`;
+  const ssoStep=(n,t,inner)=>`<div style="padding:10px 0;border-top:1px solid #F3F4F6">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="width:20px;height:20px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#EFF6FF;color:#1D4ED8">${n}</span><span style="font-size:13px;font-weight:600">${t}</span></div>${inner}</div>`;
+  const ssoCard=`<div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;margin-top:20px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+      <div style="font-size:15px;font-weight:600">Sign in with Google (Enterprise SSO)</div>${ssoBadge}</div>
+    <div style="font-size:12.5px;color:#6B7280;line-height:1.55;max-width:680px;margin-bottom:6px">Optional. Leave it off to keep the local-admin login. Turning it on needs your Google OAuth credentials <strong>and</strong> egress to Google — the sovereign app is zero-egress, so the restricted-egress overlay carries the login and <strong>auto-approves Google's OIDC hosts</strong> (no manual approval).</div>
+    ${ssoStep('1','Create a Google OAuth <strong>Web application</strong> client', `<div style="font-size:12px;color:#374151;line-height:1.55;max-width:660px">At <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud → Credentials</a>, create an OAuth client ID (type: Web application) and set its <strong>Authorized redirect URI</strong> to exactly:</div>${apiCode(redirect)}`)}
+    ${ssoStep('2','Add the credentials to <code>deploy/.env</code>', `<div style="font-size:12px;color:#374151;line-height:1.55;max-width:660px">Paste the client id/secret from step 1. <code>PRECEPTA_ADMIN_EMAILS</code> lists who gets the admin role on login.</div>${apiCode(envBlock)}`)}
+    ${ssoStep('3','Enable restricted egress (Google hosts auto-approve)', `<div style="font-size:12px;color:#374151;line-height:1.55;max-width:660px">Start with the egress overlay so the app can reach Google. Its OIDC hosts (accounts.google.com, oauth2.googleapis.com, openidconnect.googleapis.com, www.googleapis.com) are approved automatically at startup and appear under <a href="#" onclick="event.preventDefault();app.setScreen('policies')">Policies → Egress</a> (added by <code>system:oidc</code>).</div>${apiCode(overlayCmd)}`)}
+    ${ssoStep('4','Restart, then sign in', `<div style="font-size:12px;color:#374151;line-height:1.55;max-width:660px">After restart the login screen shows the real <strong>Sign in with Google</strong> button. ${ssoConfigured?'This deployment is already configured.':'This deployment is <strong>not configured yet</strong> — the button stays disabled until the vars above are set.'}</div>`)}
+  </div>`;
+  return head+statusStrip+checklist+stepsBlock+copy+`<div style="height:20px"></div>`+ssoCard+apiPointer;
 }
 
 /* ---------- Model catalog (LiteLLM-style browser) ---------- */

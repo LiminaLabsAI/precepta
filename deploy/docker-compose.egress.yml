@@ -12,6 +12,13 @@
 #   (or)  RESTRICTED_EGRESS=1 ./deploy/up.sh
 #
 # Sealed by default: without this overlay there is no broker and no egress at all.
+#
+# Google sign-in (OIDC): when OIDC_ISSUER=https://accounts.google.com and a
+# client id/secret are set, the app auto-approves Google's OIDC hosts
+# (accounts.google.com, oauth2.googleapis.com, openidconnect.googleapis.com,
+# www.googleapis.com) into the same owner-approved allowlist at startup — so with
+# this overlay on, "Sign in with Google" works without approving each host by hand.
+# They appear in Console -> Egress (added_by system:oidc) and are revocable.
 services:
   # The ONLY path out. On `internal` (so the app can reach it) + `egress` (so it
   # can reach the internet). Enforces the approved-host allowlist independently.

@@ -118,8 +118,11 @@ def create_app() -> FastAPI:
     ensure_all()
     # Keep the egress broker's allowfile in sync with the approved-egress table
     # at boot (no-op in the sealed default where no allowfile path is set).
+    # When Google sign-in is configured, auto-approve its OIDC hosts first so the
+    # restricted-egress broker can carry the login flow (no manual approval needed).
     try:
-        from .sovereign.egress import sync_allowfile
+        from .sovereign.egress import sync_allowfile, seed_oidc_egress
+        seed_oidc_egress()
         sync_allowfile()
     except Exception:
         pass

@@ -164,3 +164,38 @@ def remove_host(host: str) -> bool:
         cur = conn.execute("DELETE FROM approved_egress WHERE host=?", (h,))
     sync_allowfile()
     return cur.rowcount > 0
+
+
+# ── OIDC sign-in egress (Google) ───────────────────────────────────────────
+# The sealed app has no direct internet route, so "Sign in with Google" can't
+# reach Google's discovery/token/userinfo endpoints unless those hosts are on
+# the approved-egress allowlist. When Google OIDC is configured we seed them
+# into the SAME owner-approved list (added_by='system:oidc') — so they show up
+# in Console → Egress and the attestation, and the restricted-egress broker
+# forwards the login flow. Never a hidden backdoor: it's visible and revocable.
+_GOOGLE_OIDC_HOSTS = (
+    "accounts.google.com",          # discovery + authorize
+    "oauth2.googleapis.com",        # token exchange
+    "openidconnect.googleapis.com",  # userinfo (current)
+    "www.googleapis.com",           # userinfo (legacy) / certs
+)
+
+
+def seed_oidc_egress() -> None:
+    """Auto-approve Google's OIDC hosts when Google sign-in is configured.
+
+    Idempotent and fail-soft. No-op unless OIDC is configured against Google
+    (issuer contains ``accounts.google.com`` and a client id+secret are set) —
+    so deployments that don't use Google SSO get no extra egress.
+    """
+    issuer = os.environ.get("OIDC_ISSUER", "").strip().lower()
+    if "accounts.google.com" not in issuer:
+        return
+    if not (os.environ.get("OIDC_CLIENT_ID") and os.environ.get("OIDC_CLIENT_SECRET")):
+        return
+    for h in _GOOGLE_OIDC_HOSTS:
+        try:
+            add_host(h, added_by="system:oidc",
+                     note="Google sign-in (OIDC) — auto-approved so the login flow can reach Google")
+        except ValueError:
+            pass   # add_host syncs the allowfile on each insert
