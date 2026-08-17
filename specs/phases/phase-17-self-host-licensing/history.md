@@ -64,3 +64,14 @@ systemd timer / cron calls it) — no always-on in-process loop, keeping the app
 simple and tests network-free. 4 tests.
 
 ---
+### [NOTE] 2026-08-17 — Group 3: trial→read-only enforcement (flag-gated)
+Topics: licensing, enforcement, pipeline
+Affects-phases: phase-17-self-host-licensing
+Affects-specs: none
+Detail: `_license_gate()` in main.py — when `PRECEPTA_LICENSE_ENFORCE` is ON and
+the license state is expired/unlicensed, `/v1/chat/completions` (+`/v1/inference`)
+and `/v1/embeddings` return a 403 (`license_expired`/`license_required`) BEFORE
+inference. Console + `/v1/license` + `/v1/models` (read paths) stay available =
+read-only, not bricked. Default OFF → local/dev unaffected. 3 tests.
+
+---

@@ -22,8 +22,8 @@ phase: 17
 - [x] Store last-heartbeat + server-reported plan (`record_heartbeat_result`)
 
 ## Group 3 — Enforcement (flag-gated)
-- [ ] `PRECEPTA_LICENSE_ENFORCE` (default off): expired/unlicensed → new inference 403 (read-only); grace warns
-- [ ] Console/audit read paths unaffected; off = no effect (local unchanged)
+- [x] `PRECEPTA_LICENSE_ENFORCE` (default off): expired→`license_expired` / unlicensed→`license_required` 403 on new inference (chat+embeddings)
+- [x] Console/audit/models read paths unaffected; off = no effect (local unchanged) — 3 tests
 
 ## Group 4 — Verification
 - [ ] Unit + integration (activate, status, heartbeat, enforcement on/off)
