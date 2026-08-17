@@ -22,9 +22,9 @@ phase: 16
 - [x] Admin dashboard HTML (owner-only) + config (`LICENSE_SIGNING_KEY`, `GOOGLE_CLIENT_ID`, `LICENSE_DB`)
 
 ## Group 2 — Onboarding site (parallel w/ 1)
-- [ ] Landing + GIS Google Sign-In (Console design language)
-- [ ] On credential → `POST /onboard` → render license key + copy-paste install steps (copy buttons)
-- [ ] States: loading / signed-in / not-configured / no-JS
+- [x] Landing + GIS Google Sign-In (Console design language) — `licensing/site/index.html`
+- [x] On credential → `POST /onboard` → render license key + copy-paste install steps (copy buttons)
+- [x] States: loading / signed-in / not-configured / no-JS; served at `GET /` + `/onboard/config` for the client id
 
 ## Group 3 — Docs & deploy wiring
 - [ ] `docs/licensing.md` (model, exact heartbeat payload, trial→grace→read-only [P17], transparency)

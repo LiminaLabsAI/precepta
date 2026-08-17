@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Precepta — sovereign, governed AI control plane</title>
+<style>
+  :root{--ink:#111827;--muted:#6B7280;--line:#E5E7EB;--blue:#2563EB;--bg:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:640px;margin:0 auto;padding:56px 24px 80px}
+  h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 10px}
+  .sub{font-size:15px;color:var(--muted);margin-bottom:28px;line-height:1.6}
+  .card{border:1px solid var(--line);border-radius:12px;padding:22px 22px}
+  .muted{color:var(--muted)} code{font-family:"JetBrains Mono",ui-monospace,monospace}
+  .step{padding:12px 0;border-top:1px solid #F3F4F6}
+  .step:first-child{border-top:none}
+  .num{display:inline-flex;width:20px;height:20px;border-radius:50%;background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-right:8px}
+  .cmd{display:flex;gap:8px;align-items:center;background:#0B1220;border-radius:8px;padding:10px 12px;margin-top:8px}
+  .cmd code{flex:1;color:#E5E7EB;font-size:12.5px;overflow-x:auto;white-space:nowrap}
+  .cmd button,.keybtn{padding:4px 10px;border-radius:6px;font-size:11px;background:#1F2937;color:#E5E7EB;border:1px solid #374151;cursor:pointer}
+  .keyrow{display:flex;gap:8px;align-items:center;background:#F9FAFB;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:6px 0 2px}
+  .keyrow code{flex:1;font-size:12px;word-break:break-all}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;background:#ECFDF5;color:#065F46}
+  .warn{font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Get Precepta</h1>
+  <div class="sub"><strong>Sovereign, governed AI control plane</strong> — routing, policy, tamper-evident audit, and <strong>provable zero-egress</strong>, self-hosted inside your own boundary. Sign in to get your key and the install steps.</div>
+
+  <div class="card">
+    <!-- states -->
+    <div id="loading" class="muted">Loading sign-in…</div>
+
+    <div id="signin" class="hide">
+      <div style="font-weight:600;margin-bottom:4px">Sign in to continue</div>
+      <div class="muted" style="font-size:13px;margin-bottom:14px">We record your sign-in and issue a <strong>15-day free trial</strong> license key.</div>
+      <div id="gbtn"></div>
+    </div>
+
+    <div id="notconfigured" class="hide">
+      <div class="warn">Google sign-in isn't configured on this site yet. Set <code>GOOGLE_CLIENT_ID</code> on the licensing service and add this site's URL as an <em>Authorized JavaScript origin</em> in Google.</div>
+    </div>
+
+    <div id="done" class="hide">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <div style="font-weight:700;font-size:16px">Welcome, <span id="who"></span></div>
+        <span class="pill" id="planpill">15-day trial</span>
+      </div>
+      <div class="muted" style="font-size:13px;margin-bottom:12px">Your license key (keep it safe — you'll paste it into Precepta after install):</div>
+      <div class="keyrow"><code id="key"></code><button class="keybtn" onclick="copy(this, window.__key)">Copy</button></div>
+      <div class="muted" style="font-size:12px;margin-bottom:16px">Trial expires <span id="exp"></span>.</div>
+
+      <div style="font-weight:700;font-size:15px;margin:6px 0 2px">Install Precepta on your own machine/server</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">Runs in <strong>your</strong> boundary — models, data and audit stay in-boundary. Needs Docker.</div>
+      <div id="steps"></div>
+      <div class="muted" style="font-size:11.5px;margin-top:14px">Then open the Console, go to <strong>Settings → License</strong>, and paste your key to activate the trial.</div>
+    </div>
+
+    <div id="error" class="hide"><div class="warn" id="errmsg"></div></div>
+  </div>
+  <div class="muted" style="font-size:11px;margin-top:14px">Precepta self-hosts on your infrastructure. This page only issues your key and shows the steps — nothing about your data passes through here.</div>
+</div>
+
+<noscript><div class="wrap"><div class="warn">This page needs JavaScript for Google sign-in. Or clone <code>github.com/LiminaLabsAI/precepta</code> and run <code>./deploy/up.sh</code>.</div></div></noscript>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+function show(id){for(const s of ["loading","signin","notconfigured","done","error"])document.getElementById(s).classList.toggle("hide",s!==id)}
+function copy(btn,txt){navigator.clipboard.writeText(txt).then(()=>{const o=btn.textContent;btn.textContent="✓";setTimeout(()=>btn.textContent=o,1200)})}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+async function onCredential(resp){
+  show("loading");
+  try{
+    const r=await fetch("/onboard",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({credential:resp.credential})});
+    const d=await r.json();
+    if(!r.ok){document.getElementById("errmsg").textContent=(d.error&&d.error.message)||"Sign-in failed.";return show("error")}
+    window.__key=d.key;
+    document.getElementById("who").textContent=d.name||d.subject;
+    document.getElementById("key").textContent=d.key;
+    try{document.getElementById("exp").textContent=new Date(d.expires_at).toLocaleDateString()}catch(e){document.getElementById("exp").textContent=d.expires_at}
+    document.getElementById("steps").innerHTML=(d.steps||[]).map(s=>
+      `<div class="step"><div><span class="num">${s.n}</span><strong>${esc(s.title)}</strong></div>`+
+      `<div class="cmd"><code>$ ${esc(s.cmd)}</code><button onclick='copy(this,${JSON.stringify(s.cmd)})'>Copy</button></div></div>`).join("");
+    show("done");
+  }catch(e){document.getElementById("errmsg").textContent="Network error — please retry.";show("error")}
+}
+
+async function boot(){
+  let cfg={};
+  try{cfg=await (await fetch("/onboard/config")).json()}catch(e){}
+  if(!cfg.google_client_id){return show("notconfigured")}
+  const start=()=>{
+    if(!(window.google&&google.accounts&&google.accounts.id)){return setTimeout(start,150)}
+    google.accounts.id.initialize({client_id:cfg.google_client_id,callback:onCredential});
+    google.accounts.id.renderButton(document.getElementById("gbtn"),{theme:"outline",size:"large",text:"signin_with"});
+    show("signin");
+  };
+  start();
+}
+boot();
+</script>
+</body>
+</html>

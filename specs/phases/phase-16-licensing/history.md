@@ -101,3 +101,14 @@ valid key), revoke; a minimal HTML admin dashboard. Own SQLite DB (`LICENSE_DB`,
 gitignored). 5 service tests; 407 total green.
 
 ---
+### [NOTE] 2026-08-17 — Group 2: onboarding site built
+Topics: onboarding, google-sign-in, static-site
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: `licensing/site/index.html` — a self-contained "Get Precepta" page served
+at `GET /`: hero, Google Sign-In (GIS client library, client id from
+`/onboard/config`), and on credential → `POST /onboard` → renders the license key
++ copy-paste install steps with copy buttons. Honest states (loading / signed-in /
+not-configured / no-JS). Live-smoked via uvicorn. 2 tests.
+
+---
