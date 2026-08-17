@@ -123,3 +123,16 @@ disk — not serverless; keypair-gen command verified; endpoint table;
 `PRECEPTA_LICENSE_URL` hook for the Phase 17 client).
 
 ---
+### [NOTE] 2026-08-17 — Group 4: verification — Phase 16 (vendor side) complete
+Topics: verification, licensing, e2e
+Affects-phases: phase-16-licensing
+Affects-specs: none
+Detail: Full vendor E2E (test_licensing_e2e): two sign-ins recorded → two trial
+keys → two installs heartbeat in → admin sees them → upgrade to subscription
+re-issues a key that verifies → revoke reflects. 12 licensing tests; **410 total
+green**. Confirmed the sovereign core (`app/`, `web/`, `deploy/`) is UNCHANGED by
+this phase and SMOKE still PASSES. Vendor-side loop done: "see every login" +
+"issue/control keys". Self-host activation + heartbeat client + trial→read-only
+enforcement = Phase 17.
+
+---

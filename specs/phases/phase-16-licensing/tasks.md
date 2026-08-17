@@ -32,7 +32,7 @@ phase: 16
 - [x] Cross-link onboarding/licensing (vendor) vs self-hosted control plane
 
 ## Group 4 — Verification
-- [ ] Unit + integration tests (onboard w/ mock Google verify, heartbeat, admin plan/revoke)
-- [ ] Headless render of the onboarding site (pre/post sign-in)
-- [ ] Live vendor E2E (onboard → admin → plan change → revoke → heartbeat shows install)
-- [ ] Full `./run.sh test` green; confirm `app/` (sovereign core) unchanged
+- [x] Unit + integration tests (onboard w/ mock Google verify, heartbeat, admin plan/revoke) — 12 licensing tests
+- [x] Onboarding site served + structure checks (GIS, steps, states) + live uvicorn smoke
+- [x] Full vendor E2E (2 logins → trials → 2 installs heartbeat → subscription re-issue → revoke)
+- [x] Full suite green (410); confirmed `app/`, `web/`, `deploy/` unchanged; SMOKE PASS
