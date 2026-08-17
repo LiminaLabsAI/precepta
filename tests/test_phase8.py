@@ -133,6 +133,24 @@ def test_sso_callback_missing_code_when_configured(monkeypatch):
     assert "authorization code" in r.json()["error"]["message"].lower()
 
 
+def test_sso_exchange_raises_actionable_error_on_token_reject():
+    # Google reports config errors (invalid_client, redirect_uri_mismatch, ...) at
+    # the token step; exchange_code must raise a clear SsoError, not silently 500.
+    class _R:
+        def __init__(self, d): self._d = d
+        def json(self): return self._d
+
+    async def bad_post(url, data=None):
+        return _R({"error": "invalid_client", "error_description": "bad secret"})
+
+    async def _get(url, headers=None):
+        return _R({})
+
+    with pytest.raises(sso.SsoError) as ei:
+        asyncio.run(sso.exchange_code("code", http_post=bad_post, http_get=_get))
+    assert "invalid_client" in str(ei.value)
+
+
 def test_sso_principal_from_userinfo():
     p = sso.principal_from_userinfo(
         {"email": "a@corp.com", "name": "A", "precepta_role": "admin", "precepta_team": "sec"})

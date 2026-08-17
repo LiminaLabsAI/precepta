@@ -16,6 +16,11 @@ import httpx
 
 from ...ports import Principal
 
+
+class SsoError(Exception):
+    """A sign-in failure with an operator-actionable message (safe to surface)."""
+
+
 _discovery: dict[str, dict] = {}
 
 
@@ -100,19 +105,41 @@ async def exchange_code(code: str, *, http_post=None, http_get=None) -> Principa
     c = _cfg()
     if http_post is not None and http_get is not None:      # test path
         tr = await http_post("token", data={"code": code})
-        access = tr.json().get("access_token")
+        tok = tr.json()
+        access = tok.get("access_token")
+        if not access:
+            raise SsoError(f"token exchange rejected: {tok.get('error') or 'no access_token'}")
         ur = await http_get("userinfo", headers={"Authorization": f"Bearer {access}"})
         return principal_from_userinfo(ur.json())
 
     conf = discover(c["issuer"])
     async with httpx.AsyncClient(timeout=10.0) as client:
-        tr = await client.post(conf["token_endpoint"], data={
-            "grant_type": "authorization_code", "code": code,
-            "redirect_uri": c["redirect"], "client_id": c["client_id"],
-            "client_secret": c["client_secret"]})
-        access = tr.json().get("access_token")
-        ur = await client.get(conf["userinfo_endpoint"],
-                              headers={"Authorization": f"Bearer {access}"})
+        try:
+            tr = await client.post(conf["token_endpoint"], data={
+                "grant_type": "authorization_code", "code": code,
+                "redirect_uri": c["redirect"], "client_id": c["client_id"],
+                "client_secret": c["client_secret"]})
+        except httpx.HTTPError as exc:
+            raise SsoError(f"cannot reach Google's token endpoint ({type(exc).__name__}). "
+                           "On a sovereign deployment, approve egress to Google and run the "
+                           "restricted-egress overlay so the app can reach it.") from exc
+        try:
+            tok = tr.json()
+        except ValueError:
+            tok = {}
+        access = tok.get("access_token")
+        if not access:
+            # Google reports config errors here (invalid_client, redirect_uri_mismatch,
+            # invalid_grant, …) — surface them instead of a silent None → 500.
+            reason = tok.get("error") or f"HTTP {tr.status_code}"
+            if tok.get("error_description"):
+                reason += f" — {tok['error_description']}"
+            raise SsoError(f"token exchange rejected by Google: {reason}")
+        try:
+            ur = await client.get(conf["userinfo_endpoint"],
+                                  headers={"Authorization": f"Bearer {access}"})
+        except httpx.HTTPError as exc:
+            raise SsoError(f"cannot reach Google's userinfo endpoint ({type(exc).__name__})") from exc
         return principal_from_userinfo(ur.json())
 
 

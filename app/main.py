@@ -1402,21 +1402,36 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": {"message": "missing authorization code in the callback",
                            "type": "invalid_request"}}, status_code=400)
+        import logging
+        _log = logging.getLogger("precepta.sso")
         try:
             principal = await sso.exchange_code(code)
-        except Exception as exc:      # noqa: BLE001 — surface the real failure to the operator
+        except sso.SsoError as exc:          # actionable, already-phrased failure
+            _log.warning("SSO exchange failed: %s", exc)
             return JSONResponse(
-                {"error": {"message": "could not reach Google to complete sign-in "
-                           f"({type(exc).__name__}). On a sovereign deployment, approve egress "
-                           "to Google and run the restricted-egress overlay (Deployment → Egress).",
+                {"error": {"message": f"Google sign-in could not be completed — {exc}",
                            "type": "unavailable"}}, status_code=502)
+        except Exception as exc:             # noqa: BLE001 — never a bare 500; name the cause
+            _log.exception("SSO token exchange crashed")
+            return JSONResponse(
+                {"error": {"message": f"sign-in failed during token exchange: "
+                           f"{type(exc).__name__}: {exc}", "type": "internal_error"}},
+                status_code=500)
         if principal is None:
             return JSONResponse(
-                {"error": {"message": "SSO login failed", "type": "unauthenticated"}},
+                {"error": {"message": "Google returned no email/subject for this account — "
+                           "sign-in could not identify the user", "type": "unauthenticated"}},
                 status_code=401)
         # mint a session and hand it to the browser (in the URL fragment, not logged),
         # landing the signed-in Google user straight in the Console.
-        session = create_session(principal)
+        try:
+            session = create_session(principal)
+        except Exception as exc:             # noqa: BLE001
+            _log.exception("SSO session creation failed")
+            return JSONResponse(
+                {"error": {"message": f"signed in, but creating a session failed: "
+                           f"{type(exc).__name__}: {exc}", "type": "internal_error"}},
+                status_code=500)
         return RedirectResponse(url=f"/#s={session}", status_code=302)
 
     @app.post("/auth/logout")
