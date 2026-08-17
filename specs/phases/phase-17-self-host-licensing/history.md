@@ -39,3 +39,13 @@ key verifies here (app pubkey == vendor pubkey). `cryptography` added to the app
 requirements. 6 tests.
 
 ---
+### [NOTE] 2026-08-17 — Group 1: License API + Console screen
+Topics: licensing, api, console
+Affects-phases: phase-17-self-host-licensing
+Affects-specs: none
+Detail: `GET /v1/license` (manage-gated — status: plan/state/days_left/install_id/
+enforce/can_edit) + `POST /v1/license/activate` (owner-gated — verify+store, 400
+on bad key, audited). Console **License** nav item + `licenseView()` (status card +
+activate form) + `loadLicense()`/`app.activateLicense`. 8 tests; 3 UI states render.
+
+---

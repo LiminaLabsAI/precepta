@@ -393,6 +393,44 @@ def create_app() -> FastAPI:
         _s.unapprove(backend)
         return JSONResponse({"ok": True, "backend": backend})
 
+    # ── License (Phase 17): read status (admin) + owner-gated activation ──
+    @app.get("/v1/license")
+    def get_license_status(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        gerr = _api_deps.require_manage(principal, write=False)
+        if gerr is not None:
+            return gerr
+        from . import licensing as _lic
+        st = _lic.status()
+        st["enforce"] = _lic.enforcing()
+        st["can_edit"] = is_platform_owner(principal)
+        return JSONResponse(st)
+
+    @app.post("/v1/license/activate")
+    async def activate_license(request: Request) -> JSONResponse:
+        principal, err = _resolve_principal(request)
+        if err is not None:
+            return err
+        if not is_platform_owner(principal):
+            return JSONResponse({"error": {"message": "platform owner only — activating a "
+                                 "license changes the deployment's entitlement", "type": "forbidden"}},
+                                status_code=403)
+        b = await request.json()
+        from . import licensing as _lic
+        try:
+            _lic.activate(str(b.get("key", "")))
+        except _lic.InvalidLicense as exc:
+            return JSONResponse({"error": {"message": f"invalid license key: {exc}",
+                                 "type": "invalid_request_error"}}, status_code=400)
+        get_chain().append(event_type="license.activate", actor=principal.subject,
+                           resource="license", action="activate", outcome="applied",
+                           metadata={"plan": _lic.status().get("plan")})
+        st = _lic.status()
+        st["enforce"] = _lic.enforcing()
+        return JSONResponse({"ok": True, **st})
+
     # ── Sovereignty controls: read state (admin) + owner-gated Sovereign Mode ──
     @app.get("/v1/controls")
     def get_controls(request: Request) -> JSONResponse:

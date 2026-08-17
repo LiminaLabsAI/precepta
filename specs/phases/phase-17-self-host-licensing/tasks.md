@@ -13,8 +13,8 @@ phase: 17
 - [x] Add `cryptography` to requirements.txt (Dockerfile installs from it)
 
 ## Group 1 — License API + Console
-- [ ] `GET /v1/license` (status) + `POST /v1/license/activate` (owner-gated)
-- [ ] Console License screen (activate + plan/days/state) + status banner
+- [x] `GET /v1/license` (manage-gated) + `POST /v1/license/activate` (owner-gated)
+- [x] Console License screen (nav item, activate + plan/days/state) — 3 states render
 
 ## Group 2 — Heartbeat client + disclosure
 - [ ] Metadata-only heartbeat body → daily POST to `{PRECEPTA_LICENSE_URL}/license/heartbeat` (fail-soft)
