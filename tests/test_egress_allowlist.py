@@ -26,6 +26,39 @@ class _BE:
         self.in_boundary = in_boundary
 
 
+def test_seed_oidc_egress_google(monkeypatch):
+    # No-op unless Google OIDC is fully configured.
+    monkeypatch.delenv("OIDC_ISSUER", raising=False)
+    eg.seed_oidc_egress()
+    assert eg.list_hosts() == []
+    # issuer set but no client id/secret → still no-op (mirrors sso.is_configured)
+    monkeypatch.setenv("OIDC_ISSUER", "https://accounts.google.com")
+    eg.seed_oidc_egress()
+    assert eg.list_hosts() == []
+    # fully configured → the four Google OIDC hosts are approved (added_by system:oidc)
+    monkeypatch.setenv("OIDC_CLIENT_ID", "x.apps.googleusercontent.com")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "secret")
+    eg.seed_oidc_egress()
+    hosts = {h["host"]: h for h in eg.list_hosts()}
+    for h in ("accounts.google.com", "oauth2.googleapis.com",
+              "openidconnect.googleapis.com", "www.googleapis.com"):
+        assert h in hosts and hosts[h]["added_by"] == "system:oidc"
+    # so the login flow (and any subdomain) is now allowed to egress
+    assert eg.is_approved("https://oauth2.googleapis.com/token")
+    # idempotent — re-seeding doesn't duplicate
+    eg.seed_oidc_egress()
+    assert len([h for h in eg.list_hosts() if h["host"] == "accounts.google.com"]) == 1
+
+
+def test_seed_oidc_egress_ignores_non_google(monkeypatch):
+    # A non-Google issuer (e.g. Okta) is not auto-seeded by this Google-specific hook.
+    monkeypatch.setenv("OIDC_ISSUER", "https://acme.okta.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "x")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "y")
+    eg.seed_oidc_egress()
+    assert eg.list_hosts() == []
+
+
 def test_host_of_variants():
     assert eg.host_of("https://api.huggingface.co/v1") == "api.huggingface.co"
     assert eg.host_of("huggingface.co:443") == "huggingface.co"
