@@ -37,3 +37,6 @@ workflows/
 # eval run artifacts (the locked evaluator is committed; reports are per-run)
 tests/benchmarks/reports/
 licensing/data/
+
+# SSH / private keys — never commit
+*.pem

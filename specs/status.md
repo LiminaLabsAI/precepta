@@ -56,6 +56,9 @@ predates momentum founding; foundation docs were authored from the existing root
 | Phase | Name | Status | Key Deliverables |
 |-------|------|--------|-----------------|
 | 10 | Cost/quality/governance controls | Brainstorm scoped (6/7); design next | Foundations: pricing (TD-001) · counting rules (TD-002) · quality/eval harness (FEAT-006) · sensitivity quality (TD-004). Features: budgets (FEAT-001) · policy scope (FEAT-002) · cache (FEAT-003) · compression (FEAT-005) · advanced routing (FEAT-007) · traces→learning (FEAT-008). Pending brainstorm: deploy (FEAT-009). |
+| 18 | Enterprise Identity & Access | Planned (FEAT-023) | SAML + SCIM auto-provisioning + group→role mapping (on shipped OIDC/RBAC). P0 · Q4 2026. |
+| 19 | Compliance & Audit-Readiness Pack | Planned (FEAT-024/025/026/030/031) | Framework mapping (NIST first) + evidence export + policy change-control + incident register + 10-yr retention. P0/P1 · Q4 2026–Q2 2027. |
+| 20 | AI Inventory, Registry & Risk | Planned (FEAT-027/028/029) | Auto-built registry + risk scoring + eval/red-team gate. P1 · Q1–Q2 2027. |
 
 ## Blockers
 | ID | Description | Severity |
